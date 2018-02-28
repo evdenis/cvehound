@@ -548,6 +548,8 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
                                 add_alternative(
                                     parser.local_vars["ifdef_condition"][:]
                                 )
+                        # Remove 'else' if composite lists with the name of
+                        # a source file exist (drivers/media/pci/mantis/)
                         else:
                             parser.local_vars["composite_map"][fullpath].\
                                 add_alternative(
@@ -618,12 +620,15 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
         """ Constructor for _01_LinuxExpandMacros. """
         super(_01_LinuxExpandMacros, self).__init__(model, arch)
 
-    def expand_macro(self, name, path, condition, already_expanded, parser):
+    def expand_macro(self, name, path, condition, already_expanded, parser, maxdepth=3):
         """ Expand a macro named @name. Preconditions to the folder are given
         in @condition. The input file is @path and to avoid endless
         recursion processing is aborted if the current name is already present
         in @already_expanded. To save the results, the local variables are
         accessed via the @parser parameter."""
+
+        if maxdepth == 0:
+            return
 
         if name in already_expanded:
             return
@@ -695,7 +700,7 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
                     sourcefile = Helper.guess_source_for_target(fullpath)
                     if not sourcefile:
                         self.expand_macro(fullpath, path,passdown_condition,
-                                          already_expanded, parser)
+                                          already_expanded, parser, maxdepth-1)
                     else:
                         full_condition = DataStructures.Precondition()
                         if len(condition) > 0:
