@@ -80,10 +80,60 @@ class KbuildParser(object):
     def get_config(self):
         return self.output.config 
 
+    def_regex = re.compile(r"([A-Z_]+)\s*(?:=|:=)\s*(.*)$")
+    def_add_regex = re.compile(r"([A-Z_]+)\s*(?:\+=)\s*(.*)$")
+    addprefix_regex = re.compile(r"(.*)\$\(addprefix (.+)\s*,\s*(.+?)\)(.*)")
+    addsuffix_regex = re.compile(r"(.*)\$\(addsuffix (.+)\s*,\s*(.+?)\)(.*)")
+
+    def process_addprefix(self, string):
+        m = self.addprefix_regex.match(string)
+        if m:
+            pre, prefix, targets, post = m.groups()
+            l = []
+            for t in targets.split():
+                l.append(prefix + t)
+            string = "{}{}{}".format(pre, " ".join(l), post)
+        return string
+
+    def process_addsuffix(self, string):
+        m = self.addsuffix_regex.match(string)
+        if m:
+            pre, suffix, targets, post = m.groups()
+            l = []
+            for t in targets.split():
+                l.append(t + suffix)
+            string = "{}{}{}".format(pre, " ".join(l), post)
+        return string
+
+    def resolve(self, content, defs, srcpath="."):
+        used_vars = re.findall(r"\$\(([A-Z_]+)\)", content)
+        content = re.sub(r"\$\(src\)", srcpath, content)
+        for var in used_vars:
+            if not var in defs:
+                continue
+            content = re.sub(r"\$\(" + var + r"\)", defs[var], content)
+        content = self.process_addprefix(content)
+        content = self.process_addsuffix(content)
+        return content
+
+    def note_definition(self, line, defs):
+        match = self.def_regex.match(line)
+        if match:
+            lhs, rhs = match.groups()
+            defs[lhs] = self.resolve(rhs, defs)
+        else:
+            match = self.def_add_regex.match(line)
+            if match:
+                lhs, rhs = match.groups()
+                if not lhs in defs:
+                    defs[lhs] = ""
+                defs[lhs] += " " + self.resolve(rhs, defs)
+
     def read_whole_file(self, path):
         """ Read the content of the file in @path into the file_content_cache
         dictionary. Include statements are resolved on-the-fly (see comment in
         resolve_includes())."""
+        defs = {}
         output = []
         with open(path, "r") as infile:
             dirname = os.path.dirname(path)
@@ -91,33 +141,42 @@ class KbuildParser(object):
                 (good, line) = Helper.get_multiline_from_file(infile)
                 if not good:
                     break
-                inputs = self.resolve_includes(line, dirname)
+
+                self.note_definition(line, defs)
+
+                inputs = self.resolve_includes(line, dirname, defs)
                 output.extend(inputs)
 
         self.file_content_cache[path] = output
 
-    def resolve_includes(self, line, srcpath):
+    def resolve_includes(self, line, srcpath, defs):
         """ If @line starts with "include", read all the lines in the included
         file. This is done recursively to treat recursive includes. The @srcpath
         parameter is needed to correctly resolve the $(src) variable in the
         included files (it needs to contain the path to the folder of the
         top-most including Makefile)."""
+
+        line = self.resolve(line, defs, srcpath)
+
         if not line.startswith("include "):
             return [DataStructures.LineObject(line)]
 
-        line = re.sub(r"\$\(src\)", srcpath, line)
         lines = []
 
-        target = line.split(" ")[1].rstrip()
-        if not os.path.isfile(target):
-            return lines
+        targets = [x.rstrip() for x in line.split()[1:]]
+        for target in targets:
+            if not os.path.isfile(target):
+                target = os.path.join(srcpath, target)
+                if not os.path.isfile(target):
+                    continue
 
-        with open(target, "r") as infile:
-            while True:
-                (good, line) = Helper.get_multiline_from_file(infile)
-                if not good:
-                    break
-                lines.extend(self.resolve_includes(line, srcpath))
+            with open(target, "r") as infile:
+                while True:
+                    (good, line) = Helper.get_multiline_from_file(infile)
+                    if not good:
+                        break
+                    self.note_definition(line, defs)
+                    lines.extend(self.resolve_includes(line, srcpath, defs))
 
         return lines
 
