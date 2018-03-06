@@ -80,54 +80,72 @@ class KbuildParser(object):
     def get_config(self):
         return self.output.config 
 
-    def_regex = re.compile(r"([A-Z_]+)\s*(?:=|:=)\s*(.*)$")
-    def_add_regex = re.compile(r"([A-Z_]+)\s*(?:\+=)\s*(.*)$")
-    addprefix_regex = re.compile(r"(.*)\$\(addprefix (.+)\s*,\s*(.+?)\)(.*)")
-    addsuffix_regex = re.compile(r"(.*)\$\(addsuffix (.+)\s*,\s*(.+?)\)(.*)")
+    # A bit of a hack to support ifdefs around variable additions in the
+    # Makefiles included by drivers/gpu/drm/amd/amdgpu/Makefile - it uses
+    # variables with numbers in them, which we purposefully do not capture
+    # here; they are evaluated by the macro expansion while processing the
+    # file.
+    variable_name_regex = r"[A-Z_]+"
+    def_regex = re.compile(r"([^\s:]*)\s*[\?:]?=\s*(.*)$")
+    def_add_regex = re.compile(r"([^\s]*)\s*\+=\s*(.*)$")
+    parseable_regex = re.compile(r"\$\((.*?) (.*?)\s*,\s*(.*)\)$")
 
-    def process_addprefix(self, string):
-        m = self.addprefix_regex.match(string)
-        if m:
-            pre, prefix, targets, post = m.groups()
-            l = []
-            for t in targets.split():
-                l.append(prefix + t)
-            string = "{}{}{}".format(pre, " ".join(l), post)
-        return string
+    def process_addprefix(self, prefix, targets):
+        l = []
+        for t in targets.split():
+            l.append(prefix + t)
+        return " ".join(l)
 
-    def process_addsuffix(self, string):
-        m = self.addsuffix_regex.match(string)
-        if m:
-            pre, suffix, targets, post = m.groups()
-            l = []
-            for t in targets.split():
-                l.append(t + suffix)
-            string = "{}{}{}".format(pre, " ".join(l), post)
-        return string
+    def process_addsuffix(self, suffix, targets):
+        l = []
+        for t in targets.split():
+            l.append(t + suffix)
+        return " ".join(l)
 
-    def resolve(self, content, defs, srcpath="."):
-        used_vars = re.findall(r"\$\(([A-Z_]+)\)", content)
+    def replace_variables(self, content, defs, srcpath):
+        used_vars = re.findall(r"\$\((" + self.variable_name_regex + r")\)", content)
         content = re.sub(r"\$\(src\)", srcpath, content)
         for var in used_vars:
             if not var in defs:
                 continue
             content = re.sub(r"\$\(" + var + r"\)", defs[var], content)
-        content = self.process_addprefix(content)
-        content = self.process_addsuffix(content)
         return content
 
+    def parse_replacements(self, content, defs):
+        m = self.parseable_regex.match(content)
+        if m:
+            what, token, lst = m.groups()
+            # recursive evaluation of argument list
+            lst = self.parse_replacements(lst, defs)
+            if what == 'addprefix':
+                content = self.process_addprefix(token, lst)
+            elif what == 'addsuffix':
+                content = self.process_addsuffix(token, lst)
+        return content
+
+    def resolve(self, content, defs, srcpath="."):
+        content = self.replace_variables(content, defs, srcpath)
+        return self.parse_replacements(content, defs)
+
     def note_definition(self, line, defs):
-        match = self.def_regex.match(line)
+        match = self.def_add_regex.match(line)
         if match:
             lhs, rhs = match.groups()
-            defs[lhs] = self.resolve(rhs, defs)
+            resolved = self.resolve(rhs, defs)
+            if re.match(self.variable_name_regex, lhs):
+                if not lhs in defs:
+                    defs[lhs] = ''
+                defs[lhs] += ' ' + resolved
+            line = '{} += {}'.format(lhs, resolved)
         else:
-            match = self.def_add_regex.match(line)
+            match = self.def_regex.match(line)
             if match:
                 lhs, rhs = match.groups()
-                if not lhs in defs:
-                    defs[lhs] = ""
-                defs[lhs] += " " + self.resolve(rhs, defs)
+                resolved = self.resolve(rhs, defs)
+                if re.match(self.variable_name_regex, lhs):
+                    defs[lhs] = resolved
+                line = '{} := {}'.format(lhs, resolved)
+        return line
 
     def read_whole_file(self, path):
         """ Read the content of the file in @path into the file_content_cache
@@ -142,7 +160,7 @@ class KbuildParser(object):
                 if not good:
                     break
 
-                self.note_definition(line, defs)
+                line = self.note_definition(line, defs)
 
                 inputs = self.resolve_includes(line, dirname, defs)
                 output.extend(inputs)
@@ -156,10 +174,10 @@ class KbuildParser(object):
         included files (it needs to contain the path to the folder of the
         top-most including Makefile)."""
 
-        line = self.resolve(line, defs, srcpath)
-
         if not line.startswith("include "):
             return [DataStructures.LineObject(line)]
+
+        line = self.replace_variables(line, defs, srcpath)
 
         lines = []
 
@@ -175,7 +193,7 @@ class KbuildParser(object):
                     (good, line) = Helper.get_multiline_from_file(infile)
                     if not good:
                         break
-                    self.note_definition(line, defs)
+                    line = self.note_definition(line, defs)
                     lines.extend(self.resolve_includes(line, srcpath, defs))
 
         return lines
