@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='cvehound',
-    version='0.1.1',
+    version='0.1.2',
     author='Denis Efremov',
     author_email='efremov@linux.com',
     url='http://github.com/evdenis/cvehound',
