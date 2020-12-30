@@ -11,11 +11,12 @@ setup(
     description='A tool to check linux kernel source dump for known CVEs',
     long_description=open('README.md', encoding='utf8').read(),
     long_description_content_type='text/markdown',
-    python_requires='>=3.6',
+    python_requires='>=3.5',
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
