@@ -120,8 +120,14 @@ def check_cve(kernel, cve, verbose=False, all_files=False):
         return True
     return False
 
+def removesuffix(string, suffix):
+    if suffix and string.endswith(suffix):
+        return string[:-len(suffix)]
+    else:
+        return string[:]
+
 def get_all_cves():
-    return [cve.removesuffix('.cocci').removesuffix('.grep')
+    return [removesuffix(removesuffix(cve, '.grep'), '.cocci')
             for cve in pkg_resources.resource_listdir('cvehound', 'cve/')]
 
 def main(args=sys.argv[1:]):
