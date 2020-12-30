@@ -6,6 +6,7 @@ import sys
 import argparse
 import re
 import subprocess
+from subprocess import PIPE
 
 def dir_path(path):
     if os.path.isdir(path):
@@ -82,26 +83,26 @@ def check_cve(kernel, cve, verbose=False, all_files=False):
             run = subprocess.run(['spatch', '--no-includes', '--include-headers',
                                   '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
                                   '--cocci-file', cocci, *files],
-                                  capture_output=True, check=True)
+                                  stdout=PIPE, stderr=PIPE, check=True)
             output = run.stdout.decode('utf-8')
         else:
             (is_fix, patterns) = get_grep_pattern(grep)
             args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
             patterns.pop(0)
-            run = subprocess.run(args, capture_output=True)
+            run = subprocess.run(args, stdout=PIPE, stderr=PIPE)
             if run.returncode == 0:
                 output = run.stdout
                 last = patterns.pop()
                 for p in patterns:
                     run = subprocess.run(['grep', '-Pzoe', p],
-                                         input=output, capture_output=True)
+                                         input=output, stdout=PIPE, stderr=PIPE)
                     if run.returncode != 0:
                         output = ''
                         break
                     output = run.stdout
                 if run.returncode == 0:
                     run = subprocess.run(['grep', '-Pzoe', last],
-                                         input=output, capture_output=True)
+                                         input=output, stdout=PIPE, stderr=PIPE)
                     success = run.returncode == 0
                     if is_fix == success:
                         output = ''
