@@ -6,15 +6,22 @@ The tool is based on [coccinelle](https://coccinelle.gitlabpages.inria.fr/websit
 rules and grep patterns. The tool checks sources for vulnerable
 code patterns of known CVEs and missing fixes for them.
 
+- **What:** The tool tries to find "unfixed" code of known CVEs;
+- **How:** The tool uses [coccinelle/grep](cvehound/cve) rules with patterns that helps to detect known CVE bugs or their fixes. Thus, sources are checked either for a presence of "unfixed" code pieces (e.g. [CVE-2020-12912](cvehound/cve/CVE-2020-12912.cocci)), or for an absence of a fix (e.g. [CVE-2020-27068](cvehound/cve/CVE-2020-27068.grep));
+- **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without git history. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you an information about what CVEs were fixed by kernel developers upto this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
+
 ## Prerequisites
 
 - Python 3 (>=3.5)
 - pip (Python package manager)
 - grep with pcre support (-P flag)
-- coccinelle (>= 1.0.8)
+- coccinelle (>= 1.0.4)
 
-On Fedora:
+Install prerequisites:
 ``` shell
+# Ubuntu
+$ sudo apt install python3-pip coccinelle
+# Fedora
 $ sudo dnf install python3-pip coccinelle
 ```
 
