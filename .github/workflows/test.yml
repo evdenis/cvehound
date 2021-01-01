@@ -1,0 +1,47 @@
+name: test
+
+on:
+  push:
+    paths:
+    - 'cvehound/**'
+    - 'tests/**'
+  pull_request:
+    paths:
+    - 'cvehound/**'
+    - 'tests/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * MON'
+
+jobs:
+  build:
+
+    strategy:
+      matrix:
+        python-version: [3.5, 3.9]
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Coccinelle
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y coccinelle
+
+    - name: Install CVEhound
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --upgrade pytest
+        python -m pip install -e '.[tests]'
+
+    - name: Test with pytest
+      run: |
+          pytest -rA tests/test_on_master.py tests/test_on_init.py tests/test_on_fix.py

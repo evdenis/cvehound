@@ -2,6 +2,14 @@
 
 from setuptools import setup
 
+test_deps = [
+    'pytest',
+    'gitpython'
+]
+extras = {
+    'tests': test_deps,
+}
+
 setup(
     name='cvehound',
     version='0.1.2',
@@ -12,6 +20,8 @@ setup(
     long_description=open('README.md', encoding='utf8').read(),
     long_description_content_type='text/markdown',
     python_requires='>=3.5',
+    tests_require=test_deps,
+    extras_require=extras,
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Operating System :: POSIX :: Linux',
