@@ -1,3 +1,4 @@
+![tests](https://github.com/evdenis/cvehound/workflows/test/badge.svg)
 # CVEhound
 
 CVEhound is a tool for checking linux sources for known CVEs.
