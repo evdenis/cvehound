@@ -34,13 +34,23 @@ jobs:
     - name: Install Coccinelle
       run: |
         sudo apt-get update
-        sudo apt-get install -y coccinelle
+        sudo apt-get install -y coccinelle axel
 
     - name: Install CVEhound
       run: |
         python -m pip install --upgrade pip
         python -m pip install --upgrade pytest
         python -m pip install -e '.[tests]'
+
+    - name: Download Linux Tree
+      run: |
+        axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/torvalds/linux/clone.bundle
+        git clone clone.bundle tests/linux
+        rm -f clone.bundle
+        cd tests/linux
+        git remote set-url origin https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+        git remote update origin
+        cd -
 
     - name: Test with pytest
       run: |
