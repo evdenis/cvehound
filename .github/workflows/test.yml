@@ -44,4 +44,4 @@ jobs:
 
     - name: Test with pytest
       run: |
-          pytest -rA tests/test_on_master.py tests/test_on_init.py tests/test_on_fix.py
+          pytest
