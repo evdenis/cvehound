@@ -12,7 +12,7 @@ extras = {
 
 setup(
     name='cvehound',
-    version='0.1.2',
+    version='0.1.3',
     author='Denis Efremov',
     author_email='efremov@linux.com',
     url='http://github.com/evdenis/cvehound',
