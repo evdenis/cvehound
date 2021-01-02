@@ -45,7 +45,11 @@ $ pip install -e .
 The simplest way to start using CVEhound is to run the following command:
 
 ``` shell
-$ cvehound --dir ~/workspace/linux --verbose
+$ cvehound --dir ~/workspace/linux
+Found: CVE-2020-27830
+Found: CVE-2020-27152
+Found: CVE-2020-29371
+Found: CVE-2020-26088
 ```
 
 where *dir* should point to linux kernel sources. CVEhound will check the
@@ -53,6 +57,17 @@ sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
 ``` shell
-$ cvehound --dir ~/workspace/linux --cve CVE-2020-27194 CVE-2020-29371
+$ cvehound --dir ~/workspace/linux --verbose --cve CVE-2020-27194 CVE-2020-29371
+Checking: CVE-2020-27194
+Found: CVE-2020-27194
+MSG: bpf: Fix scalar32_min_max_or bounds tracking
+CWE: Improper Restriction of Operations within the Bounds of a Memory Buffer
+DATE: 2020-11-03
+
+Checking: CVE-2020-29371
+Found: CVE-2020-29371
+MSG: romfs: fix uninitialized memory leak in romfs_dev_read()
+CWE: Use of Uninitialized Resource
+DATE: 2020-12-08
 ```
 
