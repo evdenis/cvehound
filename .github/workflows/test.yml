@@ -44,11 +44,11 @@ jobs:
 
     - name: Download Linux Tree
       run: |
-        axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/torvalds/linux/clone.bundle
+        axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
         git clone clone.bundle tests/linux
         rm -f clone.bundle
         cd tests/linux
-        git remote set-url origin https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+        git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
         git remote update origin
         cd -
 
