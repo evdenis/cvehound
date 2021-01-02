@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import pkg_resources
 import os
 import sys
 import argparse
@@ -9,12 +8,12 @@ import subprocess
 import gzip
 import json
 from subprocess import PIPE
+import pkg_resources
 
 def dir_path(path):
     if os.path.isdir(path):
         return path
-    else:
-        raise NotADirectoryError(path)
+    raise NotADirectoryError(path)
 
 cores_num = 0
 def get_cores_num():
@@ -65,10 +64,9 @@ def read_metadata():
         data = json.loads(fh.read())
     return data
 
-def check_cve(kernel, cve, info={}, verbose=0, all_files=False):
+def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     cocci = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.cocci')
     grep = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.grep')
-    meta = {}
     is_grep = False
 
     if os.path.isfile(cocci):
@@ -99,20 +97,22 @@ def check_cve(kernel, cve, info={}, verbose=0, all_files=False):
             (is_fix, patterns) = get_grep_pattern(grep)
             args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
             patterns.pop(0)
-            run = subprocess.run(args, stdout=PIPE, stderr=PIPE)
+            run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
             if run.returncode == 0:
                 output = run.stdout
                 last = patterns.pop()
-                for p in patterns:
-                    run = subprocess.run(['grep', '-Pzoe', p],
-                                         input=output, stdout=PIPE, stderr=PIPE)
+                for pattern in patterns:
+                    run = subprocess.run(['grep', '-Pzoe', pattern],
+                                         input=output, check=False,
+                                         stdout=PIPE, stderr=PIPE)
                     if run.returncode != 0:
                         output = ''
                         break
                     output = run.stdout
                 if run.returncode == 0:
                     run = subprocess.run(['grep', '-Pzoe', last],
-                                         input=output, stdout=PIPE, stderr=PIPE)
+                                         input=output, check=False,
+                                         stdout=PIPE, stderr=PIPE)
                     success = run.returncode == 0
                     if is_fix == success:
                         output = ''
@@ -140,8 +140,7 @@ def check_cve(kernel, cve, info={}, verbose=0, all_files=False):
 def removesuffix(string, suffix):
     if suffix and string.endswith(suffix):
         return string[:-len(suffix)]
-    else:
-        return string[:]
+    return string[:]
 
 def get_all_cves():
     return [removesuffix(removesuffix(cve, '.grep'), '.cocci')
@@ -154,7 +153,8 @@ def main(args=sys.argv[1:]):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('--version', action='version', version='0.0.1')
-    parser.add_argument('--all-files', action='store_true', help="don't use files hint from cocci rules")
+    parser.add_argument('--all-files', action='store_true',
+                        help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',
                         help='list of cve identifiers')
     parser.add_argument('--dir', '-d', type=dir_path, required=True,
