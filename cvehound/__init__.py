@@ -6,6 +6,8 @@ import sys
 import argparse
 import re
 import subprocess
+import gzip
+import json
 from subprocess import PIPE
 
 def dir_path(path):
@@ -56,9 +58,17 @@ def get_files(rule, kernel):
     files = filter(lambda f: os.path.exists(f), files)
     return files
 
-def check_cve(kernel, cve, verbose=False, all_files=False):
+def read_metadata():
+    cves = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')
+    data = None
+    with gzip.open(cves, 'rt', encoding='utf-8') as fh:
+        data = json.loads(fh.read())
+    return data
+
+def check_cve(kernel, cve, info={}, verbose=0, all_files=False):
     cocci = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.cocci')
     grep = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.grep')
+    meta = {}
     is_grep = False
 
     if os.path.isfile(cocci):
@@ -110,14 +120,20 @@ def check_cve(kernel, cve, verbose=False, all_files=False):
                         output = 'ERROR'
     except subprocess.CalledProcessError as e:
         print('Failed to check', cve)
-        if verbose:
+        if verbose > 1:
             print('Failed to run:', ' '.join(e.cmd))
         return False
 
     if 'ERROR' in output:
         print('Found:', cve)
         if verbose:
-            print(output)
+            print('MSG:', info['cmt_msg'])
+            if 'cwe' in info:
+                print('CWE:', info['cwe'])
+            print('DATE:', info['last_modified'])
+            if verbose > 1:
+                print(output)
+            print()
         return True
     return False
 
@@ -143,8 +159,8 @@ def main(args=sys.argv[1:]):
                         help='list of cve identifiers')
     parser.add_argument('--dir', '-d', type=dir_path, required=True,
                         help='linux kernel sources dir')
-    parser.add_argument('-v', '--verbose', help='increase output verbosity',
-                        action='store_true')
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='increase output verbosity')
     cmdargs = parser.parse_args()
     known_cves = get_all_cves()
     if cmdargs.cve == 'all':
@@ -161,8 +177,11 @@ def main(args=sys.argv[1:]):
             if cve not in known_cves:
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
+    meta = {}
+    if cmdargs.verbose:
+        meta = read_metadata()
     for cve in cmdargs.cve:
-        check_cve(cmdargs.dir, cve, cmdargs.verbose, cmdargs.all_files)
+        check_cve(cmdargs.dir, cve, meta.get(cve, {}), cmdargs.verbose, cmdargs.all_files)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

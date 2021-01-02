@@ -1,3 +1,4 @@
 include README.rst
 include cvehound/cve/*.cocci
 include cvehound/cve/*.grep
+include cvehound/data/*
