@@ -119,9 +119,7 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
                     else:
                         output = 'ERROR'
     except subprocess.CalledProcessError as e:
-        print('Failed to check', cve)
-        if verbose > 1:
-            print('Failed to run:', ' '.join(e.cmd))
+        print('Failed to run:', ' '.join(e.cmd))
         return False
 
     if 'ERROR' in output:
