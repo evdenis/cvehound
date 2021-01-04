@@ -19,8 +19,10 @@ code patterns of known CVEs and missing fixes for them.
 
 Install prerequisites:
 ``` shell
-# Ubuntu
-$ sudo apt install python3-pip coccinelle
+# Ubuntu, coccinelle uses libpython2.7 internally
+# Seems like some ppas mark libpython dependency as optional
+$ sudo apt install python3-pip coccinelle libpython2.7
+
 # Fedora
 $ sudo dnf install python3-pip coccinelle
 ```
