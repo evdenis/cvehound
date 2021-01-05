@@ -49,21 +49,7 @@ def get_grep_pattern(rule):
                 patterns.append(line)
     return (is_fix, patterns)
 
-def get_files(rule, kernel):
-    files = []
-    with open(rule, 'r') as fh:
-        while True:
-            line = fh.readline()
-            if not line:
-                break
-            if 'Files:' in line:
-                files = line.partition('Files:')[2].split()
-                break
-    files = map(lambda f: os.path.join(kernel, f), files)
-    files = filter(lambda f: os.path.exists(f), files)
-    return files
-
-def read_metadata():
+def read_cve_metadata():
     cves = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')
     data = None
     with gzip.open(cves, 'rt', encoding='utf-8') as fh:
@@ -83,7 +69,10 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
 
     files = []
     if not all_files:
-        files = list(get_files(rule, kernel))
+        files = get_rule_metadata(cve)['files']
+        files = map(lambda f: os.path.join(kernel, f), files)
+        files = filter(lambda f: os.path.exists(f), files)
+        files = list(files)
     if not files:
         files = [ kernel ]
 
@@ -147,9 +136,46 @@ def removesuffix(string, suffix):
         return string[:-len(suffix)]
     return string[:]
 
+rules_metadata = {}
+def get_rule_metadata(cve):
+    files = []
+    fix = None
+    fixes = None
+
+    if cve in rules_metadata:
+        return rules_metadata[cve]
+
+    with open(get_all_cves()[cve], 'r') as fh:
+        while True:
+            line = fh.readline()
+            if not line:
+                break
+            if 'Files:' in line:
+                files = line.partition('Files:')[2].split()
+            elif 'Fix:' in line:
+                fix = line.partition('Fix:')[2].strip()
+            elif 'Fixes:' in line:
+                fixes = line.partition('Fixes:')[2].strip()
+                break
+            elif 'Detect-To:' in line:
+                fixes = line.partition('Detect-To:')[2].strip()
+                break
+
+    meta = { 'files': files }
+    if fix:
+        meta['fix'] = fix
+    if fixes:
+        meta['fixes'] = fixes
+    return meta
+
+cve_rules = {}
 def get_all_cves():
-    return [removesuffix(removesuffix(cve, '.grep'), '.cocci')
-            for cve in pkg_resources.resource_listdir('cvehound', 'cve/')]
+    global cve_rules
+    if not cve_rules:
+        for cve in pkg_resources.resource_listdir('cvehound', 'cve/'):
+            name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
+            cve_rules[name] = pkg_resources.resource_filename('cvehound', 'cve/' + cve)
+    return cve_rules
 
 def main(args=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -172,7 +198,7 @@ def main(args=sys.argv[1:]):
         print('Please, install coccinelle.')
         sys.exit(1)
 
-    known_cves = get_all_cves()
+    known_cves = get_all_cves().keys()
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves
     else:
@@ -189,7 +215,7 @@ def main(args=sys.argv[1:]):
                 sys.exit(1)
     meta = {}
     if cmdargs.verbose:
-        meta = read_metadata()
+        meta = read_cve_metadata()
     for cve in cmdargs.cve:
         check_cve(cmdargs.dir, cve, meta.get(cve, {}), cmdargs.verbose, cmdargs.all_files)
 

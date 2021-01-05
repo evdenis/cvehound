@@ -66,7 +66,7 @@ def pytest_configure(config):
 
     cves = config.getoption('cve')
     if not cves:
-        cves = get_all_cves()
+        cves = get_all_cves().keys()
 
 @pytest.fixture
 def repo(request):
