@@ -55,13 +55,13 @@ def pytest_configure(config):
     branches = config.getoption('branch')
     if not branches:
         branches = [
-                'master',
-                'linux-5.10.y',
-                'linux-5.4.y',
-                'linux-4.19.y',
-                'linux-4.14.y',
-                'linux-4.9.y',
-                'linux-4.4.y'
+            'origin/master',
+            'origin/linux-5.10.y',
+            'origin/linux-5.4.y',
+            'origin/linux-4.19.y',
+            'origin/linux-4.14.y',
+            'origin/linux-4.9.y',
+            'origin/linux-4.4.y'
         ]
 
     cves = config.getoption('cve')
