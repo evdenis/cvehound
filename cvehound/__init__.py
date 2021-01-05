@@ -10,6 +10,8 @@ import json
 from subprocess import PIPE
 import pkg_resources
 
+__VERSION__ = '0.2.1-dev'
+
 def dir_path(path):
     if os.path.isdir(path):
         return path
@@ -151,7 +153,7 @@ def main(args=sys.argv[1:]):
         description='A tool to check linux kernel sources dump for known CVEs',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--version', action='version', version='0.0.1')
+    parser.add_argument('--version', action='version', version=__VERSION__)
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',

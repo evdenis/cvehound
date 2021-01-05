@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 
+import os
+import re
 from setuptools import setup
+
+def read(fname):
+    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
+def find_version(source):
+    version_file = read(source)
+    version_match = re.search(r"^__VERSION__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Unable to find version string.")
 
 test_deps = [
     'pytest',
@@ -12,12 +24,12 @@ extras = {
 
 setup(
     name='cvehound',
-    version='0.2.0',
+    version=find_version('cvehound/__init__.py'),
     author='Denis Efremov',
     author_email='efremov@linux.com',
     url='http://github.com/evdenis/cvehound',
     description='A tool to check linux kernel source dump for known CVEs',
-    long_description=open('README.md', encoding='utf8').read(),
+    long_description=read('README.md'),
     long_description_content_type='text/markdown',
     python_requires='>=3.5',
     tests_require=test_deps,
