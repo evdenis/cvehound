@@ -8,6 +8,7 @@ from cvehound import check_cve
     [
         ('origin/linux-4.4.y', 'CVE-2020-27777'),
         ('origin/linux-4.9.y', 'CVE-2020-27777'),
+        ('origin/linux-4.4.y', 'CVE-2020-29569'),
     ]
 )
 def test_on_branch(repo, branch, cve):
