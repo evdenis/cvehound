@@ -7,6 +7,7 @@ import re
 import subprocess
 import gzip
 import json
+from shutil import which
 from subprocess import PIPE
 import pkg_resources
 
@@ -16,6 +17,9 @@ def dir_path(path):
     if os.path.isdir(path):
         return path
     raise NotADirectoryError(path)
+
+def tool_exists(name):
+    return which(name) is not None
 
 cores_num = 0
 def get_cores_num():
@@ -163,6 +167,11 @@ def main(args=sys.argv[1:]):
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
+
+    if not tool_exists('spatch'):
+        print('Please, install coccinelle.')
+        sys.exit(1)
+
     known_cves = get_all_cves()
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves
