@@ -123,7 +123,8 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
             print('MSG:', info['cmt_msg'])
             if 'cwe' in info:
                 print('CWE:', info['cwe'])
-            print('DATE:', info['last_modified'])
+            if 'last_modified' in info:
+                print('CVE UPDATED:', info['last_modified'])
             print('https://www.linuxkernelcves.com/cves/' + cve)
             if verbose > 1:
                 print(output)
