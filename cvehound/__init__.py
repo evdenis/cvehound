@@ -11,7 +11,7 @@ from shutil import which
 from subprocess import PIPE
 import pkg_resources
 
-__VERSION__ = '0.2.1-dev'
+__VERSION__ = '0.2.1'
 
 def dir_path(path):
     if os.path.isdir(path):
