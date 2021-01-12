@@ -57,14 +57,9 @@ def read_cve_metadata():
     return data
 
 def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
-    cocci = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.cocci')
-    grep = pkg_resources.resource_filename('cvehound', 'cve/' + cve + '.grep')
     is_grep = False
-
-    if os.path.isfile(cocci):
-        rule = cocci
-    else:
-        rule = grep
+    rule = get_all_cves()[cve]
+    if rule.endswith('.grep'):
         is_grep = True
 
     files = []
@@ -85,11 +80,11 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
         if not is_grep:
             run = subprocess.run(['spatch', '--no-includes', '--include-headers',
                                   '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
-                                  '--cocci-file', cocci, *files],
+                                  '--cocci-file', rule, *files],
                                   stdout=PIPE, stderr=PIPE, check=True)
             output = run.stdout.decode('utf-8')
         else:
-            (is_fix, patterns) = get_grep_pattern(grep)
+            (is_fix, patterns) = get_grep_pattern(rule)
             args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
             patterns.pop(0)
             run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
