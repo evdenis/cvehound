@@ -146,7 +146,7 @@ def get_rule_metadata(cve):
     if cve in rules_metadata:
         return rules_metadata[cve]
 
-    with open(get_all_cves()[cve], 'r') as fh:
+    with open(get_all_cves()[cve], 'rt') as fh:
         while True:
             line = fh.readline()
             if not line:
