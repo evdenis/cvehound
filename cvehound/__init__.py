@@ -33,10 +33,7 @@ def get_grep_pattern(rule):
     start = False
     patterns = []
     with open(rule, 'r') as fh:
-        while True:
-            line = fh.readline()
-            if not line:
-                break
+        for line in fh:
             line = line.strip()
             if line == 'FIX':
                 is_fix = True
@@ -142,10 +139,7 @@ def get_rule_metadata(cve):
         return rules_metadata[cve]
 
     with open(get_all_cves()[cve], 'rt') as fh:
-        while True:
-            line = fh.readline()
-            if not line:
-                break
+        for line in fh:
             if 'Files:' in line:
                 files = line.partition('Files:')[2].split()
             elif 'Fix:' in line:
