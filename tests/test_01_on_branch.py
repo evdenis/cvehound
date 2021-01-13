@@ -6,6 +6,8 @@ from cvehound import check_cve
 @pytest.mark.notbackported(
     ('branch', 'cve'),
     [
+        ('origin/linux-4.4.y', 'CVE-2019-12382'),
+        ('origin/linux-4.9.y', 'CVE-2019-12382'),
         ('origin/linux-4.4.y', 'CVE-2019-15924'),
         ('origin/linux-4.4.y', 'CVE-2020-27777'),
         ('origin/linux-4.9.y', 'CVE-2020-27777'),
