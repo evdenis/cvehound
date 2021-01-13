@@ -112,7 +112,8 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     if 'ERROR' in output:
         print('Found:', cve)
         if verbose:
-            print('MSG:', info['cmt_msg'])
+            if 'cmt_msg' in info:
+                print('MSG:', info['cmt_msg'])
             if 'cwe' in info:
                 print('CWE:', info['cwe'])
             if 'last_modified' in info:
