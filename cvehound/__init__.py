@@ -73,41 +73,37 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
 
     output = ''
     run = None
-    try:
-        if not is_grep:
-            run = subprocess.run(['spatch', '--no-includes', '--include-headers',
-                                  '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
-                                  '--cocci-file', rule, *files],
-                                  stdout=PIPE, stderr=PIPE, check=True)
-            output = run.stdout.decode('utf-8')
-        else:
-            (is_fix, patterns) = get_grep_pattern(rule)
-            args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
-            patterns.pop(0)
-            run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
-            if run.returncode == 0:
+    if not is_grep:
+        run = subprocess.run(['spatch', '--no-includes', '--include-headers',
+                              '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
+                              '--cocci-file', rule, *files],
+                              stdout=PIPE, stderr=PIPE, check=True)
+        output = run.stdout.decode('utf-8')
+    else:
+        (is_fix, patterns) = get_grep_pattern(rule)
+        args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
+        patterns.pop(0)
+        run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
+        if run.returncode == 0:
+            output = run.stdout
+            last = patterns.pop()
+            for pattern in patterns:
+                run = subprocess.run(['grep', '-Pzoe', pattern],
+                                     input=output, check=False,
+                                     stdout=PIPE, stderr=PIPE)
+                if run.returncode != 0:
+                    output = ''
+                    break
                 output = run.stdout
-                last = patterns.pop()
-                for pattern in patterns:
-                    run = subprocess.run(['grep', '-Pzoe', pattern],
-                                         input=output, check=False,
-                                         stdout=PIPE, stderr=PIPE)
-                    if run.returncode != 0:
-                        output = ''
-                        break
-                    output = run.stdout
-                if run.returncode == 0:
-                    run = subprocess.run(['grep', '-Pzoe', last],
-                                         input=output, check=False,
-                                         stdout=PIPE, stderr=PIPE)
-                    success = run.returncode == 0
-                    if is_fix == success:
-                        output = ''
-                    else:
-                        output = 'ERROR'
-    except subprocess.CalledProcessError as e:
-        print('Failed to run:', ' '.join(e.cmd))
-        return False
+            if run.returncode == 0:
+                run = subprocess.run(['grep', '-Pzoe', last],
+                                     input=output, check=False,
+                                     stdout=PIPE, stderr=PIPE)
+                success = run.returncode == 0
+                if is_fix == success:
+                    output = ''
+                else:
+                    output = 'ERROR'
 
     if 'ERROR' in output:
         print('Found:', cve)
@@ -208,7 +204,10 @@ def main(args=sys.argv[1:]):
     if cmdargs.verbose:
         meta = read_cve_metadata()
     for cve in cmdargs.cve:
-        check_cve(cmdargs.dir, cve, meta.get(cve, {}), cmdargs.verbose, cmdargs.all_files)
+        try:
+            check_cve(cmdargs.dir, cve, meta.get(cve, {}), cmdargs.verbose, cmdargs.all_files)
+        except subprocess.CalledProcessError as e:
+            print('Failed to run:', ' '.join(e.cmd))
 
 if __name__ == '__main__':
     main(sys.argv[1:])
