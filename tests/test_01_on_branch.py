@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import pytest
-from cvehound import check_cve
+from cvehound import check_cve, UnsupportedVersion
 
 @pytest.mark.notbackported(
     ('branch', 'cve'),
@@ -19,4 +19,7 @@ from cvehound import check_cve
 )
 def test_on_branch(repo, branch, cve):
     repo.git.checkout(branch)
-    assert check_cve(repo.working_tree_dir, cve) == False, cve + ' on ' + branch
+    try:
+        assert check_cve(repo.working_tree_dir, cve) == False, cve + ' on ' + branch
+    except UnsupportedVersion:
+        pytest.skip('Unsupported spatch version')

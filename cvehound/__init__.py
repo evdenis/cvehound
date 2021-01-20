@@ -13,6 +13,12 @@ import pkg_resources
 
 __VERSION__ = '0.2.1'
 
+class UnsupportedVersion(Exception):
+    def __init__(self, spatch_version, cve, rule_version):
+        self.spatch_version = '.'.join(str(spatch_version))
+        self.cve = cve
+        self.rule_version = '.'.join(str(rule_version))
+
 def dir_path(path):
     if os.path.isdir(path):
         return path
@@ -20,6 +26,16 @@ def dir_path(path):
 
 def tool_exists(name):
     return which(name) is not None
+
+ver = None
+def spatch_version():
+    global ver
+    if not ver:
+        run = subprocess.run(['spatch', '--version'], stdout=PIPE, stderr=PIPE, check=True)
+        output = run.stdout.decode('utf-8').split('\n')[0]
+        res = re.match(r'spatch\s+version\s+([\d.]+)', output)
+        ver = int(res.group(1).replace('.', ''))
+    return ver
 
 cores_num = 0
 def get_cores_num():
@@ -74,6 +90,9 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     output = ''
     run = None
     if not is_grep:
+        rule_ver = get_rule_metadata(cve)['version']
+        if rule_ver and rule_ver > spatch_version():
+            raise UnsupportedVersion(spatch_version(), cve, rule_ver)
         try:
             run = subprocess.run(['spatch', '--no-includes', '--include-headers',
                                   '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
@@ -137,28 +156,33 @@ def get_rule_metadata(cve):
     files = []
     fix = None
     fixes = None
+    version = 0
 
     if cve in rules_metadata:
         return rules_metadata[cve]
 
     with open(get_all_cves()[cve], 'rt') as fh:
         for line in fh:
+            if not line.startswith('///'):
+                break
             if 'Files:' in line:
                 files = line.partition('Files:')[2].split()
             elif 'Fix:' in line:
                 fix = line.partition('Fix:')[2].strip()
             elif 'Fixes:' in line:
                 fixes = line.partition('Fixes:')[2].strip()
-                break
             elif 'Detect-To:' in line:
                 fixes = line.partition('Detect-To:')[2].strip()
-                break
+            elif 'Version:' in line:
+                version = line.partition('Version:')[2].strip()
+                version = int(version.replace('.', ''))
 
-    meta = { 'files': files }
-    if fix:
-        meta['fix'] = fix
-    if fixes:
-        meta['fixes'] = fixes
+    meta = {
+        'files': files,
+        'fix': fix,
+        'fixes': fixes,
+        'version': version
+    }
     return meta
 
 cve_rules = {}
@@ -213,7 +237,9 @@ def main(args=sys.argv[1:]):
         try:
             check_cve(cmdargs.dir, cve, meta.get(cve, {}), cmdargs.verbose, cmdargs.all_files)
         except subprocess.CalledProcessError as e:
-            print('Failed to run:', ' '.join(e.cmd))
+            print('Failed to run: ', ' '.join(e.cmd))
+        except UnsupportedVersion as err:
+            print('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
