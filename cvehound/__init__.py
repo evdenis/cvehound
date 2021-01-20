@@ -74,11 +74,17 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     output = ''
     run = None
     if not is_grep:
-        run = subprocess.run(['spatch', '--no-includes', '--include-headers',
-                              '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
-                              '--cocci-file', rule, *files],
-                              stdout=PIPE, stderr=PIPE, check=True)
-        output = run.stdout.decode('utf-8')
+        try:
+            run = subprocess.run(['spatch', '--no-includes', '--include-headers',
+                                  '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
+                                  '--cocci-file', rule, *files],
+                                  stdout=PIPE, stderr=PIPE, check=True)
+            output = run.stdout.decode('utf-8')
+        except subprocess.CalledProcessError as e:
+            err = e.stderr.decode('utf-8').split('\n')[-2]
+            # Coccinelle 1.0.4 bug workaround
+            if ('Sys_error("' + cve + ': No such file or directory")') not in err:
+                raise e
     else:
         (is_fix, patterns) = get_grep_pattern(rule)
         args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
