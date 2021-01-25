@@ -15,6 +15,11 @@ from cvehound import check_cve, UnsupportedVersion
         ('origin/linux-4.19.y', 'CVE-2019-12455'),
         ('origin/linux-4.14.y', 'CVE-2019-12455'),
         ('origin/linux-4.9.y', 'CVE-2019-12455'),
+        ('origin/linux-5.4.y', 'CVE-2020-27825'),
+        ('origin/linux-4.19.y', 'CVE-2020-27825'),
+        ('origin/linux-4.14.y', 'CVE-2020-27825'),
+        ('origin/linux-4.9.y', 'CVE-2020-27825'),
+        ('origin/linux-4.4.y', 'CVE-2020-27825')
     ]
 )
 def test_on_branch(repo, branch, cve):
