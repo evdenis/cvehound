@@ -44,18 +44,22 @@ def pytest_configure(config):
         linux_repo = Repo(linux)
         linux_repo.head.reset(index=True, working_tree=True)
         linux_repo.git.clean('-f', '-x', '-d')
-        linux_repo.git.checkout('master')
+        linux_repo.git.checkout('origin/master')
         try:
-            linux_repo.remotes.origin.pull()
+            linux_repo.remotes.origin.fetch()
+            linux_repo.remotes.next.fetch()
         except:
             pass
     else:
         linux_repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git', linux)
+        linux_repo.create_remote('next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git')
+        linux_repo.remotes.next.fetch()
 
     branches = config.getoption('branch')
     if not branches:
         branches = [
             'origin/master',
+            'next/master',
             'origin/linux-5.10.y',
             'origin/linux-5.4.y',
             'origin/linux-4.19.y',

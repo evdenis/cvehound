@@ -49,7 +49,9 @@ jobs:
         rm -f clone.bundle
         cd tests/linux
         git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+        git remote add next git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
         git remote update origin
+        git fetch next
         cd -
 
     - name: Test with pytest
