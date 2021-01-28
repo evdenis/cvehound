@@ -17,9 +17,11 @@ jobs:
   build:
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: [3.5]
         os: [ubuntu-latest]
+        coccinelle-version: [system, 1.0.8, git]
 
     runs-on: ${{ matrix.os }}
 
@@ -33,10 +35,42 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Coccinelle
+    - name: Install Axel
       run: |
-        sudo apt-get update
-        sudo apt-get install -y coccinelle axel
+        sudo apt-get update -qq
+        sudo apt-get install -y axel
+
+    - name: Install system Coccinelle with apt
+      if: ${{ matrix.coccinelle-version == 'system' }}
+      run: sudo apt-get install -y coccinelle
+
+    - name: Set up Opam
+      if: ${{ matrix.coccinelle-version != 'system' }}
+      run: |
+        sudo apt-get install -y python-dev aspcud ocaml
+        wget --quiet --no-clobber https://github.com/ocaml/opam/releases/download/2.0.8/opam-2.0.8-x86_64-linux -O opam
+        chmod +x opam
+        sudo mv opam /usr/local/bin
+        opam init --auto-setup --disable-sandboxing --compiler=4.11.1
+
+    - name: Install Coccinelle with opam (${{ matrix.coccinelle-version }})
+      if: ${{ matrix.coccinelle-version != 'system' && matrix.coccinelle-version != 'git' }}
+      run: |
+        eval $(opam env)
+        opam install -y coccinelle.${{ matrix.coccinelle-version }}
+
+    - name: Install latest Coccinelle from git
+      if: ${{ matrix.coccinelle-version == 'git' }}
+      run: |
+        eval $(opam env)
+        opam install -y num camlp4 pcre pyml menhir
+        git clone https://github.com/coccinelle/coccinelle
+        cd coccinelle
+        ./autogen
+        ./configure --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
+        make
+        sudo make install
+        spatch --version
 
     - name: Install CVEhound
       run: |
@@ -58,6 +92,7 @@ jobs:
 
     - name: Test with pytest
       run: |
+          which opam >/dev/null 2>&1 && eval $(opam env)
           readarray RULES < <(git diff --name-only ${{ github.event.before }}..${{ github.event.after }} | grep -o 'CVE-[[:digit:]]*-[[:digit:]]*')
           if [[ ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 ]]; then
             pytest --runslow $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
