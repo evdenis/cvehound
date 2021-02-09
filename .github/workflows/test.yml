@@ -25,6 +25,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+          fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -56,4 +58,9 @@ jobs:
 
     - name: Test with pytest
       run: |
-          pytest
+          readarray RULES < <(git diff --name-only ${{ github.event.before }}..${{ github.event.after }} | grep -o 'CVE-[[:digit:]]*-[[:digit:]]*')
+          if [[ ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 ]]; then
+            pytest --runslow $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
+          else
+            pytest
+          fi
