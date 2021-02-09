@@ -37,6 +37,7 @@ def pytest_configure(config):
     global cves
 
     config.addinivalue_line('markers', 'slow: mark test as slow to run')
+    config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
 
     linux = config.getoption('dir')
@@ -86,10 +87,13 @@ def pytest_generate_tests(metafunc):
 def pytest_collection_modifyitems(config, items):
     runslow = config.getoption('--runslow')
     skip_slow = pytest.mark.skip(reason='need --runslow option to run')
+    skip_fast = pytest.mark.skip(reason='slow tests cover these testcases')
     fail_notbackported = pytest.mark.xfail(reason='CVE not backported yet')
     for item in items:
         if not runslow and 'slow' in item.keywords:
             item.add_marker(skip_slow)
+        if runslow and 'fast' in item.keywords:
+            item.add_marker(skip_fast)
         if 'notbackported' in item.keywords:
             params = item.callspec.params
             mark = None

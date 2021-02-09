@@ -3,6 +3,7 @@
 import pytest
 from cvehound import check_cve, UnsupportedVersion
 
+@pytest.mark.fast
 @pytest.mark.notbackported(
     ('branch', 'cve'),
     [
