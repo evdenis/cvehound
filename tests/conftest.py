@@ -2,8 +2,36 @@
 
 import os
 import pytest
+import tempfile
 from cvehound import get_all_cves
 from git import Repo
+from subprocess import run
+
+def mount_tmpfs(target, req_mem_gb):
+    if os.path.ismount(target):
+        return True
+    lines = []
+    with open('/proc/meminfo') as fh:
+        lines = fh.readlines()
+    meminfo = dict((i.split()[0].rstrip(':'),int(i.split()[1])) for i in lines)
+    av_mem_gb = int(meminfo['MemAvailable'] / 1024 ** 2)
+    if av_mem_gb >= req_mem_gb + 1:
+        ret = run(['sudo', '--non-interactive',
+                   'mount', '-t', 'tmpfs', '-o', 'rw,noatime,nosuid,nodev,noexec,size=' + str(req_mem_gb) + 'G', 'tmpfs', target])
+        return ret.returncode == 0
+    else:
+        return False
+
+def mount_overlayfs(lower, upper, workdir, target):
+    if os.path.ismount(target):
+        return True
+    ret = run(['sudo', '--non-interactive',
+               'mount', '-t', 'overlay', '-o', 'rw,lowerdir=' + lower + ',upperdir=' + upper + ',workdir=' + workdir, 'overlay', target])
+    return ret.returncode == 0
+
+def umount(target):
+    if os.path.ismount(target):
+        run(['sudo', '--non-interactive', 'umount', target])
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -27,11 +55,15 @@ def pytest_addoption(parser):
         help='linux kernel sources dir'
     )
 
+overlaydir = None
+linux_mount = None
 linux_repo = None
 branches = []
 cves = []
 
 def pytest_configure(config):
+    global overlaydir
+    global linux_mount
     global linux_repo
     global branches
     global cves
@@ -41,20 +73,37 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
 
     linux = config.getoption('dir')
+    repo = None
     if os.path.isdir(os.path.join(linux, '.git')):
-        linux_repo = Repo(linux)
-        linux_repo.head.reset(index=True, working_tree=True)
-        linux_repo.git.clean('-f', '-x', '-d')
-        linux_repo.git.checkout('origin/master')
+        repo = Repo(linux)
+        repo.head.reset(index=True, working_tree=True)
+        repo.git.clean('-f', '-x', '-d')
+        repo.git.checkout('origin/master')
         try:
-            linux_repo.remotes.origin.fetch()
-            linux_repo.remotes.next.fetch()
+            repo.remotes.origin.fetch()
+            repo.remotes.next.fetch()
         except:
             pass
     else:
-        linux_repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git', linux)
-        linux_repo.create_remote('next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git')
-        linux_repo.remotes.next.fetch()
+        cwd = os.getcwd()
+        os.makedirs(linux, exist_ok=True)
+        os.chdir(linux)
+        repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git', '.')
+        repo.create_remote('next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git')
+        repo.remotes.next.fetch()
+        os.chdir(cwd)
+
+    overlaydir = tempfile.mkdtemp()
+    linux_mount = tempfile.mkdtemp()
+    if mount_tmpfs(overlaydir, 2):
+        upperdir = os.path.join(overlaydir, 'upper')
+        workdir = os.path.join(overlaydir, 'work')
+        os.mkdir(upperdir)
+        os.mkdir(workdir)
+        mount_overlayfs(linux, upperdir, workdir, linux_mount)
+        linux_repo = Repo(linux_mount)
+    else:
+        linux_repo = repo
 
     branches = config.getoption('branch')
     if not branches:
@@ -72,6 +121,12 @@ def pytest_configure(config):
     cves = config.getoption('cve')
     if not cves:
         cves = get_all_cves().keys()
+
+def pytest_unconfigure(config):
+    umount(linux_mount)
+    umount(overlaydir)
+    os.rmdir(overlaydir)
+    os.rmdir(linux_mount)
 
 @pytest.fixture
 def repo(request):
