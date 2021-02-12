@@ -31,6 +31,10 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Get Date
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m')"
+
     - name: Cache Opam
       uses: actions/cache@v2
       if: ${{ matrix.coccinelle-version != 'system' }}
@@ -41,15 +45,19 @@ jobs:
           ${{ runner.os }}-opam-${{ matrix.ocaml-version }}-
           ${{ runner.os }}-opam-
 
+    - name: Cache Kernel Bundle
+      uses: actions/cache@v2
+      with:
+        path: clone.bundle
+        key: linux-${{ steps.date.outputs.date }}
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Axel
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y axel
+    - name: Update Apt-Get Index
+      run: sudo apt-get update -qq
 
     - name: Install system Coccinelle with apt
       if: ${{ matrix.coccinelle-version == 'system' }}
@@ -93,9 +101,11 @@ jobs:
 
     - name: Download Linux Tree
       run: |
-        axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
+        if [[ ! -f clone.bundle ]]; then
+          sudo apt-get install -y axel
+          axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
+        fi
         git clone clone.bundle tests/linux
-        rm -f clone.bundle
         cd tests/linux
         git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
         git remote add next git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
