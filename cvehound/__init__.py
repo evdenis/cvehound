@@ -8,8 +8,9 @@ import subprocess
 from subprocess import PIPE
 import pkg_resources
 from cvehound.cpu import CPU
+from cvehound.kbuild import Makefile
 from cvehound.exception import UnsupportedVersion
-from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
+from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata, removeprefix
 
 __VERSION__ = '0.2.1'
 
@@ -39,6 +40,11 @@ class CVEhound:
             includes.append('-I')
             includes.append(i)
         self.includes = includes
+
+        mk = Makefile(kernel)
+        mk.scan()
+        mk.process()
+        self.mk = mk
 
     def get_grep_pattern(self, rule):
         is_fix = False
@@ -99,7 +105,7 @@ class CVEhound:
                     print(*cocci_cmd)
 
                 run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True)
-                output = run.stdout.decode('utf-8')
+                output = run.stdout.decode('utf-8').strip()
             except subprocess.CalledProcessError as e:
                 err = e.stderr.decode('utf-8').split('\n')[-2]
                 # Coccinelle 1.0.4 bug workaround
@@ -120,7 +126,7 @@ class CVEhound:
                     if run.returncode != 0:
                         output = ''
                         break
-                    output = run.stdout
+                    output = run.stdout.strip()
                 if run.returncode == 0:
                     run = subprocess.run(['grep', '-Pzoe', last],
                                          input=output, check=False,
@@ -133,6 +139,17 @@ class CVEhound:
 
         if 'ERROR' in output:
             print('Found:', cve)
+
+            configs = { 'enabled': [], 'disabled': [] }
+            for line in output.split('\n'):
+                if not line:
+                    continue
+                path = line.split(':')[0].strip()
+                conf = self.mk.file_config.get(path, None)
+                if conf:
+                    configs['enabled'].extend(conf['enabled'])
+                    configs['disabled'].extend(conf['disabled'])
+
             if verbose:
                 info = self.metadata[cve]
                 if 'cmt_msg' in info:
@@ -142,9 +159,15 @@ class CVEhound:
                 if 'last_modified' in info:
                     print('CVE UPDATED:', info['last_modified'])
                 print('https://www.linuxkernelcves.com/cves/' + cve)
+
+                if configs['enabled']:
+                    print('Depends on enabled configs:', ' || '.join(set(configs['enabled'])))
+                if configs['disabled']:
+                    print('Depends on disabled configs:', ' && '.join(set(configs['disabled'])))
                 if verbose > 1:
                     print(output)
                 print()
+
             return True
         return False
 

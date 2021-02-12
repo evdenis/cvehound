@@ -19,6 +19,11 @@ def removesuffix(string, suffix):
         return string[:-len(suffix)]
     return string[:]
 
+def removeprefix(string, prefix):
+    if prefix and string.startswith(prefix):
+        return string[len(prefix):]
+    return string[:]
+
 def get_cvehound_version():
     version = pkg_resources.get_distribution('cvehound').version
     location = pkg_resources.get_distribution('cvehound').location
