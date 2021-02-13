@@ -21,8 +21,8 @@ jobs:
       matrix:
         python-version: [3.5]
         os: [ubuntu-latest]
-        ocaml-version: [4.11.1]
-        coccinelle-version: [system, 1.0.8, git]
+        ocaml-version: [4.07.1]
+        coccinelle-version: [system, 1.0.7, 1.0.8, git]
 
     runs-on: ${{ matrix.os }}
 
@@ -43,7 +43,6 @@ jobs:
         key: ${{ runner.os }}-opam-${{ matrix.ocaml-version }}-${{ matrix.coccinelle-version }}
         restore-keys: |
           ${{ runner.os }}-opam-${{ matrix.ocaml-version }}-
-          ${{ runner.os }}-opam-
 
     - name: Cache Kernel Bundle
       uses: actions/cache@v2
