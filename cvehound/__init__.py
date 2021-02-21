@@ -10,6 +10,7 @@ import json
 from shutil import which
 from subprocess import PIPE
 import pkg_resources
+from cvehound.cpu import CPU
 
 __VERSION__ = '0.2.1'
 
@@ -37,13 +38,6 @@ def spatch_version():
         ver = int(res.group(1).replace('.', ''))
     return ver
 
-cores_num = 0
-def get_cores_num():
-    global cores_num
-    if cores_num == 0:
-        cores_num = len(os.sched_getaffinity(0))
-    return cores_num
-
 def get_grep_pattern(rule):
     is_fix = False
     start = False
@@ -69,6 +63,7 @@ def read_cve_metadata():
         data = json.loads(fh.read())
     return data
 
+cocci_job = str(CPU().get_cocci_jobs())
 def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     is_grep = False
     rule = get_all_cves()[cve]
@@ -95,7 +90,7 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
             raise UnsupportedVersion(spatch_version(), cve, rule_ver)
         try:
             run = subprocess.run(['spatch', '--no-includes', '--include-headers',
-                                  '-D', 'detect', '--no-show-diff', '-j', str(get_cores_num()),
+                                  '-D', 'detect', '--no-show-diff', '-j', cocci_job,
                                   '--cocci-file', rule, *files],
                                   stdout=PIPE, stderr=PIPE, check=True)
             output = run.stdout.decode('utf-8')
