@@ -60,7 +60,10 @@ jobs:
 
     - name: Install system Coccinelle with apt
       if: ${{ matrix.coccinelle-version == 'system' }}
-      run: sudo apt-get install -y coccinelle
+      run: |
+        sudo add-apt-repository ppa:npalix/coccinelle
+        sudo apt-get update -qq
+        sudo apt-get install -y coccinelle
 
     - name: Set up Opam
       if: ${{ matrix.coccinelle-version != 'system' }}
