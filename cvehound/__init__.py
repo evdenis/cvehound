@@ -89,10 +89,14 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
         if rule_ver and rule_ver > spatch_version():
             raise UnsupportedVersion(spatch_version(), cve, rule_ver)
         try:
-            run = subprocess.run(['spatch', '--no-includes', '--include-headers',
-                                  '-D', 'detect', '--no-show-diff', '-j', cocci_job,
-                                  '--cocci-file', rule, *files],
-                                  stdout=PIPE, stderr=PIPE, check=True)
+            cocci_cmd = ['spatch', '--no-includes', '--include-headers',
+                         '-D', 'detect', '--no-show-diff', '-j', cocci_job,
+                         '--cocci-file', rule, *files]
+
+            if verbose > 2:
+                print(*cocci_cmd)
+
+            run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True)
             output = run.stdout.decode('utf-8')
         except subprocess.CalledProcessError as e:
             err = e.stderr.decode('utf-8').split('\n')[-2]
