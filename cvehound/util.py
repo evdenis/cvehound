@@ -1,4 +1,6 @@
 import os
+import subprocess
+import pkg_resources
 from shutil import which
 
 def dir_path(path):
@@ -14,3 +16,17 @@ def removesuffix(string, suffix):
         return string[:-len(suffix)]
     return string[:]
 
+def get_cvehound_version():
+    version = pkg_resources.get_distribution('cvehound').version
+    location = pkg_resources.get_distribution('cvehound').location
+
+    if not os.path.exists(os.path.join(location, '.git')):
+        return version
+
+    try:
+        desc = ['git', 'describe', '--tags', '--dirty']
+        version = subprocess.check_output(
+            desc, cwd=location, stderr=subprocess.DEVNULL, universal_newlines=True
+        ).strip()
+    finally:
+        return version

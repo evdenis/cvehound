@@ -203,7 +203,7 @@ def main(args=sys.argv[1:]):
         description='A tool to check linux kernel sources dump for known CVEs',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--version', action='version', version=__VERSION__)
+    parser.add_argument('--version', action='version', version=get_cvehound_version())
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',
