@@ -50,7 +50,7 @@ setup(
     keywords=['cve', 'linux', 'kernel', 'spatch', 'cve-scanning', 'coccinelle'],
     entry_points={
         'console_scripts': [
-            'cvehound=cvehound.__init__:main'
+            'cvehound=cvehound.__main__:main'
         ]
     },
     include_package_data=True

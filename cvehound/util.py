@@ -2,6 +2,8 @@ import os
 import re
 import subprocess
 import pkg_resources
+import json
+import gzip
 from shutil import which
 
 def dir_path(path):
@@ -40,3 +42,16 @@ def get_spatch_version():
     res = re.match(r'spatch\s+version\s+([\d.]+)', version)
     return int(res.group(1).replace('.', ''))
 
+def get_all_cves():
+    cves = {}
+    for cve in pkg_resources.resource_listdir('cvehound', 'cve/'):
+        name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
+        cves[name] = pkg_resources.resource_filename('cvehound', 'cve/' + cve)
+    return cves
+
+def get_cves_metadata():
+    cves = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')
+    data = None
+    with gzip.open(cves, 'rt', encoding='utf-8') as fh:
+        data = json.loads(fh.read())
+    return data

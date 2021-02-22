@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 import re
-from cvehound import get_rule_metadata, get_all_cves, read_cve_metadata
 
-def test_metadata(cve):
-    meta = get_rule_metadata(cve)
+def test_metadata(hound, cve):
+    meta = hound.get_rule_metadata(cve)
 
     assert 'files' in meta, 'no "Files:" tag in the rule'
     assert 'fix' in meta, 'no "Fix:" tag in the rule'
@@ -12,8 +11,7 @@ def test_metadata(cve):
 
     found = False
     cve_id = re.compile(r'CVE-\d{4}-\d{4,7}')
-    rule = get_all_cves()[cve]
-    with open(rule, 'rt') as fh:
+    with open(hound.get_rule(cve), 'rt') as fh:
         for line in fh:
             res = cve_id.search(line)
             if res:
@@ -21,6 +19,4 @@ def test_metadata(cve):
                 found = True
 
     assert found, 'no CVE-id in the rule'
-
-    meta = read_cve_metadata()
-    assert cve in meta, 'no metadata in kernel_cves.json'
+    assert hound.get_cve_metadata(cve), 'no metadata in kernel_cves.json'

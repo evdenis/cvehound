@@ -4,7 +4,7 @@ import os
 import pytest
 import tempfile
 import psutil
-from cvehound import get_all_cves
+from cvehound import CVEhound, get_all_cves
 from git import Repo
 from subprocess import run
 
@@ -140,6 +140,10 @@ def pytest_unconfigure(config):
 @pytest.fixture
 def repo(request):
     return linux_repo
+
+@pytest.fixture
+def hound():
+    return CVEhound(linux_repo.working_tree_dir)
 
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:

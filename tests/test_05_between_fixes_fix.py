@@ -4,20 +4,19 @@ import pkg_resources
 import pytest
 import os
 
-from cvehound import check_cve, get_rule_metadata, UnsupportedVersion
+from cvehound.exception import UnsupportedVersion
 
 @pytest.mark.slow
-def test_between_fixes_fix(repo, cve):
-    meta = get_rule_metadata(cve)
-    if 'fixes' not in meta:
-        pytest.skip('No Fixes/Detect-To tag')
+def test_between_fixes_fix(hound, repo, cve):
+    fix = hound.get_rule_fix(cve)
+    fixes = hound.get_rule_fixes(cve)
 
-    repo.git.checkout(meta['fixes'])
+    repo.git.checkout(fixes)
     tags = repo.git.rev_list('--no-merges', '--simplify-by-decoration',
-                             '--ancestry-path', meta['fixes'] + '..' + meta['fix'])
+                             '--ancestry-path', fixes + '..' + fix)
     for tag in tags.split():
         repo.git.checkout(tag)
         try:
-            assert check_cve(repo.working_tree_dir, cve) == True, cve + ' fails to detect on ' + tag
+            assert hound.check_cve(cve) == True, cve + ' fails to detect on ' + tag
         except UnsupportedVersion:
             pytest.skip('Unsupported spatch version')
