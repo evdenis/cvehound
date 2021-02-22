@@ -79,6 +79,25 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     if not files:
         files = [ kernel ]
 
+    ipaths = [
+        'arch/x86/include',
+        'arch/x86/include/generated',
+        'arch/x86/include/uapi',
+        'arch/x86/include/generated/uapi',
+        'include',
+        'include/uapi',
+        'include/generated/uapi'
+    ]
+    ipaths = map(lambda f: os.path.join(kernel, f), ipaths)
+    includes = []
+    for i in ipaths:
+        includes.append('-I')
+        includes.append(i)
+    kconfig = os.path.join(kernel, 'include/linux/kconfig.h')
+    if os.path.exists(kconfig):
+        includes.append('--include')
+        includes.append(os.path.join(kernel, 'include/linux/kconfig.h'))
+
     if verbose:
         print('Checking:', cve)
 
@@ -91,6 +110,7 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
         try:
             cocci_cmd = ['spatch', '--no-includes', '--include-headers',
                          '-D', 'detect', '--no-show-diff', '-j', cocci_job,
+                         *includes,
                          '--chunksize', '1',
                          '--cocci-file', rule, *files]
 
