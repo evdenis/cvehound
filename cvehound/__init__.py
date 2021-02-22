@@ -11,14 +11,10 @@ from shutil import which
 from subprocess import PIPE
 import pkg_resources
 from cvehound.cpu import CPU
+from cvehound.exception import UnsupportedVersion
 
 __VERSION__ = '0.2.1'
 
-class UnsupportedVersion(Exception):
-    def __init__(self, spatch_version, cve, rule_version):
-        self.spatch_version = '.'.join(str(spatch_version))
-        self.cve = cve
-        self.rule_version = '.'.join(str(rule_version))
 
 def dir_path(path):
     if os.path.isdir(path):
