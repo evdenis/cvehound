@@ -117,6 +117,7 @@ jobs:
 
     - name: Test with pytest
       run: |
+        sudo setcap cap_sys_nice,cap_sys_admin+eip $(realpath $(which python3))
         which opam >/dev/null 2>&1 && eval $(opam env)
         readarray RULES < <(git diff --name-only ${{ github.event.before }}..${{ github.event.after }} | grep -o 'CVE-[[:digit:]]*-[[:digit:]]*')
         if [[ ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 ]]; then
