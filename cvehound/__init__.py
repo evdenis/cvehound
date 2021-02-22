@@ -91,6 +91,7 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
         try:
             cocci_cmd = ['spatch', '--no-includes', '--include-headers',
                          '-D', 'detect', '--no-show-diff', '-j', cocci_job,
+                         '--chunksize', '1',
                          '--cocci-file', rule, *files]
 
             if verbose > 2:
