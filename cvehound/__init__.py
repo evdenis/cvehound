@@ -7,22 +7,14 @@ import re
 import subprocess
 import gzip
 import json
-from shutil import which
 from subprocess import PIPE
 import pkg_resources
 from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
+from cvehound.util import *
 
 __VERSION__ = '0.2.1'
 
-
-def dir_path(path):
-    if os.path.isdir(path):
-        return path
-    raise NotADirectoryError(path)
-
-def tool_exists(name):
-    return which(name) is not None
 
 ver = None
 def spatch_version():
@@ -161,11 +153,6 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
             print()
         return True
     return False
-
-def removesuffix(string, suffix):
-    if suffix and string.endswith(suffix):
-        return string[:-len(suffix)]
-    return string[:]
 
 rules_metadata = {}
 def get_rule_metadata(cve):
