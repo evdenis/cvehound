@@ -3,6 +3,7 @@
 import os
 import pytest
 import tempfile
+import psutil
 from cvehound import get_all_cves
 from git import Repo
 from subprocess import run
@@ -71,6 +72,13 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'slow: mark test as slow to run')
     config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
+
+    try:
+        p = psutil.Process()
+        p.nice(-100)
+        p.ionice(psutil.IOPRIO_CLASS_RT, value=0)
+    except:
+        pass
 
     linux = config.getoption('dir')
     repo = None

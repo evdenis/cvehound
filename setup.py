@@ -16,7 +16,8 @@ def find_version(source):
 
 test_deps = [
     'pytest',
-    'gitpython'
+    'gitpython',
+    'psutil'
 ]
 extras = {
     'tests': test_deps,
