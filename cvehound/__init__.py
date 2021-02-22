@@ -16,16 +16,6 @@ from cvehound.util import *
 __VERSION__ = '0.2.1'
 
 
-ver = None
-def spatch_version():
-    global ver
-    if not ver:
-        run = subprocess.run(['spatch', '--version'], stdout=PIPE, stderr=PIPE, check=True)
-        output = run.stdout.decode('utf-8').split('\n')[0]
-        res = re.match(r'spatch\s+version\s+([\d.]+)', output)
-        ver = int(res.group(1).replace('.', ''))
-    return ver
-
 def get_grep_pattern(rule):
     is_fix = False
     start = False
@@ -52,6 +42,7 @@ def read_cve_metadata():
     return data
 
 cocci_job = str(CPU().get_cocci_jobs())
+spatch_version = get_spatch_version()
 def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     is_grep = False
     rule = get_all_cves()[cve]
@@ -93,8 +84,8 @@ def check_cve(kernel, cve, info=None, verbose=0, all_files=False):
     run = None
     if not is_grep:
         rule_ver = get_rule_metadata(cve)['version']
-        if rule_ver and rule_ver > spatch_version():
-            raise UnsupportedVersion(spatch_version(), cve, rule_ver)
+        if rule_ver and rule_ver > spatch_version:
+            raise UnsupportedVersion(spatch_version, cve, rule_ver)
         try:
             cocci_cmd = ['spatch', '--no-includes', '--include-headers',
                          '-D', 'detect', '--no-show-diff', '-j', cocci_job,

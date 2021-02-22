@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import pkg_resources
 from shutil import which
@@ -30,3 +31,12 @@ def get_cvehound_version():
         ).strip()
     finally:
         return version
+
+def get_spatch_version():
+    version = subprocess.check_output(
+            ['spatch', '--version'],
+            stderr=subprocess.DEVNULL, universal_newlines=True
+    ).strip().split('\n')[0]
+    res = re.match(r'spatch\s+version\s+([\d.]+)', version)
+    return int(res.group(1).replace('.', ''))
+
