@@ -23,7 +23,7 @@ def main(args=sys.argv[1:]):
                         help='list of cve identifiers')
     parser.add_argument('--cwe', nargs='+', default=[],
                         help='check only for CWE-ids')
-    parser.add_argument('--dir', '-d', type=dir_path, required=True,
+    parser.add_argument('--kernel', '-k', type=dir_path, required=True,
                         help='linux kernel sources dir')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
@@ -33,7 +33,7 @@ def main(args=sys.argv[1:]):
         print('Please, install coccinelle.')
         sys.exit(1)
 
-    hound = CVEhound(cmdargs.dir)
+    hound = CVEhound(cmdargs.kernel)
     known_cves = hound.get_cves()
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves

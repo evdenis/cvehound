@@ -47,7 +47,7 @@ $ pip install -e .
 The simplest way to start using CVEhound is to run the following command:
 
 ``` shell
-$ cvehound --dir ~/workspace/linux
+$ cvehound --kernel ~/workspace/linux
 Found: CVE-2020-27830
 Found: CVE-2020-27152
 Found: CVE-2020-29371
@@ -59,7 +59,7 @@ sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
 ``` shell
-$ cvehound --dir ~/workspace/linux --verbose --cve CVE-2020-27194 CVE-2020-29371
+$ cvehound --kernel ~/workspace/linux --verbose --cve CVE-2020-27194 CVE-2020-29371
 Checking: CVE-2020-27194
 Found: CVE-2020-27194
 MSG: bpf: Fix scalar32_min_max_or bounds tracking
