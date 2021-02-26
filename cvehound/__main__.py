@@ -21,7 +21,7 @@ def main(args=sys.argv[1:]):
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',
                         help='list of cve identifiers')
-    parser.add_argument('--cwe', nargs='+', default=[],
+    parser.add_argument('--cwe', nargs='+', default=[], type=int,
                         help='check only for CWE-ids')
     parser.add_argument('--files', nargs='+', default=[],
                         help='check only files (e.g. drivers/block/floppy.c arch/x86)')
@@ -53,13 +53,7 @@ def main(args=sys.argv[1:]):
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
 
-    filter_cwes = set()
-    for cwe in cmdargs.cwe:
-        try:
-            filter_cwes.add(int(cwe))
-        except Exception:
-            print('Unknown CWE-id:', cwe, file=sys.stderr)
-            sys.exit(1)
+    filter_cwes = frozenset(cmdargs.cwe)
 
     if cmdargs.all_files and not cmdargs.files:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
