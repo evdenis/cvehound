@@ -60,6 +60,7 @@ class Makefile():
     parse_obj = re.compile(r'obj-(?P<config>y|\$[({]CONFIG_[A-Z0-9_]+[})])\s*.?=\s*')
     parse_objs = re.compile(r'(?P<obj>[a-z0-9_]+)-(objs|y)\s*.?=\s*')
 
+    parse_expr_enabled = re.compile(r'\(\s*\$\(\s*(?P<config>CONFIG_[A-Z0-9_]+)\s*\)\s*,\s*y\s*\)')
     rules = re.compile(r"^([-A-Za-z0-9_]+)-([^-+=: \t\n]+)\s*[:+]?=[ \t]*(.*)$", re.MULTILINE|re.ASCII)
 
     ignore_rules = frozenset(
@@ -128,12 +129,24 @@ class Makefile():
                         current.append(( disabled, False ))
                     elif line.startswith('ifeq'):
                         expr = line.split()[1]
-                        current.append(None)
-                        print('TODO', expr)
+                        res = Makefile.parse_expr_enabled.match(expr)
+                        if res:
+                            enabled = res.group('config')
+                            context['enabled'].append(enabled)
+                            current.append(( enabled, True ))
+                        else:
+                            print('TODO', expr)
+                            current.append(None)
                     elif line.startswith('ifneq'):
                         expr = line.split()[1]
-                        current.append(None)
-                        print('TODO', expr)
+                        res = Makefile.parse_expr_enabled.match(expr)
+                        if res:
+                            disabled = res.group('config')
+                            context['disabled'].append(disabled)
+                            current.append(( disabled, False ))
+                        else:
+                            print('TODO', expr)
+                            current.append(None)
                     else:
                         print('unknown', line)
                     if_level += 1

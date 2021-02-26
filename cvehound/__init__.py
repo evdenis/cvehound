@@ -9,6 +9,7 @@ from subprocess import PIPE
 import pkg_resources
 from cvehound.cpu import CPU
 from cvehound.kbuild import Makefile
+from cvehound.config import Config
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata, removeprefix
 
@@ -17,7 +18,7 @@ __VERSION__ = '0.2.1'
 
 class CVEhound:
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, config=None):
         self.kernel = kernel
         self.metadata = get_cves_metadata()
         self.cocci_job = str(CPU().get_cocci_jobs())
@@ -45,6 +46,13 @@ class CVEhound:
         mk.scan()
         mk.process()
         self.mk = mk
+
+        if config:
+            self.config_file = config
+            self.config = Config(config)
+        else:
+            self.config_file = None
+            self.config = None
 
     def get_grep_pattern(self, rule):
         is_fix = False
@@ -161,9 +169,31 @@ class CVEhound:
                 print('https://www.linuxkernelcves.com/cves/' + cve)
 
                 if configs['enabled']:
-                    print('Depends on enabled configs:', ' || '.join(set(configs['enabled'])))
+                    print('Depends on enabled configs:', ' || '.join(set(configs['enabled'])), end='')
+                    if self.config:
+                        affected = False
+                        for cfg in configs['enabled']:
+                            if self.config.enabled(cfg):
+                                affected = True
+                                break
+                        if affected:
+                            print(' (.config affected)', end='')
+                        else:
+                            print(' (.config not affected)', end='')
+                    print()
                 if configs['disabled']:
-                    print('Depends on disabled configs:', ' && '.join(set(configs['disabled'])))
+                    print('Depends on disabled configs:', ' && '.join(set(configs['disabled'])), end='')
+                    if self.config:
+                        affected = True
+                        for cfg in configs['disabled']:
+                            if self.config.enabled(cfg):
+                                affected = False
+                                break
+                        if affected:
+                            print(' (.config affected)', end='')
+                        else:
+                            print(' (.config not affected)', end='')
+                    print()
                 if verbose > 1:
                     print(output)
                 print()
