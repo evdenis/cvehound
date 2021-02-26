@@ -7,6 +7,7 @@ import subprocess
 
 from cvehound import CVEhound
 from cvehound.util import get_cvehound_version, dir_path, tool_exists
+from cvehound.exception import UnsupportedVersion
 
 def main(args=sys.argv[1:]):
     parser = argparse.ArgumentParser(
