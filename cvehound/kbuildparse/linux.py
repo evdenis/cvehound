@@ -358,7 +358,7 @@ class LinuxInit(BaseClasses.InitClass):
             descend = directory + "Makefile"
         return descend
 
-    def process(self, parser, dirs_to_process):
+    def process(self, parser, dirs_to_process, kernel_dir='.'):
         """ Here we can read the command line arguments, create global
         variables and insert items into a list of directories which will
         be processed. """
@@ -369,10 +369,10 @@ class LinuxInit(BaseClasses.InitClass):
         for subdir in ["init/", "drivers/", "sound/", "firmware/", "net/",
                        "lib/", "usr/", "kernel/", "mm/", "fs/", "ipc/",
                        "security/", "crypto/", "block/", "certs/", "virt/"]:
-            dirs_to_process[subdir] = DataStructures.Precondition()
+            dirs_to_process[os.path.join(kernel_dir, subdir)] = DataStructures.Precondition()
 
         # Parse architecture specific path
-        self.parse_architecture_path("arch/" + self.arch + "/Makefile",
+        self.parse_architecture_path(os.path.join(kernel_dir, "arch", self.arch, "Makefile"),
                                      dirs_to_process)
 
 
@@ -748,6 +748,7 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
     def __init__(self, model, arch):
         """ Constructor for _03_LinuxOutput. """
         super(_03_LinuxOutput, self).__init__(model, arch)
+        self.config = {}
 
     def process(self, parser, path, condition_for_current_dir):
         """ Print conditions collected in file_features variable. """
@@ -759,10 +760,4 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
                                        condition_for_current_dir)
 
             full_string = " && ".join(precondition)
-
-            filename = os.path.relpath(item)
-
-            if full_string:
-                print("FILE_" + filename + " \"" + full_string + "\"")
-            else:
-                print("FILE_" + filename)
+            self.config[item] = full_string

@@ -8,16 +8,18 @@ import subprocess
 import logging
 from subprocess import PIPE
 import pkg_resources
+import collections
 from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
+from cvehound.kbuild import KbuildParser
 
 __VERSION__ = '0.2.1'
 
 
 class CVEhound:
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, config=None):
         self.kernel = kernel
         self.metadata = get_cves_metadata()
         self.cocci_job = str(CPU().get_cocci_jobs())
@@ -40,6 +42,21 @@ class CVEhound:
             includes.append('-I')
             includes.append(i)
         self.includes = includes
+
+        if config:
+            parser = KbuildParser(None, 'x86')
+            dirs_to_process = collections.OrderedDict()
+            parser.init_class.process(parser, dirs_to_process, kernel)
+
+            for item in dirs_to_process:
+                descend = parser.init_class.get_file_for_subdirectory(item)
+                parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
+
+            self.config_map = parser.get_config()
+            self.config_file = config
+        else:
+            self.config_map = None
+            self.config_file = None
 
     def get_grep_pattern(self, rule):
         is_fix = False
@@ -98,7 +115,7 @@ class CVEhound:
                 logging.debug(' '.join(cocci_cmd))
 
                 run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True)
-                output = run.stdout.decode('utf-8')
+                output = run.stdout.decode('utf-8').strip()
             except subprocess.CalledProcessError as e:
                 err = e.stderr.decode('utf-8').split('\n')[-2]
                 # Coccinelle 1.0.4 bug workaround
@@ -141,6 +158,15 @@ class CVEhound:
                 if 'last_modified' in info:
                     logging.info('CVE UPDATED: ' + info['last_modified'])
             logging.info('https://www.linuxkernelcves.com/cves/' + cve)
+            if self.config_map:
+                files = {}
+                for line in output.split('\n'):
+                    file = line.split(':')[0]
+                    if file in self.config_map:
+                        files[file] = self.config_map[file]
+                if files:
+                    for file, config in files.items():
+                        logging.info(file + ': ' + config)
             logging.debug(output)
             logging.info('')
             return True

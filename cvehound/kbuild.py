@@ -22,10 +22,11 @@ class KbuildParser(object):
             Linux._01_LinuxIf(model, arch),
             Linux._02_LinuxObjects(model, arch)
         ]
+        self.output = Linux._03_LinuxOutput(model, arch)
         self.after_pass = [
             Linux._01_LinuxExpandMacros(model, arch),
             Linux._02_LinuxProcessSubdirectories(model, arch),
-            Linux._03_LinuxOutput(model, arch)
+            self.output
         ]
         self.before_exit = []
         self.file_content_cache = {}
@@ -75,6 +76,9 @@ class KbuildParser(object):
 
         # Drop current symbol table
         self.leave_symbolic_level()
+
+    def get_config(self):
+        return self.output.config 
 
     def read_whole_file(self, path):
         """ Read the content of the file in @path into the file_content_cache

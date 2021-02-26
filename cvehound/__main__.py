@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import argparse
 import re
@@ -7,7 +8,7 @@ import subprocess
 import logging
 
 from cvehound import CVEhound
-from cvehound.util import get_cvehound_version, dir_path, tool_exists
+from cvehound.util import get_cvehound_version, dir_path, file_path, tool_exists
 from cvehound.exception import UnsupportedVersion
 from cvehound.cwe import CWE
 
@@ -28,6 +29,8 @@ def main(args=sys.argv[1:]):
                         help='check only files (e.g. drivers/block/floppy.c arch/x86)')
     parser.add_argument('--kernel', '-k', type=dir_path, required=True,
                         help='linux kernel sources dir')
+    parser.add_argument('--config', nargs='?', type=file_path, const='-',
+                        help='check kernel config')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
@@ -36,7 +39,21 @@ def main(args=sys.argv[1:]):
         print('Please, install coccinelle.')
         sys.exit(1)
 
-    hound = CVEhound(cmdargs.kernel)
+    if cmdargs.config == '-':
+        config = os.path.join(cmdargs.kernel, '.config')
+        if os.path.isfile(config):
+            cmdargs.config = config
+    if cmdargs.config and cmdargs.verbose == 0:
+        cmdargs.verbose = 1
+
+    loglevel = logging.WARNING
+    if cmdargs.verbose > 1:
+        loglevel = logging.DEBUG
+    elif cmdargs.verbose > 0:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel, format='%(message)s')
+
+    hound = CVEhound(cmdargs.kernel, cmdargs.config)
 
     known_cves = hound.get_cves()
     if cmdargs.cve == 'all':
@@ -64,13 +81,6 @@ def main(args=sys.argv[1:]):
         if not path.match(f):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
-
-    loglevel = logging.WARNING
-    if cmdargs.verbose > 1:
-        loglevel = logging.DEBUG
-    elif cmdargs.verbose > 0:
-        loglevel = logging.INFO
-    logging.basicConfig(level=loglevel, format='%(message)s')
 
     for cve in cmdargs.cve:
         if cmdargs.cwe:
