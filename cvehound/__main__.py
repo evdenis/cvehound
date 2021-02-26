@@ -23,6 +23,8 @@ def main(args=sys.argv[1:]):
                         help='list of cve identifiers')
     parser.add_argument('--cwe', nargs='+', default=[],
                         help='check only for CWE-ids')
+    parser.add_argument('--files', nargs='+', default=[],
+                        help='check only files (e.g. drivers/block/floppy.c arch/x86)')
     parser.add_argument('--kernel', '-k', type=dir_path, required=True,
                         help='linux kernel sources dir')
     parser.add_argument('-v', '--verbose', action='count', default=0,
@@ -34,6 +36,7 @@ def main(args=sys.argv[1:]):
         sys.exit(1)
 
     hound = CVEhound(cmdargs.kernel)
+
     known_cves = hound.get_cves()
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves
@@ -49,6 +52,7 @@ def main(args=sys.argv[1:]):
             if cve not in known_cves:
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
+
     filter_cwes = set()
     for cwe in cmdargs.cwe:
         try:
@@ -56,6 +60,16 @@ def main(args=sys.argv[1:]):
         except Exception:
             print('Unknown CWE-id:', cwe, file=sys.stderr)
             sys.exit(1)
+
+    if cmdargs.all_files and not cmdargs.files:
+        print('--files filter and --all-files are not compatible', file=sys.stderr)
+        sys.exit(1)
+    for f in cmdargs.files:
+        path = re.compile(r'^[a-zA-Z-./0-9]+$')
+        if not path.match(f):
+            print('Wrong file filter:', f, file=sys.stderr)
+            sys.exit(1)
+
     for cve in cmdargs.cve:
         if cmdargs.cwe:
             rule_cwe_desc = hound.get_cve_cwe(cve)
@@ -63,6 +77,14 @@ def main(args=sys.argv[1:]):
                 continue
             rule_cwes = frozenset(CWE[rule_cwe_desc])
             if not (rule_cwes & filter_cwes):
+                continue
+        if cmdargs.files:
+            found = False
+            for rulefile in hound.get_rule_files(cve):
+                for filterdir in cmdargs.files:
+                    if rulefile.startswith(filterdir):
+                        found = True
+            if not found:
                 continue
         try:
             hound.check_cve(cve, cmdargs.verbose, cmdargs.all_files)
