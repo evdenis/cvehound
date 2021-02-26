@@ -73,7 +73,7 @@ class CVEhound:
         if not files:
             files = [ self.kernel ]
 
-        includes = self.includes
+        includes = self.includes.copy()
         kconfig = os.path.join(self.kernel, 'include/linux/kconfig.h')
         if os.path.exists(kconfig):
             includes.append('--include')
