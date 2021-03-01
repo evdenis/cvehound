@@ -1,4 +1,7 @@
-![tests](https://github.com/evdenis/cvehound/workflows/test/badge.svg)
+[![GitHub Actions status](https://github.com/evdenis/cvehound/workflows/test/badge.svg)](https://github.com/evdenis/cvehound/actions?query=workflow%3Atest)
+[![Supported Versions of Python](https://img.shields.io/pypi/pyversions/cvehound.svg)](https://pypi.org/project/cvehound)
+[![PyPI package version](https://img.shields.io/pypi/v/cvehound.svg)](https://pypi.org/project/cvehound)
+
 # CVEhound
 
 CVEhound is a tool for checking linux sources for known CVEs.
