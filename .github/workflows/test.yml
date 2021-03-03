@@ -22,7 +22,7 @@ jobs:
         python-version: [3.5]
         os: [ubuntu-latest]
         ocaml-version: [4.07.1]
-        coccinelle-version: [system, 1.0.7, 1.0.8, git]
+        coccinelle-version: [system, 1.0.7, 1.0.8, 1.1.0, git]
 
     runs-on: ${{ matrix.os }}
 
