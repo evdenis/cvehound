@@ -4,6 +4,7 @@ import sys
 import argparse
 import re
 import subprocess
+import logging
 
 from cvehound import CVEhound
 from cvehound.util import get_cvehound_version, dir_path, tool_exists
@@ -64,6 +65,13 @@ def main(args=sys.argv[1:]):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
+    loglevel = logging.WARNING
+    if cmdargs.verbose > 1:
+        loglevel = logging.DEBUG
+    elif cmdargs.verbose > 0:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel, format='%(message)s')
+
     for cve in cmdargs.cve:
         if cmdargs.cwe:
             rule_cwe_desc = hound.get_cve_cwe(cve)
@@ -81,11 +89,11 @@ def main(args=sys.argv[1:]):
             if not found:
                 continue
         try:
-            hound.check_cve(cve, cmdargs.verbose, cmdargs.all_files)
+            hound.check_cve(cve, cmdargs.all_files)
         except subprocess.CalledProcessError as e:
-            print('Failed to run: ', ' '.join(e.cmd))
+            logging.error('Failed to run: ', ' '.join(e.cmd))
         except UnsupportedVersion as err:
-            print('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
+            logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

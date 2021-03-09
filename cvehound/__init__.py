@@ -5,6 +5,7 @@ import sys
 import argparse
 import re
 import subprocess
+import logging
 from subprocess import PIPE
 import pkg_resources
 from cvehound.cpu import CPU
@@ -58,7 +59,7 @@ class CVEhound:
                     patterns.append(line)
         return (is_fix, patterns)
 
-    def check_cve(self, cve, verbose=0, all_files=False):
+    def check_cve(self, cve, all_files=False):
         is_grep = False
         rule = self.cve_rules[cve]
         if rule.endswith('.grep'):
@@ -79,8 +80,7 @@ class CVEhound:
             includes.append('--include')
             includes.append(kconfig)
 
-        if verbose:
-            print('Checking:', cve)
+        logging.info('Checking: ' + cve)
 
         output = ''
         run = None
@@ -95,8 +95,7 @@ class CVEhound:
                              '--chunksize', '1',
                              '--cocci-file', rule, *files]
 
-                if verbose > 2:
-                    print(*cocci_cmd)
+                logging.debug(' '.join(cocci_cmd))
 
                 run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True)
                 output = run.stdout.decode('utf-8')
@@ -132,19 +131,17 @@ class CVEhound:
                         output = 'ERROR'
 
         if 'ERROR' in output:
-            print('Found:', cve)
-            if verbose:
-                info = self.metadata[cve]
-                if 'cmt_msg' in info:
-                    print('MSG:', info['cmt_msg'])
-                if 'cwe' in info:
-                    print('CWE:', info['cwe'])
-                if 'last_modified' in info:
-                    print('CVE UPDATED:', info['last_modified'])
-                print('https://www.linuxkernelcves.com/cves/' + cve)
-                if verbose > 1:
-                    print(output)
-                print()
+            logging.warning('Found: ' + cve)
+            info = self.metadata[cve]
+            if 'cmt_msg' in info:
+                logging.info('MSG: ' + info['cmt_msg'])
+            if 'cwe' in info:
+                logging.info('CWE: ' + info['cwe'])
+            if 'last_modified' in info:
+                logging.info('CVE UPDATED: ' + info['last_modified'])
+            logging.info('https://www.linuxkernelcves.com/cves/' + cve)
+            logging.debug(output)
+            logging.info('')
             return True
         return False
 
