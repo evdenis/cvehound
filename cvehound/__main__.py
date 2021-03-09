@@ -91,7 +91,7 @@ def main(args=sys.argv[1:]):
         try:
             hound.check_cve(cve, cmdargs.all_files)
         except subprocess.CalledProcessError as e:
-            logging.error('Failed to run: ', ' '.join(e.cmd))
+            logging.error('Failed to run: ' + ' '.join(e.cmd))
         except UnsupportedVersion as err:
             logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
