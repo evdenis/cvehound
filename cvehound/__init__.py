@@ -132,13 +132,14 @@ class CVEhound:
 
         if 'ERROR' in output:
             logging.warning('Found: ' + cve)
-            info = self.metadata[cve]
-            if 'cmt_msg' in info:
-                logging.info('MSG: ' + info['cmt_msg'])
-            if 'cwe' in info:
-                logging.info('CWE: ' + info['cwe'])
-            if 'last_modified' in info:
-                logging.info('CVE UPDATED: ' + info['last_modified'])
+            if cve in self.metadata:
+                info = self.metadata[cve]
+                if 'cmt_msg' in info:
+                    logging.info('MSG: ' + info['cmt_msg'])
+                if 'cwe' in info:
+                    logging.info('CWE: ' + info['cwe'])
+                if 'last_modified' in info:
+                    logging.info('CVE UPDATED: ' + info['last_modified'])
             logging.info('https://www.linuxkernelcves.com/cves/' + cve)
             logging.debug(output)
             logging.info('')
