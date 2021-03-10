@@ -93,6 +93,10 @@ jobs:
         ./configure --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
         make
         sudo make install
+
+    - name: Spatch Version
+      run: |
+        which opam >/dev/null 2>&1 && eval $(opam env)
         spatch --version
 
     - name: Install CVEhound
