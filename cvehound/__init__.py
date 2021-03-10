@@ -15,6 +15,7 @@ from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
 from cvehound.kbuild import KbuildParser
+from cvehound.config import Config
 
 __VERSION__ = '0.2.1'
 
@@ -55,10 +56,16 @@ class CVEhound:
                 parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
 
             self.config_map = parser.get_config()
-            self.config_file = config
+            if config != '-':
+                self.config_file = config
+                self.config = Config(config)
+            else:
+                self.config_file = None
+                self.config = None
         else:
-            self.config_map = None
             self.config_file = None
+            self.config_map = None
+            self.config = None
 
     def get_grep_pattern(self, rule):
         is_fix = False
@@ -161,16 +168,36 @@ class CVEhound:
                     logging.info('CVE UPDATED: ' + info['last_modified'])
             logging.info('https://www.linuxkernelcves.com/cves/' + cve)
             if self.config_map:
+                config_affected = None
                 files = {}
                 for line in output.split('\n'):
                     file = line.split(':')[0]
-                    if file in self.config_map:
-                        files[file] = self.config_map[file]
+                    files[file] = self.config_map.get(file, '')
                 if files:
+                    logging.info('Affected Files:')
                     for file, config in files.items():
                         if config:
-                            config = str(simplify_logic(config))
-                            logging.info(file + ': ' + config)
+                            config = simplify_logic(config)
+                            if self.config:
+                                affected = config.subs(self.config.get_mapping())
+                                if affected == True:
+                                    affected = 'affected'
+                                    config_affected = 'affected'
+                                else:
+                                    affected = 'not affected'
+                                    if config_affected == None:
+                                        config_affected = 'not affected'
+                                logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
+                            else:
+                                logging.info(' - ' + file + ': ' + str(config))
+                        else:
+                                config_affected = 'affected'
+                                logging.info(' - ' + file + ': True')
+                if config_affected:
+                    if self.config:
+                        logging.info('Config: ' + self.config_file + ' ' + config_affected)
+                    else:
+                        logging.info('Config: any ' + config_affected)
             logging.debug(output)
             logging.info('')
             return True
