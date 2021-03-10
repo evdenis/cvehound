@@ -9,6 +9,8 @@ import logging
 from subprocess import PIPE
 import pkg_resources
 import collections
+from sympy.logic import simplify_logic
+from sympy import symbols
 from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
@@ -166,7 +168,9 @@ class CVEhound:
                         files[file] = self.config_map[file]
                 if files:
                     for file, config in files.items():
-                        logging.info(file + ': ' + config)
+                        if config:
+                            config = str(simplify_logic(config))
+                            logging.info(file + ': ' + config)
             logging.debug(output)
             logging.info('')
             return True

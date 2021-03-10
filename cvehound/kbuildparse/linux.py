@@ -57,7 +57,7 @@ def regex_ifneq_match(line, ifdef_condition, global_vars, model):
             if positive_keyword == positive_comp:
                 ifdef_condition.add_condition(conf)
             else:
-                ifdef_condition.add_condition("!" + conf)
+                ifdef_condition.add_condition("~" + conf)
         else:
             global_vars.increment_variable("no_config_nesting")
     return True
@@ -83,7 +83,7 @@ def regex_ifndef_match(line, ifdef_condition, global_vars, model):
             if keyword == "ifdef":
                 ifdef_condition.add_condition(conf)
             else:
-                ifdef_condition.add_condition("!" + conf)
+                ifdef_condition.add_condition("~" + conf)
         else:   # Not parseable -> nesting level
             global_vars.increment_variable("no_config_nesting")
     return True
@@ -117,10 +117,10 @@ def regex_else_match(line, ifdef_condition, global_vars):
         pass
     else:
         last = ifdef_condition.pop()
-        if last.startswith("!"):
+        if last.startswith("~"):
             ifdef_condition.add_condition(last[1:])
         else:
-            ifdef_condition.add_condition("!" + last)
+            ifdef_condition.add_condition("~" + last)
     return True
 
 def update_if_condition(line, ifdef_condition, global_vars, local_vars, model):
@@ -764,5 +764,5 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
                     build_precondition(parser.local_vars["file_features"][item],
                                        condition_for_current_dir)
 
-            full_string = " && ".join(precondition)
+            full_string = " & ".join(precondition)
             self.config[item] = full_string

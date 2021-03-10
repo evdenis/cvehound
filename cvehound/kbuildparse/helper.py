@@ -23,7 +23,7 @@ def build_precondition(input_list, additional=None):
     Additional constraints from @additional are added to the Precondition."""
     alternatives = []
     for alternative in input_list:
-        string = " && ".join(alternative)
+        string = " & ".join(alternative)
         if string != "":
             alternatives.append(string)
         else:
@@ -32,7 +32,7 @@ def build_precondition(input_list, additional=None):
             alternatives = []
             break
 
-    alt_string = " || ".join(alternatives)
+    alt_string = " | ".join(alternatives)
 
     ret = DataStructures.Precondition()
     if additional:
