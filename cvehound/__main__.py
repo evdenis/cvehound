@@ -34,12 +34,14 @@ def main(args=sys.argv[1:]):
                         help='check kernel config')
     parser.add_argument('--report', nargs='?', const='report.json',
                         help='output report with found CVEs')
+    parser.add_argument('--report-strict', action='store_true',
+                        help='include in report only CVEs included in .config')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
 
     if not tool_exists('spatch'):
-        print('Please, install coccinelle.')
+        print('Please, install coccinelle')
         sys.exit(1)
 
     if cmdargs.config == '-':
@@ -48,6 +50,13 @@ def main(args=sys.argv[1:]):
             cmdargs.config = config
     if cmdargs.config and cmdargs.verbose == 0:
         cmdargs.verbose = 1
+
+    if cmdargs.report_strict:
+        if not cmdargs.report:
+            cmdargs.report = 'report.json'
+        if not cmdargs.config:
+            print('Please, use --config with --report-strict')
+            sys.exit(1)
 
     loglevel = logging.WARNING
     if cmdargs.verbose > 1:
@@ -118,7 +127,7 @@ def main(args=sys.argv[1:]):
     for cve in cmdargs.cve:
         try:
             result = hound.check_cve(cve, cmdargs.all_files)
-            if result:
+            if result and (not cmdargs.report_strict or result['config']['affected']):
                 report['results'][cve] = result
         except subprocess.CalledProcessError as e:
             logging.error('Failed to run: ' + ' '.join(e.cmd))
