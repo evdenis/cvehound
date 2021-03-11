@@ -9,6 +9,7 @@ import logging
 from subprocess import PIPE
 import pkg_resources
 import collections
+from datetime import datetime
 from sympy.logic import simplify_logic
 from sympy import symbols
 from cvehound.cpu import CPU
@@ -164,8 +165,8 @@ class CVEhound:
                     logging.info('MSG: ' + info['cmt_msg'])
                 if 'cwe' in info:
                     logging.info('CWE: ' + info['cwe'])
-                if 'last_modified' in info:
-                    logging.info('CVE UPDATED: ' + info['last_modified'])
+                if 'fix_date' in info:
+                    logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date'])))
             logging.info('https://www.linuxkernelcves.com/cves/' + cve)
             if self.config_map:
                 config_affected = None
