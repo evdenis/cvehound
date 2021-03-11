@@ -87,6 +87,7 @@ class CVEhound:
         return (is_fix, patterns)
 
     def check_cve(self, cve, all_files=False):
+        result = {}
         is_grep = False
         rule = self.cve_rules[cve]
         if rule.endswith('.grep'):
@@ -161,6 +162,7 @@ class CVEhound:
             logging.warning('Found: ' + cve)
             if cve in self.metadata:
                 info = self.metadata[cve]
+                result = info
                 if 'cmt_msg' in info:
                     logging.info('MSG: ' + info['cmt_msg'])
                 if 'cwe' in info:
@@ -169,6 +171,7 @@ class CVEhound:
                     logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date'])))
             logging.info('https://www.linuxkernelcves.com/cves/' + cve)
             if self.config_map:
+                result['config'] = {}
                 config_affected = None
                 files = {}
                 for line in output.split('\n'):
@@ -177,31 +180,42 @@ class CVEhound:
                 if files:
                     logging.info('Affected Files:')
                     for file, config in files.items():
+                        result['config'][file] = {}
                         if config:
                             config = simplify_logic(config)
+                            result['config'][file]['logic'] = str(config)
                             if self.config:
                                 affected = config.subs(self.config.get_mapping())
                                 if affected == True:
                                     affected = 'affected'
-                                    config_affected = 'affected'
+                                    result['config'][file]['config'] = True
+                                    config_affected = True
                                 else:
                                     affected = 'not affected'
+                                    result['config'][file]['config'] = False
                                     if config_affected == None:
-                                        config_affected = 'not affected'
+                                        config_affected = False
                                 logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
                             else:
                                 logging.info(' - ' + file + ': ' + str(config))
                         else:
-                                config_affected = 'affected'
+                                result['config'][file]['logic'] = True
+                                result['config'][file]['config'] = True
+                                config_affected = True
                                 logging.info(' - ' + file + ': True')
-                if config_affected:
+                result['config']['affected'] = config_affected
+                if config_affected != None:
+                    affected = 'affected'
+                    if not config_affected:
+                        affected = 'not affected'
                     if self.config:
-                        logging.info('Config: ' + self.config_file + ' ' + config_affected)
+                        logging.info('Config: ' + self.config_file + ' ' + affected)
                     else:
-                        logging.info('Config: any ' + config_affected)
+                        logging.info('Config: any ' + affected)
+            result['spatch_output'] = output
             logging.debug(output)
             logging.info('')
-            return True
+            return result
         return False
 
     def get_rule_metadata(self, cve):

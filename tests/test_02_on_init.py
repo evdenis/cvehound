@@ -12,6 +12,9 @@ def test_on_init(hound, repo, cve):
         detect = True
     repo.git.checkout('v2.6.12-rc2')
     try:
-        assert hound.check_cve(cve) == detect, cve + ' on first commit'
+        if detect:
+            assert hound.check_cve(cve), cve + ' on first commit'
+        else:
+            assert not hound.check_cve(cve), cve + ' on first commit'
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')

@@ -17,6 +17,6 @@ def test_between_fixes_fix(hound, repo, cve):
     for tag in tags.split():
         repo.git.checkout(tag)
         try:
-            assert hound.check_cve(cve) == True, cve + ' fails to detect on ' + tag
+            assert hound.check_cve(cve), cve + ' fails to detect on ' + tag
         except UnsupportedVersion:
             pytest.skip('Unsupported spatch version')

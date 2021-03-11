@@ -6,9 +6,10 @@ import argparse
 import re
 import subprocess
 import logging
+import json
 
 from cvehound import CVEhound
-from cvehound.util import get_cvehound_version, dir_path, file_path, tool_exists
+from cvehound.util import *
 from cvehound.exception import UnsupportedVersion
 from cvehound.cwe import CWE
 
@@ -31,6 +32,8 @@ def main(args=sys.argv[1:]):
                         help='linux kernel sources dir')
     parser.add_argument('--config', nargs='?', type=file_path, const='-',
                         help='check kernel config')
+    parser.add_argument('--report', nargs='?', const='report.json',
+                        help='output report with found CVEs')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
@@ -82,6 +85,7 @@ def main(args=sys.argv[1:]):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
+    cves = []
     for cve in cmdargs.cve:
         if cmdargs.cwe:
             rule_cwe_desc = hound.get_cve_cwe(cve)
@@ -98,12 +102,33 @@ def main(args=sys.argv[1:]):
                         found = True
             if not found:
                 continue
+        cves.append(cve)
+    cmdargs.cve = cves
+
+    report = { 'args': {}, 'kernel': {}, 'tools': {}, 'results': {}}
+    report['args']['cve'] = cmdargs.cve
+    report['args']['kernel'] = cmdargs.kernel
+    report['args']['config'] = cmdargs.config
+    report['args']['only_cwe'] = cmdargs.cwe
+    report['args']['only_files'] = cmdargs.files
+    report['args']['all_files'] = cmdargs.all_files
+    report['kernel'] = get_kernel_version(cmdargs.kernel)
+    report['tools']['cvehound'] = get_cvehound_version()
+    report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
+    for cve in cmdargs.cve:
         try:
-            hound.check_cve(cve, cmdargs.all_files)
+            result = hound.check_cve(cve, cmdargs.all_files)
+            if result:
+                report['results'][cve] = result
         except subprocess.CalledProcessError as e:
             logging.error('Failed to run: ' + ' '.join(e.cmd))
         except UnsupportedVersion as err:
             logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
+
+    if cmdargs.report:
+        with open(cmdargs.report, 'wt', encoding='utf-8') as fh:
+            json.dump(report, fh, indent=4, sort_keys=True)
+        print('Report saved to:', cmdargs.report)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

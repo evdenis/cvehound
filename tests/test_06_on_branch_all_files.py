@@ -26,6 +26,6 @@ from cvehound.exception import UnsupportedVersion
 def test_on_branch(hound, repo, branch, cve):
     repo.git.checkout(branch)
     try:
-        assert hound.check_cve(cve, True) == False, cve + ' on ' + branch
+        assert not hound.check_cve(cve, True), cve + ' on ' + branch
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')

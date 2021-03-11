@@ -11,11 +11,11 @@ def test_on_fixes(hound, repo, cve):
 
     repo.git.checkout(fixes)
     try:
-        assert hound.check_cve(cve) == True, 'fails to detect on fixes tag'
+        assert hound.check_cve(cve), 'fails to detect on fixes tag'
 
         if fixes != 'v2.6.12-rc2' and \
            fixes != '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2':
             repo.git.checkout('HEAD~')
-            assert hound.check_cve(cve) == False, 'detects on fixes~ tag'
+            assert not hound.check_cve(cve), 'detects on fixes~ tag'
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')
