@@ -198,11 +198,11 @@ class CVEhound:
                                 logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
                             else:
                                 logging.info(' - ' + file + ': ' + str(config))
-                        else:
-                                result['config'][file]['logic'] = True
-                                result['config'][file]['config'] = True
-                                config_affected = True
-                                logging.info(' - ' + file + ': True')
+                        elif not file.endswith('.h'): # TODO: if only .h file, e.g. linux/kernel.h?
+                            result['config'][file]['logic'] = True
+                            result['config'][file]['config'] = True
+                            config_affected = True
+                            logging.info(' - ' + file + ': True')
                 result['config']['affected'] = config_affected
                 if config_affected != None:
                     affected = 'affected'
