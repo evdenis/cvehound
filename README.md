@@ -62,17 +62,27 @@ sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
 ``` shell
-$ cvehound --kernel ~/workspace/linux --verbose --cve CVE-2020-27194 CVE-2020-29371
+$ cvehound --kernel ../linux --config --cve CVE-2020-27194 CVE-2020-29371
 Checking: CVE-2020-27194
 Found: CVE-2020-27194
 MSG: bpf: Fix scalar32_min_max_or bounds tracking
 CWE: Improper Restriction of Operations within the Bounds of a Memory Buffer
-DATE: 2020-11-03
+CVE UPDATED: 2020-11-03
+https://www.linuxkernelcves.com/cves/CVE-2020-27194
+Affected Files:
+ - ../linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
+   ../linux/.config: affected
+Config: ../linux/.config affected
 
 Checking: CVE-2020-29371
 Found: CVE-2020-29371
 MSG: romfs: fix uninitialized memory leak in romfs_dev_read()
 CWE: Use of Uninitialized Resource
-DATE: 2020-12-08
+CVE UPDATED: 2020-12-08
+https://www.linuxkernelcves.com/cves/CVE-2020-29371
+Affected Files:
+ - ../linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
+   ../linux/.config: affected
+Config: ../linux/.config affected
 ```
 
