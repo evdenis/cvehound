@@ -65,7 +65,11 @@ def main(args=sys.argv[1:]):
         loglevel = logging.INFO
     logging.basicConfig(level=loglevel, format='%(message)s')
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.config)
+    config_info = {}
+    if cmdargs.config != '-':
+        config_info = get_config_data(cmdargs.config)
+
+    hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
 
     known_cves = hound.get_cves()
     if cmdargs.cve == 'all':
@@ -114,7 +118,7 @@ def main(args=sys.argv[1:]):
         cves.append(cve)
     cmdargs.cve = cves
 
-    report = { 'args': {}, 'kernel': {}, 'tools': {}, 'results': {}}
+    report = { 'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
     report['args']['cve'] = cmdargs.cve
     report['args']['kernel'] = cmdargs.kernel
     report['args']['config'] = cmdargs.config
@@ -122,6 +126,8 @@ def main(args=sys.argv[1:]):
     report['args']['only_files'] = cmdargs.files
     report['args']['all_files'] = cmdargs.all_files
     report['kernel'] = get_kernel_version(cmdargs.kernel)
+    if cmdargs.config != '-':
+        report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
     for cve in cmdargs.cve:

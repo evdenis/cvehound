@@ -23,7 +23,7 @@ __VERSION__ = '1.0.0'
 
 class CVEhound:
 
-    def __init__(self, kernel, config=None):
+    def __init__(self, kernel, config=None, arch='x86'):
         self.kernel = kernel
         self.metadata = get_cves_metadata()
         self.cocci_job = str(CPU().get_cocci_jobs())
@@ -32,10 +32,10 @@ class CVEhound:
         self.cve_rules = get_all_cves()
 
         ipaths = [
-            'arch/x86/include',
-            'arch/x86/include/generated',
-            'arch/x86/include/uapi',
-            'arch/x86/include/generated/uapi',
+            os.path.join('arch', arch, 'include'),
+            os.path.join('arch', arch, 'include/generated'),
+            os.path.join('arch', arch, 'include/uapi'),
+            os.path.join('arch', arch, 'include/generated/uapi'),
             'include',
             'include/uapi',
             'include/generated/uapi'
@@ -48,7 +48,7 @@ class CVEhound:
         self.includes = includes
 
         if config:
-            parser = KbuildParser(None, 'x86')
+            parser = KbuildParser(None, arch)
             dirs_to_process = collections.OrderedDict()
             parser.init_class.process(parser, dirs_to_process, kernel)
 
@@ -72,7 +72,7 @@ class CVEhound:
         is_fix = False
         start = False
         patterns = []
-        with open(rule, 'r') as fh:
+        with open(rule, 'rt') as fh:
             for line in fh:
                 line = line.strip()
                 if line == 'FIX':

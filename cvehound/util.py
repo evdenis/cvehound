@@ -24,6 +24,15 @@ def removesuffix(string, suffix):
         return string[:-len(suffix)]
     return string[:]
 
+def get_config_data(path):
+    with open(path, 'rt') as fh:
+        ver_pattern = re.compile(r'# Linux/(\S+)\s+(\S+)\s+Kernel Configuration')
+        for line in fh:
+            res = ver_pattern.match(line)
+            if res:
+                return {'arch': res.group(1), 'version': res.group(2)}
+    return {}
+
 def get_kernel_version(path):
     version = {}
     with open(os.path.join(path, 'Makefile'), 'rt') as fh:
