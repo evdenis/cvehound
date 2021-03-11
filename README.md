@@ -86,3 +86,10 @@ Affected Files:
 Config: ../linux/.config affected
 ```
 
+## Acknowledgements
+
+I would like to thank the following projects and people behind them:
+ - [coccinelle](https://coccinelle.gitlabpages.inria.fr/website/) for the program matching engine
+ - [linuxkernelcves.com](https://linuxkernelcves.com/) for information about Linux CVEs
+ - [undertaker](https://vamos.informatik.uni-erlangen.de/trac/undertaker) for mapping kernel configs to .c files
+ - [sympy](https://www.sympy.org/) for the symbolic logic solver
