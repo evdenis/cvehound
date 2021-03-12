@@ -66,7 +66,7 @@ def main(args=sys.argv[1:]):
     logging.basicConfig(level=loglevel, format='%(message)s')
 
     config_info = {}
-    if cmdargs.config != '-':
+    if cmdargs.config and cmdargs.config != '-':
         config_info = get_config_data(cmdargs.config)
 
     hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
