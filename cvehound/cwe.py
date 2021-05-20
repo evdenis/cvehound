@@ -61,6 +61,7 @@ CWE = {
     "Loop with Unreachable Exit Condition ('Infinite Loop')": [835],
     "Missing Authorization": [862, 638, 1314],
     "Missing Release of Resource after Effective Lifetime": [772],
+    "Missing Release of Memory after Effective Lifetime": [401],
     "NULL Pointer Dereference": [476],
     "Numeric Errors": [189, 128, 190, 191, 192, 193, 197, 198, 369, 681, 839, 1077],
     "Observable Differences in Behavior to Error Inputs": [203, 205],
