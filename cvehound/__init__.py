@@ -108,7 +108,7 @@ class CVEhound:
             includes.append('--include')
             includes.append(kconfig)
 
-        logging.info('Checking: ' + cve)
+        logging.debug('Checking: ' + cve)
 
         output = ''
         run = None
