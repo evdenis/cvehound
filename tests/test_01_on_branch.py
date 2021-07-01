@@ -20,7 +20,10 @@ from cvehound.exception import UnsupportedVersion
         ('origin/linux-4.19.y', 'CVE-2020-27825'),
         ('origin/linux-4.14.y', 'CVE-2020-27825'),
         ('origin/linux-4.9.y', 'CVE-2020-27825'),
-        ('origin/linux-4.4.y', 'CVE-2020-27825')
+        ('origin/linux-4.4.y', 'CVE-2020-27825'),
+        ('origin/linux-4.19.y', 'CVE-2021-22543'),
+        ('origin/linux-4.14.y', 'CVE-2021-22543'),
+        ('origin/linux-4.9.y', 'CVE-2021-22543'),
     ]
 )
 def test_on_branch(hound, repo, branch, cve):
