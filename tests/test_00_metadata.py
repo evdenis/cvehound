@@ -36,6 +36,17 @@ def test_cves_metadata_cwe(hound):
         if 'cwe' in meta[cve]:
             assert meta[cve]['cwe'] in CWE, 'Unknown CWE description "{}"'.format(meta[cve]['cwe'])
 
+@pytest.mark.ownfixes(
+    ('cve', 'reason'),
+    [
+        ('CVE-2021-0605',  "limited SA dump is not implemented in Linux-2.6.12-rc2"),
+        ('CVE-2020-27825', "wrong fixes tag, see https://lore.kernel.org/linux-arm-msm/20210121140951.2a554a5e@gandalf.local.home/"),
+        ('CVE-2020-14386', "wrong fixes tag, see https://seclists.org/oss-sec/2020/q3/150"),
+        ('CVE-2019-15924', "wrong fixes tag, create_workqueue also can return NULL"),
+        ('CVE-2021-20265', "wrong fixes tag, see https://lkml.org/lkml/2016/2/24/1054"),
+        ('CVE-2015-8961', "wrong fixes tag, the error was introduced in 9d5065940693"),
+    ]
+)
 def test_fixes(hound, repo, cve):
     cve_fix = hound.get_rule_fix(cve)
     cve_fixes = repo.git.rev_parse('--verify', hound.get_rule_fixes(cve) + '^{commit}')

@@ -75,6 +75,7 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'slow: mark test as slow to run')
     config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
+    config.addinivalue_line('markers', 'ownfixes: mark test as failed')
 
     try:
         p = psutil.Process()
@@ -178,3 +179,13 @@ def pytest_collection_modifyitems(config, items):
                     break
             if (params['branch'], params['cve']) in mark.args[1]:
                 item.add_marker(fail_notbackported)
+        if 'ownfixes' in item.keywords:
+            params = item.callspec.params
+            mark = None
+            for m in item.own_markers:
+                if m.name == 'ownfixes':
+                    mark = m
+                    break
+            for rec in mark.args[1]:
+                if params['cve'] == rec[0]:
+                    item.add_marker(pytest.mark.xfail(reason=rec[1]))
