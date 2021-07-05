@@ -51,6 +51,9 @@ def pytest_addoption(parser):
         '--runslow', action='store_true', default=False, help='run slow tests'
     )
     parser.addoption(
+        '--runlkc', action='store_true', default=False, help='run lkc metadata tests'
+    )
+    parser.addoption(
         '--dir', action='store',
         default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'linux'),
         help='linux kernel sources dir'
@@ -154,14 +157,18 @@ def pytest_generate_tests(metafunc):
 
 def pytest_collection_modifyitems(config, items):
     runslow = config.getoption('--runslow')
+    runlkc = config.getoption('--runlkc')
     skip_slow = pytest.mark.skip(reason='need --runslow option to run')
     skip_fast = pytest.mark.skip(reason='slow tests cover these testcases')
+    skip_lkc = pytest.mark.skip(reason='need --runlkc option to run')
     fail_notbackported = pytest.mark.xfail(reason='CVE not backported yet')
     for item in items:
         if not runslow and 'slow' in item.keywords:
             item.add_marker(skip_slow)
         if runslow and 'fast' in item.keywords:
             item.add_marker(skip_fast)
+        if not runlkc and 'lkc' in item.keywords:
+            item.add_marker(skip_lkc)
         if 'notbackported' in item.keywords:
             params = item.callspec.params
             mark = None
