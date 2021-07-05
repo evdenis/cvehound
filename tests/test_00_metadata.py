@@ -36,6 +36,20 @@ def test_cves_metadata_cwe(hound):
         if 'cwe' in meta[cve]:
             assert meta[cve]['cwe'] in CWE, 'Unknown CWE description "{}"'.format(meta[cve]['cwe'])
 
+def test_fixes(hound, repo, cve):
+    cve_fix = hound.get_rule_fix(cve)
+    cve_fixes = repo.git.rev_parse('--verify', hound.get_rule_fixes(cve) + '^{commit}')
+    cve_fixes = cve_fixes[0:12]
+
+    msg = repo.git.show('-s', '--format=%s\n%b', cve_fix)
+    msg_fixes = list(map(lambda x: repo.git.rev_parse('--verify', x)[0:12],
+                         re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)))
+    if msg_fixes:
+        if len(msg_fixes) == 1:
+            msg_fixes = msg_fixes[0]
+        assert cve_fixes in msg_fixes, \
+            "{} vs {}".format(cve_fixes[0:12], msg_fixes)
+
 @pytest.mark.lkc
 def test_cves_metadata_fix(hound, cve):
     fix = hound.get_rule_fix(cve)
