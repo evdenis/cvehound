@@ -93,6 +93,7 @@ def pytest_configure(config):
         repo.git.checkout('origin/master')
         try:
             repo.remotes.origin.fetch()
+            repo.remotes.stable.fetch()
             repo.remotes.next.fetch()
         except:
             pass
@@ -100,8 +101,10 @@ def pytest_configure(config):
         cwd = os.getcwd()
         os.makedirs(linux, exist_ok=True)
         os.chdir(linux)
-        repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git', '.')
+        repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git', '.')
+        repo.create_remote('stable', 'git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git')
         repo.create_remote('next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git')
+        repo.remotes.stable.fetch()
         repo.remotes.next.fetch()
         os.chdir(cwd)
 
@@ -122,13 +125,13 @@ def pytest_configure(config):
         branches = [
             'origin/master',
             'next/master',
-            'origin/linux-5.12.y',
-            'origin/linux-5.10.y',
-            'origin/linux-5.4.y',
-            'origin/linux-4.19.y',
-            'origin/linux-4.14.y',
-            'origin/linux-4.9.y',
-            'origin/linux-4.4.y'
+            'stable/linux-5.12.y',
+            'stable/linux-5.10.y',
+            'stable/linux-5.4.y',
+            'stable/linux-4.19.y',
+            'stable/linux-4.14.y',
+            'stable/linux-4.9.y',
+            'stable/linux-4.4.y'
         ]
 
     cves = config.getoption('cve')
