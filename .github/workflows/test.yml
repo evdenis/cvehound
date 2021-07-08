@@ -113,9 +113,11 @@ jobs:
         fi
         git clone clone.bundle tests/linux
         cd tests/linux
-        git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+        git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
         git remote add next git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+        git remote add stable git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
         git remote update origin
+        git fetch stable
         git fetch next
         cd -
 
