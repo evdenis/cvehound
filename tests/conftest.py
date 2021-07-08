@@ -180,7 +180,7 @@ def pytest_collection_modifyitems(config, items):
                 if m.name == 'notbackported':
                     mark = m
                     break
-            if (params['branch'], params['cve']) in mark.args[1]:
+            if (params['cve'], params['branch']) in mark.args[1]:
                 item.add_marker(fail_notbackported)
         if 'ownfixes' in item.keywords:
             params = item.callspec.params
