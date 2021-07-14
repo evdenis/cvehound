@@ -45,6 +45,7 @@ def test_cves_metadata_cwe(hound):
         ('CVE-2019-15924', "wrong fixes tag, create_workqueue also can return NULL"),
         ('CVE-2021-20265', "wrong fixes tag, see https://lkml.org/lkml/2016/2/24/1054"),
         ('CVE-2015-8961', "wrong fixes tag, the error was introduced in 9d5065940693"),
+        ('CVE-2017-12188', "wrong fixes tag, see https://www.spinics.net/lists/kvm/msg156651.html"),
     ]
 )
 def test_fixes(hound, repo, cve):
