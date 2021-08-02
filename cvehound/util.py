@@ -75,8 +75,9 @@ def get_spatch_version():
 def get_all_cves():
     cves = {}
     for cve in pkg_resources.resource_listdir('cvehound', 'cve/'):
-        name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
-        cves[name] = pkg_resources.resource_filename('cvehound', 'cve/' + cve)
+        if cve.endswith('.grep') or cve.endswith('.cocci'):
+            name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
+            cves[name] = pkg_resources.resource_filename('cvehound', 'cve/' + cve)
     return cves
 
 def get_cves_metadata():
