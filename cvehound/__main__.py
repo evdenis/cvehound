@@ -89,7 +89,7 @@ def main(args=sys.argv[1:]):
 
     filter_cwes = frozenset(cmdargs.cwe)
 
-    if cmdargs.all_files and not cmdargs.files:
+    if cmdargs.all_files and cmdargs.files:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
     for f in cmdargs.files:
