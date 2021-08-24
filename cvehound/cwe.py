@@ -1,5 +1,6 @@
 CWE = {
     "Access of Resource Using Incompatible Type ('Type Confusion')" : [843],
+    "Access of Uninitialized Pointer": [824],
     "Allocation of Resources Without Limits or Throttling": [770],
     "Authentication Errors": [1211, 288, 290, 294, 295, 296, 299, 303, 304, 305, 306, 307, 308, 309, 322, 603, 645, 804, 846],
     "Authentication Issues": [1211, 288, 290, 294, 295, 296, 299, 303, 304, 305, 306, 307, 308, 309, 322, 603, 645, 804, 846],
