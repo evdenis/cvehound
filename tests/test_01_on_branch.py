@@ -16,8 +16,6 @@ from cvehound.exception import UnsupportedVersion
         ('CVE-2019-12455', 'stable/linux-4.14.y'),
         ('CVE-2019-12455', 'stable/linux-4.19.y'),
         ('CVE-2021-22543', 'stable/linux-4.9.y'),
-        ('CVE-2021-22543', 'stable/linux-4.14.y'),
-        ('CVE-2021-22543', 'stable/linux-4.19.y'),
     ]
 )
 def test_on_branch(hound, repo, branch, cve):
