@@ -125,7 +125,7 @@ def pytest_configure(config):
         branches = [
             'origin/master',
             'next/master',
-            'stable/linux-5.13.y',
+            'stable/linux-5.14.y',
             'stable/linux-5.10.y',
             'stable/linux-5.4.y',
             'stable/linux-4.19.y',
