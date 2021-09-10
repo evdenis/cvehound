@@ -46,7 +46,10 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9'
     ],
-    packages=['cvehound'],
+    packages=[
+        'cvehound',
+        'cvehound.kbuildparse'
+    ],
     license='GPLv3',
     keywords=['cve', 'linux', 'kernel', 'spatch', 'cve-scanning', 'coccinelle'],
     entry_points={
