@@ -14,8 +14,28 @@ on:
     - cron: '0 0 * * MON'
 
 jobs:
-  build:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.6, 3.7, 3.8, 3.9]
+        os: [ubuntu-18.04, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
 
+    - name: Install CVEhound
+      run: pip3 install 'git+https://github.com/evdenis/cvehound.git@master'
+
+    - name: Run CVEHound
+      run: |
+        cvehound --help
+        cvehound --version
+
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -23,9 +43,7 @@ jobs:
         os: [ubuntu-latest]
         ocaml-version: [4.07.1]
         coccinelle-version: [system, 1.0.7, 1.0.8, 1.0.9, 1.1.0, git]
-
     runs-on: ${{ matrix.os }}
-
     steps:
     - uses: actions/checkout@v2
       with:
