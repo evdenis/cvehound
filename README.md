@@ -15,7 +15,7 @@ code patterns of known CVEs and missing fixes for them.
 
 ## Prerequisites
 
-- Python 3 (>=3.5)
+- Python 3 (>=3.6)
 - pip (Python package manager)
 - grep with pcre support (-P flag)
 - coccinelle (>= 1.0.4)
@@ -50,7 +50,7 @@ $ pip install -e .
 The simplest way to start using CVEhound is to run the following command:
 
 ``` shell
-$ cvehound --kernel ~/workspace/linux
+$ cvehound --kernel ~/linux
 Found: CVE-2020-27830
 Found: CVE-2020-27152
 Found: CVE-2020-29371
@@ -62,7 +62,7 @@ sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
 ``` shell
-$ cvehound --kernel ../linux --config --cve CVE-2020-27194 CVE-2020-29371
+$ cvehound --kernel ./linux --config --cve CVE-2020-27194 CVE-2020-29371
 Checking: CVE-2020-27194
 Found: CVE-2020-27194
 MSG: bpf: Fix scalar32_min_max_or bounds tracking
@@ -70,9 +70,9 @@ CWE: Improper Restriction of Operations within the Bounds of a Memory Buffer
 FIX DATE: 2020-10-08 09:02:53
 https://www.linuxkernelcves.com/cves/CVE-2020-27194
 Affected Files:
- - ../linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
-   ../linux/.config: affected
-Config: ../linux/.config affected
+ - ./linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
+   ./linux/.config: affected
+Config: ./linux/.config affected
 
 Checking: CVE-2020-29371
 Found: CVE-2020-29371
@@ -81,9 +81,9 @@ CWE: Use of Uninitialized Resource
 FIX DATE: 2020-08-21 16:52:53
 https://www.linuxkernelcves.com/cves/CVE-2020-29371
 Affected Files:
- - ../linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
-   ../linux/.config: not affected
-Config: ../linux/.config not affected
+ - ./linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
+   ./linux/.config: not affected
+Config: ./linux/.config not affected
 ```
 
 Other args:
