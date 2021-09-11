@@ -18,7 +18,7 @@ from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
 from cvehound.kbuild import KbuildParser
 from cvehound.config import Config
 
-__VERSION__ = '1.0.3'
+__VERSION__ = '1.0.4'
 
 
 class CVEhound:
