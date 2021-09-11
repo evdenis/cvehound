@@ -32,7 +32,7 @@ setup(
     description='A tool to check linux kernel source dump for known CVEs',
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
-    python_requires='>=3.5',
+    python_requires='>=3.6',
     install_requires=['sympy'],
     tests_require=test_deps,
     extras_require=extras,
