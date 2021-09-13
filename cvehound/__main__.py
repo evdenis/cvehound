@@ -42,8 +42,9 @@ def main(args=sys.argv[1:]):
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
 
-    if not tool_exists('spatch'):
-        print('Please, install coccinelle')
+    if not os.path.exists(os.path.join(cmdargs.kernel, 'Makefile')) or \
+       not os.path.exists(os.path.join(cmdargs.kernel, 'Kconfig')):
+        print('Not a kernel directory', cmdargs.kernel, file=sys.stderr)
         sys.exit(1)
 
     if cmdargs.config == '-':
