@@ -24,6 +24,8 @@ def main(args=sys.argv[1:]):
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',
                         help='list of cve identifiers')
+    parser.add_argument('--exploit', '-e', action='store_true',
+                        help='check only for CVEs with exploits')
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
                         help='check only for CWE-ids')
     parser.add_argument('--files', nargs='+', default=[],
@@ -87,8 +89,6 @@ def main(args=sys.argv[1:]):
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
 
-    filter_cwes = frozenset(cmdargs.cwe)
-
     if cmdargs.all_files and cmdargs.files:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
@@ -98,8 +98,11 @@ def main(args=sys.argv[1:]):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
+    filter_cwes = frozenset(cmdargs.cwe)
     cves = []
     for cve in cmdargs.cve:
+        if cmdargs.exploit and not hound.get_cve_exploit(cve):
+            continue
         if cmdargs.cwe:
             rule_cwe_desc = hound.get_cve_cwe(cve)
             if not rule_cwe_desc:

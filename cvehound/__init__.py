@@ -262,6 +262,9 @@ class CVEhound:
     def get_cve_cwe(self, cve):
         return self.metadata[cve].get('cwe', None)
 
+    def get_cve_exploit(self, cve):
+        return self.metadata[cve]['exploit']
+
     def get_cves(self):
         return self.cve_rules.keys()
 
