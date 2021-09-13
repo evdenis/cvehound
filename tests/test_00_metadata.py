@@ -151,3 +151,32 @@ def test_cves_metadata_fixes_all_git(hound, repo):
                 broken.append(cve)
 
     assert not broken, broken
+
+@pytest.mark.lkc
+def test_cves_metadata_title(hound, repo):
+    broken = []
+    meta = hound.metadata
+    for cve in meta:
+        data = meta[cve]
+
+        if 'cmt_msg' not in data:
+            continue
+        data_msg = data['cmt_msg']
+
+        fix = data['fixes']
+        if not fix:
+            continue
+        if not re.match(r'[0-9a-fa-f]{7,40}', fix):
+            continue
+
+        try:
+            fix = repo.git.rev_parse('--verify', fix + '^{commit}')
+            fix = fix[0:12]
+            git_msg = repo.git.show('-s', '--format=%s', fix)
+        except Exception:
+            continue
+
+        if data_msg != git_msg:
+            broken.append(cve)
+
+    assert not broken, broken
