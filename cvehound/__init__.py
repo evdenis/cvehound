@@ -86,6 +86,22 @@ class CVEhound:
                     patterns.append(line)
         return (is_fix, patterns)
 
+    def _print_found_cve(self, cve):
+        logging.warning('Found: ' + cve)
+        if cve in self.metadata:
+            info = self.metadata[cve]
+            if 'cmt_msg' in info:
+                logging.info('MSG: ' + info['cmt_msg'])
+            if 'cwe' in info:
+                logging.info('CWE: ' + info['cwe'])
+            if 'cvss2' in info and 'score' in info['cvss2']:
+                logging.info('CVSS2: ' + str(info['cvss2']['score']))
+            if 'cvss3' in info and 'score' in info['cvss3']:
+                logging.info('CVSS3: ' + str(info['cvss3']['score']))
+            if 'fix_date' in info:
+                logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date'])))
+        logging.info('https://www.linuxkernelcves.com/cves/' + cve)
+
     def check_cve(self, cve, all_files=False):
         result = {}
         is_grep = False
@@ -158,69 +174,60 @@ class CVEhound:
                     else:
                         output = 'ERROR'
 
-        if 'ERROR' in output:
-            logging.warning('Found: ' + cve)
-            if cve in self.metadata:
-                info = self.metadata[cve]
-                result = info
-                if 'cmt_msg' in info:
-                    logging.info('MSG: ' + info['cmt_msg'])
-                if 'cwe' in info:
-                    logging.info('CWE: ' + info['cwe'])
-                if 'cvss2' in info and 'score' in info['cvss2']:
-                    logging.info('CVSS2: ' + str(info['cvss2']['score']))
-                if 'cvss3' in info and 'score' in info['cvss3']:
-                    logging.info('CVSS3: ' + str(info['cvss3']['score']))
-                if 'fix_date' in info:
-                    logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date'])))
-            logging.info('https://www.linuxkernelcves.com/cves/' + cve)
-            if self.config_map:
-                result['config'] = {}
-                config_affected = None
-                files = {}
-                for line in output.split('\n'):
-                    file = line.split(':')[0]
-                    files[file] = self.config_map.get(file, '')
-                if files:
-                    logging.info('Affected Files:')
-                    for file, config in files.items():
-                        result['config'][file] = {}
-                        if config:
-                            config = simplify_logic(config)
-                            result['config'][file]['logic'] = str(config)
-                            if self.config:
-                                affected = config.subs(self.config.get_mapping())
-                                if affected == True:
-                                    affected = 'affected'
-                                    result['config'][file]['config'] = True
-                                    config_affected = True
-                                else:
-                                    affected = 'not affected'
-                                    result['config'][file]['config'] = False
-                                    if config_affected == None:
-                                        config_affected = False
-                                logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
+        if 'ERROR' not in output:
+            return False
+
+        self._print_found_cve(cve)
+
+        if cve in self.metadata:
+            result = self.metadata[cve]
+
+        if self.config_map:
+            result['config'] = {}
+            config_affected = None
+            files = {}
+            for line in output.split('\n'):
+                file = line.split(':')[0]
+                files[file] = self.config_map.get(file, '')
+            if files:
+                logging.info('Affected Files:')
+                for file, config in files.items():
+                    result['config'][file] = {}
+                    if config:
+                        config = simplify_logic(config)
+                        result['config'][file]['logic'] = str(config)
+                        if self.config:
+                            affected = config.subs(self.config.get_mapping())
+                            if affected == True:
+                                affected = 'affected'
+                                result['config'][file]['config'] = True
+                                config_affected = True
                             else:
-                                logging.info(' - ' + file + ': ' + str(config))
-                        elif not file.endswith('.h'): # TODO: if only .h file, e.g. linux/kernel.h?
-                            result['config'][file]['logic'] = True
-                            result['config'][file]['config'] = True
-                            config_affected = True
-                            logging.info(' - ' + file + ': True')
-                result['config']['affected'] = config_affected
-                if config_affected != None:
-                    affected = 'affected'
-                    if not config_affected:
-                        affected = 'not affected'
-                    if self.config:
-                        logging.info('Config: ' + self.config_file + ' ' + affected)
-                    else:
-                        logging.info('Config: any ' + affected)
-            result['spatch_output'] = output
-            logging.debug(output)
-            logging.info('')
-            return result
-        return False
+                                affected = 'not affected'
+                                result['config'][file]['config'] = False
+                                if config_affected == None:
+                                    config_affected = False
+                            logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
+                        else:
+                            logging.info(' - ' + file + ': ' + str(config))
+                    elif not file.endswith('.h'): # TODO: if only .h file, e.g. linux/kernel.h?
+                        result['config'][file]['logic'] = True
+                        result['config'][file]['config'] = True
+                        config_affected = True
+                        logging.info(' - ' + file + ': True')
+            result['config']['affected'] = config_affected
+            if config_affected != None:
+                affected = 'affected'
+                if not config_affected:
+                    affected = 'not affected'
+                if self.config:
+                    logging.info('Config: ' + self.config_file + ' ' + affected)
+                else:
+                    logging.info('Config: any ' + affected)
+        result['spatch_output'] = output
+        logging.debug(output)
+        logging.info('')
+        return result
 
     def get_rule_metadata(self, cve):
         files = []
