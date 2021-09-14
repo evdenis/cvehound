@@ -45,10 +45,21 @@ def get_exploit_status_from_fstec():
 
     return public, private
 
+dates = {}
 def get_commit_date(repo, commit):
-    return int(subprocess.check_output(
+    if commit not in dates:
+        dates[commit] = int(subprocess.check_output(
             ['git', 'show', '-s', '--format=%ct', commit], cwd=repo, stderr=subprocess.DEVNULL, universal_newlines=True
-    ).strip())
+        ).strip())
+    return dates[commit]
+
+titles = {}
+def get_commit_title(repo, commit):
+    if commit not in titles:
+        titles[commit] = subprocess.check_output(
+            ['git', 'show', '-s', '--format=%s', commit], cwd=repo, stderr=subprocess.DEVNULL, universal_newlines=True
+        ).strip()
+    return titles[commit]
 
 def main(args=sys.argv):
     if len(args) < 2 or not os.path.isdir(os.path.join(args[1], '.git')):
@@ -63,12 +74,20 @@ def main(args=sys.argv):
         js = json.loads(fh.read().decode('utf-8'))
 
     for cve, info in js.items():
-        fix = info.get('fixes', '')
-        if fix and repo:
-            try:
-                info['fix_date'] = get_commit_date(repo, fix)
-            except Exception:
-                pass
+        fixes = info.get('fixes', '')
+        breaks = info.get('breaks', '')
+        if repo:
+            if fixes:
+                try:
+                    info['fixes_date'] = get_commit_date(repo, fixes)
+                except Exception:
+                    pass
+            if breaks:
+                try:
+                    info['breaks_date'] = get_commit_date(repo, breaks)
+                    info['breaks_msg'] = get_commit_title(repo, breaks)
+                except Exception:
+                    pass
         info['exploit'] = cve in public or cve in private
 
     with gzip.open(filename, 'wt', encoding='utf-8') as fh:
