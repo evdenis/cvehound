@@ -62,6 +62,7 @@ def pytest_addoption(parser):
 overlaydir = None
 linux_mount = None
 linux_repo = None
+_cvehound = None
 branches = []
 cves = []
 
@@ -69,6 +70,7 @@ def pytest_configure(config):
     global overlaydir
     global linux_mount
     global linux_repo
+    global _cvehound
     global branches
     global cves
 
@@ -120,6 +122,8 @@ def pytest_configure(config):
     else:
         linux_repo = repo
 
+    _cvehound = CVEhound(linux_repo.working_tree_dir)
+
     branches = config.getoption('branch')
     if not branches:
         branches = [
@@ -150,7 +154,7 @@ def repo(request):
 
 @pytest.fixture
 def hound():
-    return CVEhound(linux_repo.working_tree_dir)
+    return _cvehound
 
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:
