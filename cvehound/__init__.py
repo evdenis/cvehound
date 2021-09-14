@@ -99,7 +99,7 @@ class CVEhound:
             if 'cvss3' in info and 'score' in info['cvss3']:
                 logging.info('CVSS3: ' + str(info['cvss3']['score']))
             if 'fix_date' in info:
-                logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date'])))
+                logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date']).strftime('%Y-%m-%d')))
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
     def check_cve(self, cve, all_files=False):
