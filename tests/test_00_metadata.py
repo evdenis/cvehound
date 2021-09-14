@@ -3,7 +3,6 @@
 import re
 import pytest
 from cvehound.cwe import CWE
-from cvehound.util import get_cves_metadata
 
 def test_metadata(hound, cve):
     meta = hound.get_rule_metadata(cve)
