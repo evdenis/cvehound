@@ -23,29 +23,32 @@ __VERSION__ = '1.0.4'
 
 class CVEhound:
 
-    def __init__(self, kernel, config=None, arch='x86'):
+    def __init__(self, kernel, git=False, config=None, arch='x86'):
         self.kernel = kernel
         self.metadata = get_cves_metadata()
-        self.cocci_job = str(CPU().get_cocci_jobs())
-        self.spatch_version = get_spatch_version()
-        self.rules_metadata = {}
-        self.cve_rules = get_rule_cves()
+        self.git = git
+        self.commits_cache = {}
+        if not git:
+            self.cocci_job = str(CPU().get_cocci_jobs())
+            self.spatch_version = get_spatch_version()
+            self.rules_metadata = {}
+            self.cve_rules = get_rule_cves()
 
-        ipaths = [
-            os.path.join('arch', arch, 'include'),
-            os.path.join('arch', arch, 'include/generated'),
-            os.path.join('arch', arch, 'include/uapi'),
-            os.path.join('arch', arch, 'include/generated/uapi'),
-            'include',
-            'include/uapi',
-            'include/generated/uapi'
-        ]
-        ipaths = map(lambda f: os.path.join(kernel, f), ipaths)
-        includes = []
-        for i in ipaths:
-            includes.append('-I')
-            includes.append(i)
-        self.includes = includes
+            ipaths = [
+                os.path.join('arch', arch, 'include'),
+                os.path.join('arch', arch, 'include/generated'),
+                os.path.join('arch', arch, 'include/uapi'),
+                os.path.join('arch', arch, 'include/generated/uapi'),
+                'include',
+                'include/uapi',
+                'include/generated/uapi'
+            ]
+            ipaths = map(lambda f: os.path.join(kernel, f), ipaths)
+            includes = []
+            for i in ipaths:
+                includes.append('-I')
+                includes.append(i)
+            self.includes = includes
 
         if config:
             parser = KbuildParser(None, arch)
@@ -102,7 +105,57 @@ class CVEhound:
                 logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fixes_date']).strftime('%Y-%m-%d')))
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
+    def _git_check_commit(self, date, msg):
+        output = ''
+        if date in self.commits_cache and \
+           msg in self.commits_cache[date]:
+            output = self.commits_cache[date][msg]
+        else:
+            output = subprocess.check_output(
+                ['git', 'log', '-1', '--format=%H %s',
+                 '--after', date, '--before', date,
+                 '-F', '--regexp-ignore-case', '--grep', msg],
+                cwd=self.kernel, stderr=subprocess.DEVNULL, universal_newlines=True
+            ).strip()
+            if date not in self.commits_cache:
+                self.commits_cache[date] = {}
+            self.commits_cache[date][msg] = output
+        return output
+
+    def check_cve_git(self, cve):
+        result = {}
+        data = self.metadata[cve]
+
+        logging.debug('Checking: ' + cve)
+
+        output = self._git_check_commit(str(data['breaks_date']),
+                                        data['breaks_msg'])
+        if not output:
+            return False
+
+        commits = self._git_check_commit(str(data['fixes_date']),
+                                         data['cmt_msg'])
+        if commits:
+            assert len(commits.split('\n')) == 1
+            return False
+
+        output = 'Error: ' + output + '\nMissing: ' + data['cmt_msg']
+
+        self._print_found_cve(cve)
+
+        if cve in self.metadata:
+            result = self.metadata[cve]
+
+        result['git_output'] = output
+        logging.debug(output)
+        logging.info('')
+
+        return result
+
     def check_cve(self, cve, all_files=False):
+        if self.git:
+            return self.check_cve_git(cve)
+
         result = {}
         is_grep = False
         rule = self.cve_rules[cve]
@@ -274,6 +327,9 @@ class CVEhound:
 
     def get_known_cves(self):
         return set(self.cve_rules.keys())
+
+    def get_all_cves(self):
+        return set(self.metadata.keys())
 
     def get_rule(self, cve):
         return self.cve_rules[cve]

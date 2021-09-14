@@ -20,6 +20,8 @@ def main(args=sys.argv[1:]):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('--version', action='version', version=get_cvehound_version())
+    parser.add_argument('--git', action='store_true',
+                        help='check commits instead of checking files')
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default='all',
@@ -47,6 +49,23 @@ def main(args=sys.argv[1:]):
         print('Not a kernel directory', cmdargs.kernel, file=sys.stderr)
         sys.exit(1)
 
+    if cmdargs.git:
+        if cmdargs.config:
+            print('--config is not compatible with --git', file=sys.stderr)
+            sys.exit(1)
+        if cmdargs.all_files:
+            print('--all-files is not compatible with --git', file=sys.stderr)
+            sys.exit(1)
+        if cmdargs.files:
+            print('--files is not compatible with --git', file=sys.stderr)
+            sys.exit(1)
+        if not os.path.isdir(os.path.join(cmdargs.kernel, '.git')):
+            print('No git dir in', cmdargs.kernel, file=sys.stderr)
+            sys.exit(1)
+    elif not tool_exists('spatch'):
+        print('Please, install coccinelle', file=sys.stderr)
+        sys.exit(1)
+
     if cmdargs.config == '-':
         config = os.path.join(cmdargs.kernel, '.config')
         if os.path.isfile(config):
@@ -72,9 +91,14 @@ def main(args=sys.argv[1:]):
     if cmdargs.config and cmdargs.config != '-':
         config_info = get_config_data(cmdargs.config)
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
+    hound = CVEhound(cmdargs.kernel, cmdargs.git, cmdargs.config, config_info.get('arch', 'x86'))
 
-    known_cves = hound.get_known_cves()
+    known_cves = set()
+    if cmdargs.git:
+        known_cves = hound.get_all_cves()
+    else:
+        known_cves = hound.get_known_cves()
+
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves
     else:
@@ -102,6 +126,28 @@ def main(args=sys.argv[1:]):
     filter_cwes = frozenset(cmdargs.cwe)
     cves = []
     for cve in cmdargs.cve:
+        if cmdargs.git:
+            data = hound.get_cve_metadata(cve)
+
+            if 'vendor_specific' in data and data['vendor_specific']:
+                continue
+
+            # FIXME: missing metadata
+            if 'fixes_date' not in data or \
+               'breaks_date' not in data or \
+               'cmt_msg' not in data or \
+               'breaks_msg' not in data:
+                logging.debug('Skip: missing meta: ' + cve)
+                continue
+
+            # FIXME: broken metadata
+            if cve in ['CVE-2015-3332',
+                       'CVE-2015-8019',
+                       'CVE-2016-8650',
+                       'CVE-2020-0543']:
+                logging.debug('Skip: broken meta: ' + cve)
+                continue
+
         if cmdargs.exploit and not hound.get_cve_exploit(cve):
             continue
         if cmdargs.cwe:
@@ -123,6 +169,7 @@ def main(args=sys.argv[1:]):
     cmdargs.cve = cves
 
     report = { 'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
+    report['args']['git'] = cmdargs.git
     report['args']['cve'] = cmdargs.cve
     report['args']['kernel'] = cmdargs.kernel
     report['args']['config'] = cmdargs.config
@@ -133,7 +180,8 @@ def main(args=sys.argv[1:]):
     if cmdargs.config != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
-    report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
+    if not cmdargs.git:
+        report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
     for cve in cmdargs.cve:
         try:
             result = hound.check_cve(cve, cmdargs.all_files)
