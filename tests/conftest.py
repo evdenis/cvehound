@@ -4,7 +4,7 @@ import os
 import pytest
 import tempfile
 import psutil
-from cvehound import CVEhound, get_rule_cves
+from cvehound import CVEhound, get_rule_cves, get_cves_metadata
 from git import Repo
 from subprocess import run
 
@@ -63,21 +63,27 @@ overlaydir = None
 linux_mount = None
 linux_repo = None
 _cvehound = None
+_cvehound_git = None
 branches = []
 cves = []
+meta_cves = []
 
 def pytest_configure(config):
     global overlaydir
     global linux_mount
     global linux_repo
     global _cvehound
+    global _cvehound_git
     global branches
     global cves
+    global meta_cves
 
     config.addinivalue_line('markers', 'slow: mark test as slow to run')
     config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
     config.addinivalue_line('markers', 'ownfixes: mark test as failed')
+    config.addinivalue_line('markers', 'nometadata: mark test as failed')
+    config.addinivalue_line('markers', 'brokenmetadata: mark test as failed')
 
     try:
         p = psutil.Process()
@@ -123,6 +129,7 @@ def pytest_configure(config):
         linux_repo = repo
 
     _cvehound = CVEhound(linux_repo.working_tree_dir)
+    _cvehound_git = CVEhound(linux_repo.working_tree_dir, git=True)
 
     branches = config.getoption('branch')
     if not branches:
@@ -138,9 +145,17 @@ def pytest_configure(config):
             'stable/linux-4.4.y'
         ]
 
+    meta = get_cves_metadata()
     cves = config.getoption('cve')
+    meta_cves = cves
     if not cves:
         cves = get_rule_cves().keys()
+    if not meta_cves:
+        meta_cves = meta.keys()
+    meta_cves = filter(
+        lambda v: 'vendor_specific' not in meta[v] or \
+                  not meta[v]['vendor_specific'],
+        meta_cves)
 
 def pytest_unconfigure(config):
     umount(linux_mount)
@@ -156,12 +171,18 @@ def repo():
 def hound():
     return _cvehound
 
+@pytest.fixture
+def githound():
+    return _cvehound_git
+
 prev_branch = None
 @pytest.fixture
 def branch(request):
     global prev_branch
     if prev_branch != request.param:
         linux_repo.git.checkout(request.param)
+        _cvehound.commits_cache = {}
+        _cvehound_git.commits_cache = {}
         prev_branch = request.param
     return request.param
 
@@ -172,6 +193,9 @@ def pytest_generate_tests(metafunc):
     if 'cve' in metafunc.fixturenames:
         metafunc.parametrize('cve', cves)
 
+    if 'meta_cve' in metafunc.fixturenames:
+        metafunc.parametrize('meta_cve', meta_cves)
+
 def pytest_collection_modifyitems(config, items):
     runslow = config.getoption('--runslow')
     runlkc = config.getoption('--runlkc')
@@ -179,6 +203,8 @@ def pytest_collection_modifyitems(config, items):
     skip_fast = pytest.mark.skip(reason='slow tests cover these testcases')
     skip_lkc = pytest.mark.skip(reason='need --runlkc option to run')
     fail_notbackported = pytest.mark.xfail(reason='CVE not backported yet')
+    fail_nometadata = pytest.mark.xfail(reason='Not enough data about commits')
+    fail_brokenmetadata = pytest.mark.xfail(reason='Wrong information about commits')
     for item in items:
         if not runslow and 'slow' in item.keywords:
             item.add_marker(skip_slow)
@@ -205,3 +231,21 @@ def pytest_collection_modifyitems(config, items):
             for rec in mark.args[1]:
                 if params['cve'] == rec[0]:
                     item.add_marker(pytest.mark.xfail(reason=rec[1]))
+        if 'nometadata' in item.keywords:
+            params = item.callspec.params
+            mark = None
+            for m in item.own_markers:
+                if m.name == 'nometadata':
+                    mark = m
+                    break
+            if params['meta_cve'] in mark.args[1]:
+                item.add_marker(fail_nometadata)
+        if 'brokenmetadata' in item.keywords:
+            params = item.callspec.params
+            mark = None
+            for m in item.own_markers:
+                if m.name == 'brokenmetadata':
+                    mark = m
+                    break
+            if params['meta_cve'] in mark.args[1]:
+                item.add_marker(fail_brokenmetadata)
