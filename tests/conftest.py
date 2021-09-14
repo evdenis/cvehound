@@ -156,9 +156,18 @@ def repo():
 def hound():
     return _cvehound
 
+prev_branch = None
+@pytest.fixture
+def branch(request):
+    global prev_branch
+    if prev_branch != request.param:
+        linux_repo.git.checkout(request.param)
+        prev_branch = request.param
+    return request.param
+
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:
-        metafunc.parametrize('branch', branches)
+        metafunc.parametrize('branch', branches, indirect=True)
 
     if 'cve' in metafunc.fixturenames:
         metafunc.parametrize('cve', cves)

@@ -22,8 +22,7 @@ from cvehound.exception import UnsupportedVersion
         ('CVE-2021-40490', 'stable/linux-4.4.y'),
     ]
 )
-def test_on_branch(hound, repo, branch, cve):
-    repo.git.checkout(branch)
+def test_on_branch(hound, branch, cve):
     try:
         assert not hound.check_cve(cve), cve + ' on ' + branch
     except UnsupportedVersion:
