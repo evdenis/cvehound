@@ -149,7 +149,7 @@ def pytest_unconfigure(config):
     os.rmdir(linux_mount)
 
 @pytest.fixture
-def repo(request):
+def repo():
     return linux_repo
 
 @pytest.fixture
