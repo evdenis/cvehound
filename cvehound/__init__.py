@@ -14,7 +14,7 @@ from sympy.logic import simplify_logic
 from sympy import symbols
 from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
-from cvehound.util import get_spatch_version, get_all_cves, get_cves_metadata
+from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata
 from cvehound.kbuild import KbuildParser
 from cvehound.config import Config
 
@@ -29,7 +29,7 @@ class CVEhound:
         self.cocci_job = str(CPU().get_cocci_jobs())
         self.spatch_version = get_spatch_version()
         self.rules_metadata = {}
-        self.cve_rules = get_all_cves()
+        self.cve_rules = get_rule_cves()
 
         ipaths = [
             os.path.join('arch', arch, 'include'),

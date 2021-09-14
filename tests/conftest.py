@@ -4,7 +4,7 @@ import os
 import pytest
 import tempfile
 import psutil
-from cvehound import CVEhound, get_all_cves
+from cvehound import CVEhound, get_rule_cves
 from git import Repo
 from subprocess import run
 
@@ -136,7 +136,7 @@ def pytest_configure(config):
 
     cves = config.getoption('cve')
     if not cves:
-        cves = get_all_cves().keys()
+        cves = get_rule_cves().keys()
 
 def pytest_unconfigure(config):
     umount(linux_mount)

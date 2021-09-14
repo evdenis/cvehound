@@ -72,7 +72,7 @@ def get_spatch_version():
     res = re.match(r'spatch\s+version\s+([\d.]+)', version)
     return int(res.group(1).replace('.', ''))
 
-def get_all_cves():
+def get_rule_cves():
     cves = {}
     for cve in pkg_resources.resource_listdir('cvehound', 'cve/'):
         if cve.endswith('.grep') or cve.endswith('.cocci'):
