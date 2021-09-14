@@ -74,7 +74,7 @@ def main(args=sys.argv[1:]):
 
     hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
 
-    known_cves = hound.get_cves()
+    known_cves = hound.get_known_cves()
     if cmdargs.cve == 'all':
         cmdargs.cve = known_cves
     else:
