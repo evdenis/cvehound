@@ -64,7 +64,7 @@ def main(args=sys.argv):
 
     for cve, info in js.items():
         fix = info.get('fixes', '')
-        if fix and args[0]:
+        if fix and repo:
             try:
                 info['fix_date'] = get_commit_date(repo, fix)
             except Exception:
