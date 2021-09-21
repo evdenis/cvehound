@@ -37,7 +37,7 @@ setup(
     tests_require=test_deps,
     extras_require=extras,
     classifiers=[
-        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
@@ -49,7 +49,7 @@ setup(
         'cvehound',
         'cvehound.kbuildparse'
     ],
-    license='GPLv2',
+    license='GPLv3',
     keywords=['cve', 'linux', 'kernel', 'spatch', 'cve-scanning', 'coccinelle'],
     entry_points={
         'console_scripts': [

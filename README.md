@@ -95,6 +95,10 @@ Other args:
  - `--files`, `--cwe` - will limit the scope of checked cves to the kernel files of
    interest or specific CWE classes
 
+## LICENSE
+
+Python code is licensed under GPLv3. All rules in cvehound/cve folder are licensed under GPLv2.
+
 ## Acknowledgements
 
 I would like to thank the following projects and people behind them:
