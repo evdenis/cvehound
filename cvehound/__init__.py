@@ -69,22 +69,17 @@ class CVEhound:
             self.config = None
 
     def get_grep_pattern(self, rule):
-        is_fix = False
-        start = False
         patterns = []
         with open(rule, 'rt') as fh:
             for line in fh:
                 line = line.strip()
-                if line == 'FIX':
-                    is_fix = True
-                    start = True
+                if not line:
                     continue
-                elif line == 'ERROR':
-                    start = True
+                if line.startswith('//'):
                     continue
-                if start and line:
+                if line:
                     patterns.append(line)
-        return (is_fix, patterns)
+        return patterns
 
     def _print_found_cve(self, cve):
         logging.warning('Found: ' + cve)
@@ -149,30 +144,15 @@ class CVEhound:
                 if ('Sys_error("' + cve + ': No such file or directory")') not in err:
                     raise e
         else:
-            (is_fix, patterns) = self.get_grep_pattern(rule)
-            args = ['grep', '--include=*.[ch]', '-rPzoe', patterns[0], *files]
-            patterns.pop(0)
-            run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
-            if run.returncode == 0:
-                output = run.stdout
-                last = patterns.pop()
-                for pattern in patterns:
-                    run = subprocess.run(['grep', '-Pzoe', pattern],
-                                         input=output, check=False,
-                                         stdout=PIPE, stderr=PIPE)
-                    if run.returncode != 0:
-                        output = ''
-                        break
-                    output = run.stdout
-                if run.returncode == 0:
-                    run = subprocess.run(['grep', '-Pzoe', last],
-                                         input=output, check=False,
-                                         stdout=PIPE, stderr=PIPE)
-                    success = run.returncode == 0
-                    if is_fix == success:
-                        output = ''
-                    else:
-                        output = 'ERROR'
+            for pattern in self.get_grep_pattern(rule):
+                args = ['grep', '-rPzoe', pattern, *files]
+                run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
+                if run.returncode != 0:
+                    break
+                output += run.stdout.decode('utf-8').strip()
+            else:
+                # Found all patterns
+                output += 'ERROR'
 
         if 'ERROR' not in output:
             return False
