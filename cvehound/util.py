@@ -6,16 +6,6 @@ import json
 import gzip
 from shutil import which
 
-def dir_path(path):
-    if os.path.isdir(path):
-        return path
-    raise NotADirectoryError(path)
-
-def file_path(path):
-    if os.path.isfile(path) or path == '-':
-        return path
-    raise FileNotFoundError(path)
-
 def tool_exists(name):
     return which(name) is not None
 

@@ -30,9 +30,9 @@ def main(args=sys.argv[1:]):
                         help='check only for CWE-ids')
     parser.add_argument('--files', nargs='+', default=[],
                         help='check only files (e.g. drivers/block/floppy.c arch/x86)')
-    parser.add_argument('--kernel', '-k', type=dir_path, required=True,
+    parser.add_argument('--kernel', '-k', required=True,
                         help='linux kernel sources dir')
-    parser.add_argument('--config', nargs='?', type=file_path, const='-',
+    parser.add_argument('--config', nargs='?', const='-',
                         help='check kernel config')
     parser.add_argument('--report', nargs='?', const='report.json',
                         help='output report with found CVEs')
@@ -42,15 +42,20 @@ def main(args=sys.argv[1:]):
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
 
-    if not os.path.exists(os.path.join(cmdargs.kernel, 'Makefile')) or \
-       not os.path.exists(os.path.join(cmdargs.kernel, 'Kconfig')):
-        print('Not a kernel directory', cmdargs.kernel, file=sys.stderr)
+    if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
+               ['Makefile', 'Kconfig', 'Kbuild', 'MAINTAINERS']):
+        print(cmdargs.kernel, "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
     if cmdargs.config == '-':
         config = os.path.join(cmdargs.kernel, '.config')
         if os.path.isfile(config):
             cmdargs.config = config
+    else:
+        if cmdargs.config and not os.path.isfile(cmdargs.config):
+            print("Can't find config file", cmdargs.config, file=sys.stderr)
+            sys.exit(1)
+
     if cmdargs.config and cmdargs.verbose == 0:
         cmdargs.verbose = 1
 
