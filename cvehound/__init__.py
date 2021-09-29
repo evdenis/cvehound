@@ -24,6 +24,7 @@ __VERSION__ = '1.0.4'
 class CVEhound:
 
     def __init__(self, kernel, config=None, arch='x86'):
+        kernel = os.path.abspath(kernel)
         self.kernel = kernel
         self.metadata = get_cves_metadata()
         self.cocci_job = str(CPU().get_cocci_jobs())
@@ -145,14 +146,14 @@ class CVEhound:
                     raise e
         else:
             for pattern in self.get_grep_pattern(rule):
-                args = ['grep', '-rPzoe', pattern, *files]
+                args = ['grep', '-rPzle', pattern, *files]
                 run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
                 if run.returncode != 0:
                     break
                 output += run.stdout.decode('utf-8').strip()
             else:
                 # Found all patterns
-                output += 'ERROR'
+                output += '\nERROR'
 
         if 'ERROR' not in output:
             return False
@@ -167,13 +168,23 @@ class CVEhound:
             config_affected = None
             files = {}
             for line in output.split('\n'):
-                file = line.split(':')[0]
-                if not os.path.isfile(os.path.join(self.kernel, file)):
-                    continue
-                files[file] = self.config_map.get(file, '')
+                file = []
+                if not is_grep:
+                    file = [ line.split(':')[0] ]
+                else:
+                    while True:
+                        try:
+                            rindex = line.rindex(self.kernel)
+                        except ValueError:
+                            break
+                        file.append(line[rindex:])
+                        line = line[:rindex]
+                for f in filter(lambda f: os.path.isfile(f), file):
+                    files[f] = self.config_map.get(f, '')
             if files:
                 logging.info('Affected Files:')
                 for file, config in files.items():
+                    rel_file = file[len(self.kernel)+1:]
                     result['config'][file] = {}
                     if config:
                         config = simplify_logic(config)
@@ -189,14 +200,14 @@ class CVEhound:
                                 result['config'][file]['config'] = False
                                 if config_affected == None:
                                     config_affected = False
-                            logging.info(' - ' + file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
+                            logging.info(' - ' + rel_file + ': ' + str(config) + '\n   ' + self.config_file + ': ' + affected)
                         else:
-                            logging.info(' - ' + file + ': ' + str(config))
+                            logging.info(' - ' + rel_file + ': ' + str(config))
                     elif not file.endswith('.h'): # TODO: if only .h file, e.g. linux/kernel.h?
                         result['config'][file]['logic'] = True
                         result['config'][file]['config'] = True
                         config_affected = True
-                        logging.info(' - ' + file + ': True')
+                        logging.info(' - ' + rel_file + ': True')
             result['config']['affected'] = config_affected
             if config_affected != None:
                 affected = 'affected'
