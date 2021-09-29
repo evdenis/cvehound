@@ -168,6 +168,8 @@ class CVEhound:
             files = {}
             for line in output.split('\n'):
                 file = line.split(':')[0]
+                if not os.path.isfile(os.path.join(self.kernel, file)):
+                    continue
                 files[file] = self.config_map.get(file, '')
             if files:
                 logging.info('Affected Files:')
