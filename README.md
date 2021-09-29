@@ -10,8 +10,8 @@ rules and grep patterns. The tool checks sources for vulnerable
 code patterns of known CVEs and missing fixes for them.
 
 - **What:** The tool tries to find "unfixed" code of known CVEs;
-- **How:** The tool uses [coccinelle/grep](cvehound/cve) rules with patterns that helps to detect known CVE bugs or their fixes. Thus, sources are checked either for a presence of "unfixed" code pieces (e.g. [CVE-2020-12912](cvehound/cve/CVE-2020-12912.cocci)), or for an absence of a fix (e.g. [CVE-2017-1000255](cvehound/cve/CVE-2017-1000255.grep));
-- **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without git history. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you an information about what CVEs were fixed by kernel developers upto this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
+- **How:** The tool uses [coccinelle/grep](cvehound/cve) rules with patterns that helps to detect known CVE bugs or their fixes. Thus, sources are checked either for a presence of "unfixed" code pieces (e.g. [CVE-2020-12912](cvehound/cve/CVE-2020-12912.cocci)), or for an absence of a fix (e.g. [CVE-2020-26088](cvehound/cve/CVE-2020-26088.cocci));
+- **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without a development log. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you an information about what CVEs were fixed by kernel developers upto this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
 
 ## Prerequisites
 
@@ -70,8 +70,8 @@ CWE: Improper Restriction of Operations within the Bounds of a Memory Buffer
 FIX DATE: 2020-10-08 09:02:53
 https://www.linuxkernelcves.com/cves/CVE-2020-27194
 Affected Files:
- - ./linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
-   ./linux/.config: affected
+ - linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
+   linux/.config: affected
 Config: ./linux/.config affected
 
 Checking: CVE-2020-29371
@@ -81,8 +81,8 @@ CWE: Use of Uninitialized Resource
 FIX DATE: 2020-08-21 16:52:53
 https://www.linuxkernelcves.com/cves/CVE-2020-29371
 Affected Files:
- - ./linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
-   ./linux/.config: not affected
+ - linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
+   linux/.config: not affected
 Config: ./linux/.config not affected
 ```
 
@@ -94,6 +94,8 @@ Other args:
    check kernel .config file if there is one
  - `--files`, `--cwe` - will limit the scope of checked cves to the kernel files of
    interest or specific CWE classes
+ - `--exploit` - check only for CVEs that are known to be exploitable (according to
+   the FSTEC BDU database)
 
 ## LICENSE
 
