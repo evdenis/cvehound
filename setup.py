@@ -54,7 +54,8 @@ setup(
     entry_points={
         'console_scripts': [
             'cvehound=cvehound.__main__:main',
-            'cvehound_update_metadata=cvehound.scripts.update_metadata:main'
+            'cvehound_update_metadata=cvehound.scripts.update_metadata:main',
+            'cvehound_update_rules=cvehound.scripts.update_rules:main'
         ]
     },
     include_package_data=True
