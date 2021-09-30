@@ -43,7 +43,7 @@ def main(args=sys.argv[1:]):
     cmdargs = parser.parse_args()
 
     if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
-               ['Makefile', 'Kconfig', 'Kbuild', 'MAINTAINERS']):
+               ['Makefile', 'MAINTAINERS']):
         print(cmdargs.kernel, "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
