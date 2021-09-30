@@ -97,6 +97,10 @@ Other args:
  - `--exploit` - check only for CVEs that are known to be exploitable (according to
    the FSTEC BDU database)
 
+## How to contribute
+
+Here is the guide on [how to write detection rules](CONTRIBUTE.md).
+
 ## LICENSE
 
 Python code is licensed under GPLv3. All rules in cvehound/cve folder are licensed under GPLv2.
