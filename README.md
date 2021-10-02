@@ -15,7 +15,7 @@ code patterns of known CVEs and missing fixes for them.
 
 ## Prerequisites
 
-- Python 3 (>=3.6)
+- Python 3 (>=3.5)
 - pip (Python package manager)
 - grep with pcre support (-P flag)
 - coccinelle (>= 1.0.4)

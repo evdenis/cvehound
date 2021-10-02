@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
+        python-version: [3.5, 3.6, 3.7, 3.8, 3.9]
         os: [ubuntu-18.04, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.6]
+        python-version: [3.5]
         os: [ubuntu-latest]
         ocaml-version: [4.07.1]
         coccinelle-version: [system, 1.0.7, 1.0.8, 1.0.9, 1.1.0, git]
