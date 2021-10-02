@@ -33,7 +33,7 @@ setup(
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
     python_requires='>=3.5',
-    install_requires=['sympy'],
+    install_requires=['sympy', 'lxml'],
     tests_require=test_deps,
     extras_require=extras,
     classifiers=[
