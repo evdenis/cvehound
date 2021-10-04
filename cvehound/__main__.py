@@ -22,8 +22,8 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--version', action='version', version=get_cvehound_version())
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
-    parser.add_argument('--cve', '-c', nargs='+', default=['all'],
-                        help='list of cve identifiers')
+    parser.add_argument('--cve', '-c', nargs='+', default=['assigned'],
+                        help='list of cve identifiers (groups: [all, assigned, disputed])')
     parser.add_argument('--exploit', '-e', action='store_true',
                         help='check only for CVEs with exploits')
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
@@ -79,10 +79,14 @@ def main(args=sys.argv[1:]):
 
     hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
 
-    known_cves = hound.get_known_cves()
     if cmdargs.cve == ['all']:
-        cmdargs.cve = known_cves
+        cmdargs.cve = hound.get_all_cves()
+    elif cmdargs.cve == ['assigned']:
+        cmdargs.cve = hound.get_assigned_cves()
+    elif cmdargs.cve == ['disputed']:
+        cmdargs.cve = hound.get_disputed_cves()
     else:
+        known_cves = hound.get_all_cves()
         cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
         for i, cve in enumerate(cmdargs.cve):
             if not cve.startswith('CVE-'):

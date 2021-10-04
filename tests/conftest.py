@@ -140,7 +140,8 @@ def pytest_configure(config):
 
     cves = config.getoption('cve')
     if not cves:
-        cves = get_rule_cves().keys()
+        (cves, _, _) = get_rule_cves()
+        cves = cves.keys()
 
 def pytest_unconfigure(config):
     umount(linux_mount)

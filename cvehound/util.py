@@ -63,12 +63,19 @@ def get_spatch_version():
     return int(res.group(1).replace('.', ''))
 
 def get_rule_cves():
-    cves = {}
-    for cve in pkg_resources.resource_listdir('cvehound', 'cve/'):
-        if cve.endswith('.grep') or cve.endswith('.cocci'):
+    known = {}
+    assigned = {}
+    disputed = {}
+    for root, dirs, files in os.walk(pkg_resources.resource_filename('cvehound', 'cve/')):
+        for cve in files:
+            path = os.path.join(root, cve)
             name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
-            cves[name] = pkg_resources.resource_filename('cvehound', 'cve/' + cve)
-    return cves
+            known[name] = path
+            if 'disputed' in root:
+                disputed[name] = path
+            else:
+                assigned[name] = path
+    return (known, assigned, disputed)
 
 def get_cves_metadata():
     cves = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')

@@ -30,7 +30,7 @@ class CVEhound:
         self.cocci_job = str(CPU().get_cocci_jobs())
         self.spatch_version = get_spatch_version()
         self.rules_metadata = {}
-        self.cve_rules = get_rule_cves()
+        (self.cve_all_rules, self.cve_assigned_rules, self.cve_disputed_rules) = get_rule_cves()
 
         ipaths = [
             os.path.join('arch', arch, 'include'),
@@ -101,7 +101,7 @@ class CVEhound:
     def check_cve(self, cve, all_files=False):
         result = {}
         is_grep = False
-        rule = self.cve_rules[cve]
+        rule = self.cve_all_rules[cve]
         if rule.endswith('.grep'):
             is_grep = True
 
@@ -231,7 +231,7 @@ class CVEhound:
         if cve in self.rules_metadata:
             return self.rules_metadata[cve]
 
-        with open(self.cve_rules[cve], 'rt') as fh:
+        with open(self.cve_all_rules[cve], 'rt') as fh:
             for line in fh:
                 if not line.startswith('///'):
                     break
@@ -265,11 +265,17 @@ class CVEhound:
     def get_cve_exploit(self, cve):
         return self.metadata[cve]['exploit']
 
-    def get_known_cves(self):
-        return set(self.cve_rules.keys())
+    def get_all_cves(self):
+        return set(self.get_all_rules.keys())
+
+    def get_assigned_cves(self):
+        return set(self.cve_assigned_rules.keys())
+
+    def get_disputed_cves(self):
+        return set(self.cve_disputed_rules.keys())
 
     def get_rule(self, cve):
-        return self.cve_rules[cve]
+        return self.cve_all_rules[cve]
 
     def get_rule_fix(self, cve):
         return self.get_rule_metadata(cve)['fix']

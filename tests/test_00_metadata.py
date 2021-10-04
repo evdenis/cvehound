@@ -66,6 +66,17 @@ def test_fixes(hound, repo, cve):
         assert cve_fixes in msg_fixes, \
             "{} vs {}".format(cve_fixes[0:12], msg_fixes)
 
+def test_cve_disputed(hound, cve):
+    meta = hound.get_cve_metadata(cve)
+    rule = hound.cve_all_rules[cve]
+    if 'nvd_text' in meta and not 'disputed' in rule:
+        assert 'DIS' not in meta['nvd_text'], "{} DISPUTED".format(cve)
+
+def test_cve_rejected(hound, cve):
+    meta = hound.get_cve_metadata(cve)
+    if 'nvd_text' in meta:
+        assert 'REJ' not in meta['nvd_text'], "{} REJECTED".format(cve)
+
 @pytest.mark.lkc
 def test_cves_metadata_fix(hound, cve):
     fix = hound.get_rule_fix(cve)
