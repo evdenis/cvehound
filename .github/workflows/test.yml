@@ -62,12 +62,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-opam-${{ matrix.ocaml-version }}-
 
-    - name: Cache Kernel Bundle
-      uses: actions/cache@v2
-      with:
-        path: clone.bundle
-        key: linux-${{ steps.date.outputs.date }}
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -120,6 +114,12 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install --upgrade pytest
         python -m pip install -e '.[tests]'
+
+    - name: Cache Kernel Bundle
+      uses: actions/cache@v2
+      with:
+        path: clone.bundle
+        key: linux-${{ steps.date.outputs.date }}
 
     - name: Download Linux Tree
       run: |
