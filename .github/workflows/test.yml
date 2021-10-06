@@ -103,6 +103,7 @@ jobs:
         ./configure --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
         make
         sudo make install
+        sudo make install-python
 
     - name: Spatch Version
       run: |
