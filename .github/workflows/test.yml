@@ -96,19 +96,31 @@ jobs:
       if: ${{ matrix.coccinelle-version == 'git' }}
       run: |
         eval $(opam env)
+        opam remove -y coccinelle
         opam install -y num camlp4 pcre pyml menhir
         git clone https://github.com/coccinelle/coccinelle
         cd coccinelle
         ./autogen
-        ./configure --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
-        make
+        ./configure --prefix /usr/local --libdir /usr/local/lib --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
+        make all.opt
         sudo make install
-        sudo make install-python
 
     - name: Spatch Version
       run: |
         which opam >/dev/null 2>&1 && eval $(opam env)
         spatch --version
+        if [[ ${{ matrix.coccinelle-version }} != 'system' && ${{ matrix.coccinelle-version }} != 'git' ]]; then
+          spatch_version="$(spatch --version | head -1)"
+          if [[ ${{ matrix.coccinelle-version }} != '1.0.9' ]]; then
+            if [[ "$spatch_version" != "spatch version ${{ matrix.coccinelle-version }}"* ]]; then
+              echo "Wrong coccinelle version installed" >&2
+              exit 1
+            fi
+          elif [[ "$spatch_version" != "spatch version 1.0.8"* ]]; then
+              echo "Wrong coccinelle version installed" >&2
+              exit 1
+          fi
+        fi
 
     - name: Install CVEhound
       run: |
