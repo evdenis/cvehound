@@ -100,7 +100,7 @@ class CVEhound:
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
     def _print_affected_files(self, config):
-        if config['files']:
+        if 'files' in config and config['files']:
             logging.info('Affected Files:')
             for file in config['files']:
                 logic = config['files'][file]['logic']
@@ -178,8 +178,8 @@ class CVEhound:
         if 'ERROR' not in output:
             return False
 
+        config_result = {}
         if self.config_map:
-            config_result = {}
             files = {}
             for line in output.split('\n'):
                 file = []
