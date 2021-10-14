@@ -34,10 +34,10 @@ def main(args=sys.argv[1:]):
                         help='linux kernel sources dir')
     parser.add_argument('--config', nargs='?', const='-',
                         help='check kernel config')
+    parser.add_argument('--check-strict', action='store_true',
+                        help='output only CVEs enabled in .config')
     parser.add_argument('--report', nargs='?', const='report.json',
                         help='output report with found CVEs')
-    parser.add_argument('--report-strict', action='store_true',
-                        help='include in report only CVEs included in .config')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
@@ -48,7 +48,7 @@ def main(args=sys.argv[1:]):
         sys.exit(1)
 
     if cmdargs.config == '-':
-        config = os.path.join(cmdargs.kernel, '.config')
+        config = os.path.normpath(os.path.join(cmdargs.kernel, '.config'))
         if os.path.isfile(config):
             cmdargs.config = config
     else:
@@ -59,11 +59,9 @@ def main(args=sys.argv[1:]):
     if cmdargs.config and cmdargs.verbose == 0:
         cmdargs.verbose = 1
 
-    if cmdargs.report_strict:
-        if not cmdargs.report:
-            cmdargs.report = 'report.json'
+    if cmdargs.check_strict:
         if not cmdargs.config:
-            print('Please, use --config with --report-strict')
+            print('Please, use --config with --check-strict')
             sys.exit(1)
 
     loglevel = logging.WARNING
@@ -77,7 +75,7 @@ def main(args=sys.argv[1:]):
     if cmdargs.config and cmdargs.config != '-':
         config_info = get_config_data(cmdargs.config)
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.config, config_info.get('arch', 'x86'))
+    hound = CVEhound(cmdargs.kernel, cmdargs.config, cmdargs.check_strict, config_info.get('arch', 'x86'))
 
     if cmdargs.cve == ['all']:
         cmdargs.cve = hound.get_all_cves()
@@ -138,6 +136,7 @@ def main(args=sys.argv[1:]):
     report['args']['only_cwe'] = cmdargs.cwe
     report['args']['only_files'] = cmdargs.files
     report['args']['all_files'] = cmdargs.all_files
+    report['args']['check_strict'] = cmdargs.check_strict
     report['kernel'] = get_kernel_version(cmdargs.kernel)
     if cmdargs.config != '-':
         report['config'] = config_info
@@ -146,7 +145,7 @@ def main(args=sys.argv[1:]):
     for cve in cmdargs.cve:
         try:
             result = hound.check_cve(cve, cmdargs.all_files)
-            if result and (not cmdargs.report_strict or result['config']['affected']):
+            if result:
                 report['results'][cve] = result
         except subprocess.CalledProcessError as e:
             logging.error('Failed to run: ' + ' '.join(e.cmd))
