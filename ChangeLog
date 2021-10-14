@@ -1,7 +1,24 @@
 # ChangeLog
 
+## 1.0.6 - Oct 14 2021
+
+ - Restored support for python 3.5
+ - Fixed `cvehound --cve all ...` argument
+ - Added minimal coccinelle version to **CVE-2021-38209**, **CVE-2021-3656** rules
+ - Changed minimal coccinelle version from 1.0.8 to 1.0.7 in **CVE-2020-24490** rule
+ - Removed minimal coccinelle version for **CVE-2021-0342** rule
+ - Fixed setup.py by adding `lxml` dependency required for `cvehound_update_metadata`
+ - Fixed **CVE-2015-4700** false positive with `--all-files`
+ - Added `--cve [all, assigned, disputed]` modes. Changed default mode from _all_ to _assigned_
+ - Moved **CVE-2021-3178**, **CVE-2019-12382**, **CVE-2019-12455**, **CVE-2019-19770** to disputed mode
+ - Fixed coccinelle installation from git in CI
+ - Added coccinelle 1.0.4 to CI
+ - Added ChangeLog
+
 ## 1.0.5 - Oct 01 2021
 
+ - Added section about LICENSE to README.md
+ - Simplified .grep patterns handling
  - Added +40 new CVE descriptions
  - Added `--exploit` filter to check only for CVEs known to have exploits (according to FSTEC BDU database)
  - Added `cvehound_update_rules` script to fetch detection rules from git without updating a tool
