@@ -1,0 +1,69 @@
+# ChangeLog
+
+## 1.0.5 - Oct 01 2021
+
+ - Added +40 new CVE descriptions
+ - Added `--exploit` filter to check only for CVEs known to have exploits (according to FSTEC BDU database)
+ - Added `cvehound_update_rules` script to fetch detection rules from git without updating a tool
+
+## 1.0.4 - Sep 11 2021
+
+ - Added +24 new CVE descriptions
+ - Fixed installation problem with missing cvehound.kbuildparse package
+ - Fixed `--all-files` mode
+ - Removed support for python 3.5
+ - Added minimal coccinelle versions to **CVE-2021-3587**, **CVE-2021-3347**, **CVE-2020-11884**, **CVE-2018-1108** rules
+
+## 1.0.3 - Jul 14 2021
+
+ - Added +50 new CVE descriptions
+
+## 1.0.2 - Mar 12 2021
+
+ - Fix `--config` argument check
+
+## 1.0.1 - Mar 12 2021
+
+ - Added `--report` option to output json report
+
+## 1.0.0 - Mar 11 2021
+
+ - Added +70 new CVE descriptions
+ - Added `cvehound_update_metadata` script to fetch latest json from linuxkernelcves.com
+ - Added `--cwe` option to check only specified cwe-ids (classes)
+ - Added `--files` option to check only specified kernel dirs
+ - Added `--config` option to infer kernel configs from Makefile/Kbuild files and check kernel .config files
+ - Changed last metadata update date in output to commit date
+ - Added **linux-next** to CI
+ - Added multiple coccinelle versions to CI
+ - Many small fixes
+
+## 0.2.1 - Jan 12 2021
+
+ - Added +40 new CVE descriptions
+
+## 0.2.0 - Jan 02 2021
+
+ - Refactored tests
+ - Added **linux-stable** to CI
+ - Added metainformation from linuxkernelcves.com
+ - Fix **CVE-2020-25211** detection on "Fixes" commit
+ - Changed **CVE-2020-0465** detection
+
+## 0.1.3 - Jan 01 2021
+
+ - Added coccinelle 1.0.4, 1.0.5, 1.0.6, 1.0.7 support
+ - Reworked tests
+ - Added GitHub actions CI
+ - Fixed _Files_ tag for **CVE-2019-19448**
+ - Fixed descriptions for existing rules
+
+## 0.1.2 - Dec 30 2020
+
+ - Fixed python's 3.9 dependency
+ - Added support for python 3.5
+
+## 0.1.1 - Dec 23 2020
+
+ - Initial release
+ - Added 31 CVE descriptions
