@@ -1,5 +1,10 @@
 # ChangeLog
 
+## 1.0.7 - Oct 14 2021
+
+ - Fixed `cvehound --cve all ...` invocation
+ - Changed `--report-strict` argument to `--check-strict`
+
 ## 1.0.6 - Oct 14 2021
 
  - Restored support for python 3.5
