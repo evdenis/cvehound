@@ -10,7 +10,7 @@ def test_on_init(hound, repo, cve):
     if fixes == 'v2.6.12-rc2' or \
        fixes == '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2':
         detect = True
-    repo.git.checkout('v2.6.12-rc2')
+    repo.git.checkout('--force', 'v2.6.12-rc2')
     try:
         if detect:
             assert hound.check_cve(cve), cve + ' on first commit'

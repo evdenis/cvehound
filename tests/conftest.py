@@ -162,7 +162,7 @@ prev_branch = None
 def branch(request):
     global prev_branch
     if prev_branch != request.param:
-        linux_repo.git.checkout(request.param)
+        linux_repo.git.checkout('--force', request.param)
         prev_branch = request.param
     return request.param
 

@@ -9,7 +9,7 @@ from cvehound.exception import UnsupportedVersion
 def test_on_fixes(hound, repo, cve):
     fixes = hound.get_rule_fixes(cve)
 
-    repo.git.checkout(fixes)
+    repo.git.checkout('--force', fixes)
     try:
         assert hound.check_cve(cve), 'fails to detect on fixes tag'
 

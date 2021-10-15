@@ -9,7 +9,7 @@ from cvehound.exception import UnsupportedVersion
 def test_on_fix(hound, repo, cve):
     fix = hound.get_rule_fix(cve)
 
-    repo.git.checkout(fix)
+    repo.git.checkout('--force', fix)
     try:
         assert not hound.check_cve(cve), cve + ' fails on fix commit'
         repo.git.checkout(fix + '~')
