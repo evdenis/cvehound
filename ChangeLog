@@ -1,5 +1,11 @@
 # ChangeLog
 
+## 1.0.8 - Nov 02 2021
+
+ - Added +52 new CVE descriptions
+ - Improved CVE-2014-1737 detection
+ - Improved CVE-2014-1738 detection
+
 ## 1.0.7 - Oct 14 2021
 
  - Fixed `cvehound --cve all ...` invocation
