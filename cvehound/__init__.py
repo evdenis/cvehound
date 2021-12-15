@@ -215,7 +215,7 @@ class CVEhound:
                                 if config_affected == None:
                                     config_affected = False
                     elif not file.endswith('.h'): # TODO: if only .h file, e.g. linux/kernel.h?
-                        result_file['logic'] = True
+                        result_file['logic'] = str(True)
                         result_file['config'] = True
                         config_affected = True
                     config_result['files'][rel_file] = result_file
