@@ -30,11 +30,11 @@ def main(args=sys.argv[1:]):
                         help='check only for CVEs with exploits')
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
                         help='check only for CWE-ids')
-    parser.add_argument('--files', nargs='+', default=[],
+    parser.add_argument('--files', nargs='+', default=[], metavar='PATH',
                         help='check only files (e.g. drivers/block/floppy.c arch/x86)')
-    parser.add_argument('--kernel', '-k', required=True,
+    parser.add_argument('--kernel', '-k', required=True, metavar='DIR',
                         help='linux kernel sources dir')
-    parser.add_argument('--config', nargs='?', const='-',
+    parser.add_argument('--config', nargs='?', const='-', metavar='.config',
                         help='check kernel config')
     parser.add_argument('--check-strict', action='store_true',
                         help='output only CVEs enabled in .config')
