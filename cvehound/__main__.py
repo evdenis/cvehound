@@ -19,15 +19,16 @@ def main(args=sys.argv[1:]):
         description='A tool to check linux kernel sources dump for known CVEs',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--version', action='version', version=get_cvehound_version())
-    parser.add_argument('--all-files', action='store_true',
-                        help="don't use files hint from cocci rules")
+    parser.add_argument('--kernel', '-k', metavar='DIR',
+                        help='linux kernel sources dir')
     parser.add_argument('--list', action='store_true',
                         help="list all known CVEs and exit")
     parser.add_argument('--cve', '-c', nargs='+', default=['assigned'],
                         help='list of cve identifiers (groups: [all, assigned, disputed])')
     parser.add_argument('--exclude', '-x', nargs='+', default=[], metavar='CVE',
                         help='list of cve identifiers to exclude from check')
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='increase output verbosity')
     parser.add_argument('--exploit', '-e', action='store_true',
                         help='check only for CVEs with exploits')
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
@@ -36,16 +37,15 @@ def main(args=sys.argv[1:]):
                         help='check only files (e.g. kernel drivers/block/floppy.c arch/x86)')
     parser.add_argument('--ignore-files', nargs='+', default=[], metavar='PATH',
                         help='exclude kernel files from check (e.g. kernel/bpf)')
-    parser.add_argument('--kernel', '-k', metavar='DIR',
-                        help='linux kernel sources dir')
     parser.add_argument('--config', nargs='?', const='-', metavar='.config',
                         help='check kernel config')
     parser.add_argument('--check-strict', action='store_true',
                         help='output only CVEs enabled in .config')
     parser.add_argument('--report', nargs='?', const='report.json',
                         help='output report with found CVEs')
-    parser.add_argument('-v', '--verbose', action='count', default=0,
-                        help='increase output verbosity')
+    parser.add_argument('--all-files', action='store_true',
+                        help="don't use files hint from cocci rules")
+    parser.add_argument('--version', action='version', version=get_cvehound_version())
     cmdargs = parser.parse_args()
 
     if cmdargs.list:
