@@ -32,6 +32,8 @@ def main(args=sys.argv[1:]):
                         help='check only for CWE-ids')
     parser.add_argument('--files', nargs='+', default=[], metavar='PATH',
                         help='check only files (e.g. drivers/block/floppy.c arch/x86)')
+    parser.add_argument('--ignore-files', nargs='+', default=[], metavar='PATH',
+                        help='exclude kernel files from check (e.g. drivers/block/floppy.c arch/x86)')
     parser.add_argument('--kernel', '-k', required=True, metavar='DIR',
                         help='linux kernel sources dir')
     parser.add_argument('--config', nargs='?', const='-', metavar='.config',
@@ -110,8 +112,11 @@ def main(args=sys.argv[1:]):
     if cmdargs.all_files and cmdargs.files:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
-    for f in cmdargs.files:
-        path = re.compile(r'^[a-zA-Z-./0-9]+$')
+    if cmdargs.all_files and cmdargs.ignore_files:
+        print('--ignore-files filter and --all-files are not compatible', file=sys.stderr)
+        sys.exit(1)
+    for f in [*cmdargs.files, *cmdargs.ignore_files]:
+        path = re.compile(r'^[_a-zA-Z-./0-9]+$')
         if not path.match(f):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
@@ -131,12 +136,20 @@ def main(args=sys.argv[1:]):
             if not (rule_cwes & filter_cwes):
                 continue
         if cmdargs.files:
-            found = False
+            add = False
             for rulefile in hound.get_rule_files(cve):
-                for filterdir in cmdargs.files:
-                    if rulefile.startswith(filterdir):
-                        found = True
-            if not found:
+                if any(map(lambda x: rulefile.startswith(x), cmdargs.files)):
+                    add = True
+                    break
+            if not add:
+                continue
+        if cmdargs.ignore_files:
+            ignore = True
+            for rulefile in hound.get_rule_files(cve):
+                if all(map(lambda x: not rulefile.startswith(x) and not rulefile.endswith('.h'), cmdargs.ignore_files)):
+                    ignore = False
+                    break
+            if ignore:
                 continue
         cves.append(cve)
     cmdargs.cve = cves
