@@ -22,6 +22,8 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--version', action='version', version=get_cvehound_version())
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
+    parser.add_argument('--list', action='store_true',
+                        help="list all known CVEs and exit")
     parser.add_argument('--cve', '-c', nargs='+', default=['assigned'],
                         help='list of cve identifiers (groups: [all, assigned, disputed])')
     parser.add_argument('--exclude', '-x', nargs='+', default=[], metavar='CVE',
@@ -31,10 +33,10 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
                         help='check only for CWE-ids')
     parser.add_argument('--files', nargs='+', default=[], metavar='PATH',
-                        help='check only files (e.g. drivers/block/floppy.c arch/x86)')
+                        help='check only files (e.g. kernel drivers/block/floppy.c arch/x86)')
     parser.add_argument('--ignore-files', nargs='+', default=[], metavar='PATH',
-                        help='exclude kernel files from check (e.g. drivers/block/floppy.c arch/x86)')
-    parser.add_argument('--kernel', '-k', required=True, metavar='DIR',
+                        help='exclude kernel files from check (e.g. kernel/bpf)')
+    parser.add_argument('--kernel', '-k', metavar='DIR',
                         help='linux kernel sources dir')
     parser.add_argument('--config', nargs='?', const='-', metavar='.config',
                         help='check kernel config')
@@ -45,6 +47,16 @@ def main(args=sys.argv[1:]):
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='increase output verbosity')
     cmdargs = parser.parse_args()
+
+    if cmdargs.list:
+        (all_rules, _, _) = get_rule_cves()
+        print("\n".join(sorted(all_rules)))
+        sys.exit(0)
+
+    if not cmdargs.kernel:
+        parser.print_usage()
+        print("cvehound: error: the following arguments are required: --kernel/-k", file=sys.stderr)
+        sys.exit(1)
 
     if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
                ['Makefile', 'MAINTAINERS']):
