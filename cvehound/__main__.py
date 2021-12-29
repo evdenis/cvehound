@@ -24,6 +24,8 @@ def main(args=sys.argv[1:]):
                         help="don't use files hint from cocci rules")
     parser.add_argument('--cve', '-c', nargs='+', default=['assigned'],
                         help='list of cve identifiers (groups: [all, assigned, disputed])')
+    parser.add_argument('--exclude', '-x', nargs='+', default=[], metavar='CVE',
+                        help='list of cve identifiers to exclude from check')
     parser.add_argument('--exploit', '-e', action='store_true',
                         help='check only for CVEs with exploits')
     parser.add_argument('--cwe', nargs='+', default=[], type=int,
@@ -77,6 +79,7 @@ def main(args=sys.argv[1:]):
 
     hound = CVEhound(cmdargs.kernel, cmdargs.config, cmdargs.check_strict, config_info.get('arch', 'x86'))
 
+    cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
     if cmdargs.cve == ['all']:
         cmdargs.cve = hound.get_all_cves()
     elif cmdargs.cve == ['assigned']:
@@ -85,7 +88,6 @@ def main(args=sys.argv[1:]):
         cmdargs.cve = hound.get_disputed_cves()
     else:
         known_cves = hound.get_all_cves()
-        cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
         for i, cve in enumerate(cmdargs.cve):
             if not cve.startswith('CVE-'):
                 cve = 'CVE-' + cve
@@ -96,6 +98,14 @@ def main(args=sys.argv[1:]):
             if cve not in known_cves:
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
+
+    for i, cve in enumerate(cmdargs.exclude):
+        if not cve.startswith('CVE-'):
+            cve = 'CVE-' + cve
+            cmdargs.exclude[i] = cve
+        if not cve_id.match(cve):
+            print('Wrong CVE-ID:', cve, file=sys.stderr)
+            sys.exit(1)
 
     if cmdargs.all_files and cmdargs.files:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
@@ -109,6 +119,8 @@ def main(args=sys.argv[1:]):
     filter_cwes = frozenset(cmdargs.cwe)
     cves = []
     for cve in cmdargs.cve:
+        if cve in cmdargs.exclude:
+            continue
         if cmdargs.exploit and not hound.get_cve_exploit(cve):
             continue
         if cmdargs.cwe:
