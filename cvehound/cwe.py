@@ -102,6 +102,7 @@ CWE = {
     "Uncontrolled Resource Consumption ('Resource Exhaustion')": [400],
     "Unspecified": [],
     "Use After Free": [416],
+    "Use of a Broken or Risky Cryptographic Algorithm": [327],
     "Use of Insufficiently Random Values": [330],
     "Use of Uninitialized Resource": [908],
 }
