@@ -8,11 +8,14 @@ def get_active_cores():
     return len(os.sched_getaffinity(0))
 
 def get_threads_per_core():
-    lscpu = (subprocess.run(['lscpu'],
-                stdout=PIPE, stderr=PIPE, check=True)
-            .stdout.decode('utf-8'))
-    line = next(line for line in lscpu.split('\n') if line.startswith('Thread(s)'))
-    return int(line.split(':')[1])
+    try:
+        lscpu = (subprocess.run(['lscpu'],
+                    stdout=PIPE, stderr=PIPE, check=True)
+                .stdout.decode('utf-8'))
+        line = next(line for line in lscpu.split('\n') if line.startswith('Thread(s)'))
+        return int(line.split(':')[1])
+    except subprocess.CalledProcessError:
+        return 1
 
 
 class CPU():
