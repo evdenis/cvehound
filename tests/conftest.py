@@ -135,7 +135,6 @@ def pytest_configure(config):
             'stable/linux-4.19.y',
             'stable/linux-4.14.y',
             'stable/linux-4.9.y',
-            'stable/linux-4.4.y'
         ]
 
     cves = config.getoption('cve')
