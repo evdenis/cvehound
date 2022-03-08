@@ -30,6 +30,7 @@ CWE = {
     "Improper Authentication": [287],
     "Improper Authorization": [285],
     "Improper Check for Unusual or Exceptional Conditions": [754],
+    "Improper Control of Dynamically-Managed Code Resources": [913],
     "Improper Control of Generation of Code ('Code Injection')": [94],
     "Improper Error Handling": [728, 7, 203, 209, 228, 252, 289, 390, 391, 394, 636],
     "Improper Handling of Exceptional Conditions": [755],
