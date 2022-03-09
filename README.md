@@ -13,6 +13,24 @@ code patterns of known CVEs and missing fixes for them.
 - **How:** The tool uses [coccinelle/grep](cvehound/cve) rules with patterns that helps to detect known CVE bugs or their fixes. Thus, sources are checked either for a presence of "unfixed" code pieces (e.g. [CVE-2020-12912](cvehound/cve/CVE-2020-12912.cocci)), or for an absence of a fix (e.g. [CVE-2020-26088](cvehound/cve/CVE-2020-26088.cocci));
 - **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without a development log. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you an information about what CVEs were fixed by kernel developers upto this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
 
+### CVEHound: Audit Kernel Sources for Missing CVE Fixes
+
+[Linux Security Summit 2021 Presentation (EN)](docs/LSS2021_CVEhound_en.pdf)
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=jIDnVeZNUA8">
+    <img src="https://img.youtube.com/vi/jIDnVeZNUA8/0.jpg" alt="Linux Security Summit 2021 Presentation"/>
+  </a>
+</p>
+
+[ZeroNights 2021 Presentation (RU)](docs/ZN2021_CVEhound_ru.pdf)
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=GG-YHLn5E1Q">
+    <img src="https://img.youtube.com/vi/GG-YHLn5E1Q/0.jpg" alt="ZeroNights 2021 Presentation"/>
+  </a>
+</p>
+
 ## Prerequisites
 
 - Python 3 (>=3.5)
