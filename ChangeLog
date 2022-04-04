@@ -1,5 +1,19 @@
 # ChangeLog
 
+## 1.0.9 - Apr 04 2022
+
+ - Added +43 new CVE descriptions
+ - Improved CVE-2019-15221 detection
+ - Fixed CVE-2020-25670 detection
+ - Fixed CVE-2020-25671 detection
+ - Added `--exclude` option to drop CVEs from check
+ - Added `--ignore-files` option to exclude kernel files from check
+ - Added `--list` options to list all known CVEs
+ - Improved `--help` output
+ - Removed strict lscpu dependency
+ - Fixed a crash when using `--exploit` option and metadata is not available
+ - Fixed a crash when using `--config` option and CVE is found in an .h file
+
 ## 1.0.8 - Nov 02 2021
 
  - Added +52 new CVE descriptions
