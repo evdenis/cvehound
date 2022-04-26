@@ -13,8 +13,6 @@ from cvehound.exception import UnsupportedVersion
         ('CVE-2019-12455', 'stable/linux-4.14.y'), # Disputed
         ('CVE-2019-12455', 'stable/linux-4.19.y'), # Disputed
         ('CVE-2021-22543', 'stable/linux-4.9.y'),
-        ('CVE-2021-41864', 'stable/linux-4.14.y'),
-        ('CVE-2021-41864', 'stable/linux-4.9.y'),
         ('CVE-2022-1011', 'stable/linux-4.9.y'),
         ('CVE-2022-0998', 'stable/linux-5.15.y'),
     ]
