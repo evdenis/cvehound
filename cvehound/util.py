@@ -24,18 +24,15 @@ def get_config_data(path):
     return {}
 
 def get_kernel_version(path):
-    version = {}
     with open(os.path.join(path, 'Makefile'), 'rt') as fh:
-        def getparam():
-            line = fh.readline()
-            if line.startswith('#'):
-                line = fh.readline()
-            return line.split('=')[1].strip()
-        version['version'] = getparam()
-        version['patchlevel'] = getparam()
-        version['sublevel'] = getparam()
-        version['extraversion'] = getparam()
-        version['name'] = getparam()
+        makefile = fh.read()
+    version = {}
+    for key in ['version', 'patchlevel', 'sublevel', 'extraversion', 'name']:
+        res = re.search('^' + key.upper() + r'[ \t]*=[ \t]*(.*)[ \t]*$', makefile, re.MULTILINE)
+        if res:
+            version[key] = res.group(1)
+        else:
+            version[key] = ''
     version['full'] = '.'.join([version['version'], version['patchlevel'], version['sublevel']]) + version['extraversion']
     return version
 
