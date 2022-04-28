@@ -77,7 +77,7 @@ def main(args=sys.argv[1:]):
 
     if cmdargs.check_strict:
         if not cmdargs.config:
-            print('Please, use --config with --check-strict')
+            print('Please, use --check-strict with --config', file=sys.stderr)
             sys.exit(1)
 
     loglevel = logging.WARNING
