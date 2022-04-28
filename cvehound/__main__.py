@@ -59,7 +59,7 @@ def main(args=sys.argv[1:]):
         sys.exit(1)
 
     if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
-               ['Makefile', 'MAINTAINERS']):
+               ['Makefile']):
         print(cmdargs.kernel, "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
