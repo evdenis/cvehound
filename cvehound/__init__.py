@@ -14,7 +14,7 @@ from sympy.logic import simplify_logic
 from sympy import symbols
 from cvehound.cpu import CPU
 from cvehound.exception import UnsupportedVersion
-from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata
+from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata, parse_coccinelle_output
 from cvehound.kbuild import KbuildParser
 from cvehound.config import Config
 
@@ -218,7 +218,7 @@ class CVEhound:
                         result_file['logic'] = str(True)
                         result_file['config'] = True
                         config_affected = True
-                    elif file.endswith('.h'): # FIXME: only .h file? 
+                    elif file.endswith('.h'): # FIXME: only .h file?
                         result_file['logic'] = str(True)
                         result_file['config'] = True
                         config_affected = True
@@ -231,6 +231,7 @@ class CVEhound:
                 result = self.metadata[cve]
             result['config'] = config_result
             result['spatch_output'] = output
+            result['files'] = parse_coccinelle_output(output)
             self._print_found_cve(cve)
             self._print_affected_files(config_result)
             logging.debug(output)
