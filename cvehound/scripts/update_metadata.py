@@ -52,12 +52,16 @@ def get_commit_date(repo, commit):
 
 def main(args=sys.argv):
     if len(args) < 2 or not os.path.isdir(os.path.join(args[1], '.git')):
-        print('Usage: {} <kernel_repo_dir>'.format(args[0]), file=sys.stderr)
-        exit(1)
+        print('Usage: {} <kernel_repo_dir> [metadata_file]'.format(args[0]), file=sys.stderr)
+        sys.exit(1)
     repo = args[1]
 
-    filename = os.environ.get('CVEHOUND_METADATA',
-                              pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
+    filename = None
+    if len(args) == 3:
+        filename = args[2]
+    else:
+        filename = os.environ.get('CVEHOUND_METADATA',
+                                  pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
 
     public, private = get_exploit_status_from_fstec()
 
