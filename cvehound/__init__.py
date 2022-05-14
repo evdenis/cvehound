@@ -23,10 +23,10 @@ __VERSION__ = '1.0.9'
 
 class CVEhound:
 
-    def __init__(self, kernel, config=None, check_strict=False, arch='x86'):
+    def __init__(self, kernel, metadata=None, config=None, check_strict=False, arch='x86'):
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
-        self.metadata = get_cves_metadata(None)
+        self.metadata = get_cves_metadata(metadata)
         self.cocci_job = str(CPU().get_cocci_jobs())
         self.spatch_version = get_spatch_version()
         self.check_strict = check_strict

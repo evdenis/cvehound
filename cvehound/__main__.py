@@ -45,6 +45,8 @@ def main(args=sys.argv[1:]):
                         help='output report with found CVEs')
     parser.add_argument('--all-files', action='store_true',
                         help="don't use files hint from cocci rules")
+    parser.add_argument('--metadata', metavar='PATH',
+                        help="Path to non-standard location of kernel_cves.json.gz")
     parser.add_argument('--version', action='version', version=get_cvehound_version())
     cmdargs = parser.parse_args()
 
@@ -57,6 +59,14 @@ def main(args=sys.argv[1:]):
         parser.print_usage()
         print("cvehound: error: the following arguments are required: --kernel/-k", file=sys.stderr)
         sys.exit(1)
+
+    if cmdargs.metadata:
+        if not os.path.isfile(cmdargs.metadata):
+            print("Can't find metadata file", cmdargs.metadata, file=sys.stderr)
+            sys.exit(1)
+        if not cmdargs.metadata.endswith('.gz'):
+            print("Metadata file", cmdargs.metadata, "is not the gz archive", file=sys.stderr)
+            sys.exit(1)
 
     if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
                ['Makefile']):
@@ -91,7 +101,8 @@ def main(args=sys.argv[1:]):
     if cmdargs.config and cmdargs.config != '-':
         config_info = get_config_data(cmdargs.config)
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.config, cmdargs.check_strict, config_info.get('arch', 'x86'))
+    hound = CVEhound(cmdargs.kernel, cmdargs.metadata, cmdargs.config,
+                     cmdargs.check_strict, config_info.get('arch', 'x86'))
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
     if cmdargs.cve == ['all']:
