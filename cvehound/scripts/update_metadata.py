@@ -55,7 +55,9 @@ def main(args=sys.argv):
         print('Usage: {} <kernel_repo_dir>'.format(args[0]), file=sys.stderr)
         exit(1)
     repo = args[1]
-    filename = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')
+
+    filename = os.environ.get('CVEHOUND_METADATA',
+                              pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
 
     public, private = get_exploit_status_from_fstec()
 

@@ -74,10 +74,12 @@ def get_rule_cves():
                 assigned[name] = path
     return (known, assigned, disputed)
 
-def get_cves_metadata():
-    cves = pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz')
+def get_cves_metadata(path):
+    if not path:
+        path = os.environ.get('CVEHOUND_METADATA',
+               pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
     data = None
-    with gzip.open(cves, 'rt', encoding='utf-8') as fh:
+    with gzip.open(path, 'rt', encoding='utf-8') as fh:
         data = json.load(fh)
     return data
 
