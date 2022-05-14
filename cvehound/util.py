@@ -80,3 +80,13 @@ def get_cves_metadata():
     with gzip.open(cves, 'rt', encoding='utf-8') as fh:
         data = json.load(fh)
     return data
+
+def parse_coccinelle_output(output):
+    files = []
+    for line in output.splitlines():
+        file, hline, _ = line.split(':', 2)
+        files.append({
+            'file': file,
+            'line': int(hline),
+        })
+    return files
