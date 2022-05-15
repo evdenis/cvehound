@@ -13,12 +13,35 @@ from cvehound.util import *
 from cvehound.exception import UnsupportedVersion
 from cvehound.cwe import CWE
 
+def check_config(config):
+    valid_config_options = {
+        'kernel',
+        'cve',
+        'exclude',
+        'exploit',
+        'verbose',
+        'cwe',
+        'files',
+        'ignore_files',
+        'kernel_config'
+        'check_strict',
+        'report',
+        'all_files',
+        'metadata',
+    }
+    diff = set(config.keys()) - valid_config_options
+    if diff:
+        print("Unknown config options: " + ','.join(diff), file=sys.stderr)
+        sys.exit(1)
+
 def main(args=sys.argv[1:]):
     parser = argparse.ArgumentParser(
         prog='cvehound',
         description='A tool to check linux kernel sources dump for known CVEs',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    parser.add_argument('--config', metavar='FILE',
+                        help='cvehound.ini config file (default: /etc/cvehound.ini or $HOME/.config/cvehound.ini')
     parser.add_argument('--kernel', '-k', metavar='DIR',
                         help='linux kernel sources dir')
     parser.add_argument('--list', action='store_true',
@@ -55,68 +78,91 @@ def main(args=sys.argv[1:]):
         print("\n".join(sorted(all_rules)))
         sys.exit(0)
 
-    if not cmdargs.kernel:
+    config_args = {}
+    try:
+        if cmdargs.config:
+            config_args = parse_config(cmdargs.config)
+        else:
+            if os.path.isfile('/etc/cvehound.ini'):
+                config_args = parse_config('/etc/cvehound.ini')
+            if 'HOME' in os.environ:
+                home_config_path = os.path.join(os.environ['HOME'], '.config', 'cvehound.ini')
+                if os.path.isfile(home_config_path):
+                    config_args.update(parse_config(home_config_path))
+    except Exception as err:
+        print("Can't parse config file:", err, file=sys.stderr)
+        sys.exit(1)
+    check_config(config_args)
+    args = config_args
+    cmdargs = vars(cmdargs)
+    for arg in cmdargs.keys():
+        if cmdargs[arg] != parser.get_default(arg):
+            args[arg] = cmdargs[arg]
+        elif arg not in args:
+            args[arg] = cmdargs[arg]
+
+    if not args['kernel']:
         parser.print_usage()
         print("cvehound: error: the following arguments are required: --kernel/-k", file=sys.stderr)
         sys.exit(1)
 
-    if cmdargs.metadata:
-        if not os.path.isfile(cmdargs.metadata):
-            print("Can't find metadata file", cmdargs.metadata, file=sys.stderr)
+    if args['metadata']:
+        if not os.path.isfile(args['metadata']):
+            print("Can't find metadata file", args['metadata'], file=sys.stderr)
             sys.exit(1)
-        if not cmdargs.metadata.endswith('.gz'):
-            print("Metadata file", cmdargs.metadata, "is not the gz archive", file=sys.stderr)
+        if not args['metadata'].endswith('.gz'):
+            print("Metadata file", args['metadata'], "is not the gz archive", file=sys.stderr)
             sys.exit(1)
 
-    if not all(os.path.isfile(os.path.join(cmdargs.kernel, f)) for f in
+    if not all(os.path.isfile(os.path.join(args['kernel'], f)) for f in
                ['Makefile']):
-        print(cmdargs.kernel, "isn't a kernel directory", file=sys.stderr)
+        print(args['kernel'], "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
-    if cmdargs.kernel_config == '-':
-        config = os.path.normpath(os.path.join(cmdargs.kernel, '.config'))
+    if args['kernel_config'] == '-':
+        config = os.path.normpath(os.path.join(args['kernel'], '.config'))
         if os.path.isfile(config):
-            cmdargs.kernel_config = config
+            args['kernel_config'] = config
     else:
-        if cmdargs.kernel_config and not os.path.isfile(cmdargs.kernel_config):
-            print("Can't find config file", cmdargs.kernel_config, file=sys.stderr)
+        if args['kernel_config'] and not os.path.isfile(args['kernel_config']):
+            print("Can't find config file", args['kernel_config'], file=sys.stderr)
             sys.exit(1)
 
-    if cmdargs.kernel_config and cmdargs.verbose == 0:
-        cmdargs.verbose = 1
+    if args['kernel_config'] and args['verbose'] == 0:
+        args['verbose'] = 1
 
-    if cmdargs.check_strict:
-        if not cmdargs.kernel_config:
+    if args['check_strict']:
+        if not args['kernel_config']:
             print('Please, use --check-strict with --kernel-config', file=sys.stderr)
             sys.exit(1)
 
     loglevel = logging.WARNING
-    if cmdargs.verbose > 1:
+    if args['verbose'] > 1:
         loglevel = logging.DEBUG
-    elif cmdargs.verbose > 0:
+    elif args['verbose'] > 0:
         loglevel = logging.INFO
     logging.basicConfig(level=loglevel, format='%(message)s')
 
     config_info = {}
-    if cmdargs.kernel_config and cmdargs.kernel_config != '-':
-        config_info = get_config_data(cmdargs.kernel_config)
+    if args['kernel_config'] and args['kernel_config'] != '-':
+        config_info = get_config_data(args['kernel_config'])
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.metadata, cmdargs.kernel_config,
-                     cmdargs.check_strict, config_info.get('arch', 'x86'))
+    hound = CVEhound(args['kernel'], args['metadata'], args['kernel_config'],
+                     args['check_strict'], config_info.get('arch', 'x86'))
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
-    if cmdargs.cve == ['all']:
-        cmdargs.cve = hound.get_all_cves()
-    elif cmdargs.cve == ['assigned']:
-        cmdargs.cve = hound.get_assigned_cves()
-    elif cmdargs.cve == ['disputed']:
-        cmdargs.cve = hound.get_disputed_cves()
+    if args['cve'] == ['all']:
+        args.cve = hound.get_all_cves()
+    elif args['cve'] == ['assigned']:
+        args['cve'] = hound.get_assigned_cves()
+    elif args['cve'] == ['disputed']:
+        args['cve'] = hound.get_disputed_cves()
     else:
         known_cves = hound.get_all_cves()
-        for i, cve in enumerate(cmdargs.cve):
+        for i, cve in enumerate(args['cve']):
             if not cve.startswith('CVE-'):
                 cve = 'CVE-' + cve
-                cmdargs.cve[i] = cve
+                args['cve'][i] = cve
             if not cve_id.match(cve):
                 print('Wrong CVE-ID:', cve, file=sys.stderr)
                 sys.exit(1)
@@ -124,75 +170,75 @@ def main(args=sys.argv[1:]):
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
 
-    for i, cve in enumerate(cmdargs.exclude):
+    for i, cve in enumerate(args['exclude']):
         if not cve.startswith('CVE-'):
             cve = 'CVE-' + cve
-            cmdargs.exclude[i] = cve
+            args['exclude'][i] = cve
         if not cve_id.match(cve):
             print('Wrong CVE-ID:', cve, file=sys.stderr)
             sys.exit(1)
 
-    if cmdargs.all_files and cmdargs.files:
+    if args['all_files'] and args['files']:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
-    if cmdargs.all_files and cmdargs.ignore_files:
+    if args['all_files'] and args['ignore_files']:
         print('--ignore-files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
-    for f in [*cmdargs.files, *cmdargs.ignore_files]:
+    for f in [*args['files'], *args['ignore_files']]:
         path = re.compile(r'^[_a-zA-Z-./0-9]+$')
         if not path.match(f):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
-    filter_cwes = frozenset(cmdargs.cwe)
+    filter_cwes = frozenset(args['cwe'])
     cves = []
-    for cve in cmdargs.cve:
-        if cve in cmdargs.exclude:
+    for cve in args['cve']:
+        if cve in args['exclude']:
             continue
-        if cmdargs.exploit and not hound.get_cve_exploit(cve):
+        if args['exploit'] and not hound.get_cve_exploit(cve):
             continue
-        if cmdargs.cwe:
+        if args['cwe']:
             rule_cwe_desc = hound.get_cve_cwe(cve)
             if not rule_cwe_desc:
                 continue
             rule_cwes = frozenset(CWE[rule_cwe_desc])
             if not (rule_cwes & filter_cwes):
                 continue
-        if cmdargs.files:
+        if args['files']:
             add = False
             for rulefile in hound.get_rule_files(cve):
-                if any(map(lambda x: rulefile.startswith(x), cmdargs.files)):
+                if any(map(lambda x: rulefile.startswith(x), args['files'])):
                     add = True
                     break
             if not add:
                 continue
-        if cmdargs.ignore_files:
+        if args['ignore_files']:
             ignore = True
             for rulefile in hound.get_rule_files(cve):
-                if all(map(lambda x: not rulefile.startswith(x) and not rulefile.endswith('.h'), cmdargs.ignore_files)):
+                if all(map(lambda x: not rulefile.startswith(x) and not rulefile.endswith('.h'), args['ignore_files'])):
                     ignore = False
                     break
             if ignore:
                 continue
         cves.append(cve)
-    cmdargs.cve = cves
+    args['cve'] = cves
 
     report = { 'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
-    report['args']['cve'] = cmdargs.cve
-    report['args']['kernel'] = cmdargs.kernel
-    report['args']['config'] = cmdargs.kernel_config
-    report['args']['only_cwe'] = cmdargs.cwe
-    report['args']['only_files'] = cmdargs.files
-    report['args']['all_files'] = cmdargs.all_files
-    report['args']['check_strict'] = cmdargs.check_strict
-    report['kernel'] = get_kernel_version(cmdargs.kernel)
-    if cmdargs.kernel_config != '-':
+    report['args']['cve'] = args['cve']
+    report['args']['kernel'] = args['kernel']
+    report['args']['config'] = args['kernel_config']
+    report['args']['only_cwe'] = args['cwe']
+    report['args']['only_files'] = args['files']
+    report['args']['all_files'] = args['all_files']
+    report['args']['check_strict'] = args['check_strict']
+    report['kernel'] = get_kernel_version(args['kernel'])
+    if args['kernel_config'] != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
-    for cve in cmdargs.cve:
+    for cve in args['cve']:
         try:
-            result = hound.check_cve(cve, cmdargs.all_files)
+            result = hound.check_cve(cve, args['all_files'])
             if result:
                 report['results'][cve] = result
         except subprocess.CalledProcessError as e:
@@ -200,10 +246,10 @@ def main(args=sys.argv[1:]):
         except UnsupportedVersion as err:
             logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
-    if cmdargs.report:
-        with open(cmdargs.report, 'wt', encoding='utf-8') as fh:
+    if args['report']:
+        with open(args['report'], 'wt', encoding='utf-8') as fh:
             json.dump(report, fh, indent=4, sort_keys=True)
-        print('Report saved to:', cmdargs.report)
+        print('Report saved to:', args['report'])
 
 if __name__ == '__main__':
     main(sys.argv[1:])
