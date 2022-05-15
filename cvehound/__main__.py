@@ -37,7 +37,7 @@ def main(args=sys.argv[1:]):
                         help='check only files (e.g. kernel drivers/block/floppy.c arch/x86)')
     parser.add_argument('--ignore-files', nargs='+', default=[], metavar='PATH',
                         help='exclude kernel files from check (e.g. kernel/bpf)')
-    parser.add_argument('--config', nargs='?', const='-', metavar='.config',
+    parser.add_argument('--kernel-config', nargs='?', const='-', metavar='.config',
                         help='check kernel config')
     parser.add_argument('--check-strict', action='store_true',
                         help='output only CVEs enabled in .config')
@@ -73,21 +73,21 @@ def main(args=sys.argv[1:]):
         print(cmdargs.kernel, "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
-    if cmdargs.config == '-':
+    if cmdargs.kernel_config == '-':
         config = os.path.normpath(os.path.join(cmdargs.kernel, '.config'))
         if os.path.isfile(config):
-            cmdargs.config = config
+            cmdargs.kernel_config = config
     else:
-        if cmdargs.config and not os.path.isfile(cmdargs.config):
-            print("Can't find config file", cmdargs.config, file=sys.stderr)
+        if cmdargs.kernel_config and not os.path.isfile(cmdargs.kernel_config):
+            print("Can't find config file", cmdargs.kernel_config, file=sys.stderr)
             sys.exit(1)
 
-    if cmdargs.config and cmdargs.verbose == 0:
+    if cmdargs.kernel_config and cmdargs.verbose == 0:
         cmdargs.verbose = 1
 
     if cmdargs.check_strict:
-        if not cmdargs.config:
-            print('Please, use --check-strict with --config', file=sys.stderr)
+        if not cmdargs.kernel_config:
+            print('Please, use --check-strict with --kernel-config', file=sys.stderr)
             sys.exit(1)
 
     loglevel = logging.WARNING
@@ -98,10 +98,10 @@ def main(args=sys.argv[1:]):
     logging.basicConfig(level=loglevel, format='%(message)s')
 
     config_info = {}
-    if cmdargs.config and cmdargs.config != '-':
-        config_info = get_config_data(cmdargs.config)
+    if cmdargs.kernel_config and cmdargs.kernel_config != '-':
+        config_info = get_config_data(cmdargs.kernel_config)
 
-    hound = CVEhound(cmdargs.kernel, cmdargs.metadata, cmdargs.config,
+    hound = CVEhound(cmdargs.kernel, cmdargs.metadata, cmdargs.kernel_config,
                      cmdargs.check_strict, config_info.get('arch', 'x86'))
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
@@ -180,13 +180,13 @@ def main(args=sys.argv[1:]):
     report = { 'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
     report['args']['cve'] = cmdargs.cve
     report['args']['kernel'] = cmdargs.kernel
-    report['args']['config'] = cmdargs.config
+    report['args']['config'] = cmdargs.kernel_config
     report['args']['only_cwe'] = cmdargs.cwe
     report['args']['only_files'] = cmdargs.files
     report['args']['all_files'] = cmdargs.all_files
     report['args']['check_strict'] = cmdargs.check_strict
     report['kernel'] = get_kernel_version(cmdargs.kernel)
-    if cmdargs.config != '-':
+    if cmdargs.kernel_config != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
