@@ -87,7 +87,7 @@ sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
 ``` shell
-$ cvehound --kernel ./linux --config --cve CVE-2020-27194 CVE-2020-29371
+$ cvehound --kernel ./linux --kernel-config --cve CVE-2020-27194 CVE-2020-29371
 Checking: CVE-2020-27194
 Found: CVE-2020-27194
 MSG: bpf: Fix scalar32_min_max_or bounds tracking
@@ -114,7 +114,7 @@ Config: ./linux/.config not affected
 Other args:
  - `--report` - will produce json file with found CVEs
    Most of metainformation in generated report is taken from linuxkernelcves.com
- - `--config` or `--config <file>` - will infer the kernel configuration required to
+ - `--kernel-config` or `--kernel-config <file>` - will infer the kernel configuration required to
    build the affected code (based on Kbuild/Makefiles, ifdefs are not checked) and
    check kernel .config file if there is one
  - `--files`, `--cwe` - will limit the scope of checked cves to the kernel files of
