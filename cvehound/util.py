@@ -5,6 +5,7 @@ import pkg_resources
 import json
 import gzip
 from shutil import which
+from configparser import ConfigParser
 
 def tool_exists(name):
     return which(name) is not None
@@ -92,3 +93,32 @@ def parse_coccinelle_output(output):
             'line': int(hline),
         })
     return files
+
+def parse_config(file):
+    parser = ConfigParser()
+    with open(file, 'rt') as fh:
+        parser.read_string("[cvehound]\n" + fh.read())
+    config = dict(parser['cvehound'])
+
+    for key in ['cve', 'exclude', 'cwe', 'files', 'ignore_files']:
+        if key not in config:
+            continue
+        config[key] = config[key].split()
+
+    if 'verbose' in config:
+        try:
+            config['verbose'] = int(config['verbose'])
+        except ValueError:
+            raise Exception('"verbose" should be an integer')
+
+    for key in ['check_strict', 'all_files', 'exploit']:
+        if key not in config:
+            continue
+        if config[key].lower() in ['y', 't', '1', 'yes', 'true']:
+            config[key] = True
+        elif config[key].lower() in ['n', 'f', '0', 'no', 'false']:
+            config[key] = False
+        else:
+            raise Exception("Can't parse boolean argument " + key)
+
+    return config
