@@ -180,7 +180,7 @@ class CVEhound:
 
         config_result = {}
         if self.config_map:
-            files = {}
+            kernel_files = {}
             for line in output.split('\n'):
                 file = []
                 if not is_grep:
@@ -194,12 +194,12 @@ class CVEhound:
                         file.append(line[rindex:])
                         line = line[:rindex]
                 for f in filter(lambda f: os.path.isfile(f), file):
-                    files[f] = self.config_map.get(f, '')
-            if files:
+                    kernel_files[f] = self.config_map.get(f, '')
+            if kernel_files:
                 config_affected = None
                 if 'files' not in config_result:
                     config_result['files'] = {}
-                for file, config in files.items():
+                for file, config in kernel_files.items():
                     rel_file = file[len(self.kernel)+1:]
                     result_file = {}
                     if config:
@@ -231,7 +231,10 @@ class CVEhound:
                 result = self.metadata[cve]
             result['config'] = config_result
             result['spatch_output'] = output
-            result['files'] = parse_coccinelle_output(output)
+            if not is_grep:
+                result['files'] = parse_coccinelle_output(output)
+            else:
+                result['files'] = list(map(lambda x: { "file": x } , files))
             self._print_found_cve(cve)
             self._print_affected_files(config_result)
             logging.debug(output)
