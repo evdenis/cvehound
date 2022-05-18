@@ -50,7 +50,8 @@ def test_cves_metadata_cwe(hound):
         ('CVE-2015-8961', "wrong fixes tag, the error was introduced in 9d5065940693"),
         ('CVE-2017-12188', "wrong fixes tag, see https://www.spinics.net/lists/kvm/msg156651.html"),
         ('CVE-2017-7558', "wrong fixes tag, 52c52a61a39f intoduces it a bit earlier"),
-        ('CVE-2016-9919', "wron fixes tag, see https://bugzilla.redhat.com/show_bug.cgi?id=1403260"),
+        ('CVE-2016-9919', "wrong fixes tag, see https://bugzilla.redhat.com/show_bug.cgi?id=1403260"),
+        ('CVE-2019-18809', "wrong fixes tag (too far)"),
     ]
 )
 def test_fixes(hound, repo, cve):
