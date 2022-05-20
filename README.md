@@ -36,6 +36,8 @@ code patterns of known CVEs and missing fixes for them.
  - CVE-2020-27825 fix [missing backports](https://lkml.org/lkml/2021/1/21/1278) for [5.4, 4.19, 4.14, 4.9, 4.4 kernels](https://www.spinics.net/lists/stable/msg440412.html)
  - CVE-2021-4149 fix [missing backports](https://lore.kernel.org/stable/d1a3f31f-2205-6dce-0f33-6611972e48cd@gmx.com/T/#t) to [4.19, 4.14, 4.9 kernels](https://lore.kernel.org/stable/20220309064748.160978-1-denis.e.efremov@oracle.com/)
  - CVE-2022-26490 fix [missing backports](https://lore.kernel.org/all/20220321174006.47972-1-denis.e.efremov@oracle.com/)
+ - Similar to CVE-2021-28660 [fix in r8188eu driver](https://lore.kernel.org/all/20220518070052.108287-1-denis.e.efremov@oracle.com/#r)
+ - Similar to CVE-2021-28660 [fix in rtl8723bs driver](https://lore.kernel.org/all/20220520035730.5533-1-efremov@linux.com/)
  - See [tests exceptions](https://github.com/evdenis/cvehound/blob/master/tests/test_01_on_branch.py#L7) for more examples
 
 ## Prerequisites
