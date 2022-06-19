@@ -6,6 +6,7 @@ import os
 
 from cvehound.exception import UnsupportedVersion
 
+@pytest.mark.slow
 def test_on_fixes(hound, repo, cve):
     fixes = hound.get_rule_fixes(cve)
 
