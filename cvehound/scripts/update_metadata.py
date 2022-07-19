@@ -17,7 +17,8 @@ def get_exploit_status_from_fstec():
     with urlopen(req) as uh:
         with ZipFile(BytesIO(uh.read())) as zh:
             with zh.open('export/export.xml') as fh:
-                tree = etree.parse(fh)
+                parser = etree.XMLParser(recover=True)
+                tree = etree.parse(fh, parser)
 
     public = set()
     private = set()
