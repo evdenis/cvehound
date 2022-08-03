@@ -28,6 +28,7 @@ def check_config(config):
         'report',
         'all_files',
         'metadata',
+        'ignore',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -70,6 +71,8 @@ def main(args=sys.argv[1:]):
                         help="don't use files hint from cocci rules")
     parser.add_argument('--metadata', metavar='PATH',
                         help="Path to non-standard location of kernel_cves.json.gz")
+    parser.add_argument('--ignore', nargs='?', const='-',
+                        help="Ignore CVEs from file (seperated by new line)")
     parser.add_argument('--version', action='version', version=get_cvehound_version())
     cmdargs = parser.parse_args()
 
@@ -169,6 +172,17 @@ def main(args=sys.argv[1:]):
             if cve not in known_cves:
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
+
+    if args['ignore']:
+        with open(args['ignore'], 'r', encoding='utf-8') as ignore_file:
+            cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}')
+            for line in ignore_file.read().splitlines():
+                if not cve_id.match(line):
+                    print('Wrong CVE-ID:', line, file=sys.stderr)
+                    sys.exit(1)
+
+                if line in args['cve']:
+                    args['cve'].remove(line)
 
     for i, cve in enumerate(args['exclude']):
         if not cve.startswith('CVE-'):
