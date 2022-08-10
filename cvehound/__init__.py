@@ -2,12 +2,9 @@
 
 import os
 import sys
-import argparse
-import re
 import subprocess
 import logging
 from subprocess import PIPE
-import pkg_resources
 import collections
 from datetime import datetime
 from sympy.logic import simplify_logic
