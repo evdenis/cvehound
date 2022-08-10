@@ -12,7 +12,7 @@ import collections
 from datetime import datetime
 from sympy.logic import simplify_logic
 from sympy import symbols
-from cvehound.cpu import CPU
+from cvehound.cpu import get_cocci_jobs
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata, parse_coccinelle_output
 from cvehound.kbuild import KbuildParser
@@ -27,7 +27,7 @@ class CVEhound:
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
         self.metadata = get_cves_metadata(metadata)
-        self.cocci_job = str(CPU().get_cocci_jobs())
+        self.cocci_job = str(get_cocci_jobs())
         self.spatch_version = get_spatch_version()
         self.check_strict = check_strict
         self.rules_metadata = {}
