@@ -149,6 +149,7 @@ class CVEhound:
                 cocci_cmd = ['spatch', '--no-includes', '--include-headers',
                              '-D', 'detect', '--no-show-diff', '-j', self.cocci_job,
                              *includes,
+                             '--python', os.path.realpath(sys.executable),
                              '--chunksize', '1',
                              '--cocci-file', rule, *files]
 
