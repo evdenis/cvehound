@@ -155,10 +155,10 @@ class CVEhound:
 
                 logging.debug(' '.join(cocci_cmd))
 
-                run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True)
-                output = run.stdout.decode('utf-8').strip()
+                run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True, universal_newlines=True)
+                output = run.stdout.strip()
             except subprocess.CalledProcessError as e:
-                err = e.stderr.decode('utf-8').split('\n')[-2]
+                err = e.stderr.split('\n')[-2]
                 # Coccinelle 1.0.4 bug workaround
                 if ('Sys_error("' + cve + ': No such file or directory")') not in err:
                     raise e
@@ -168,7 +168,7 @@ class CVEhound:
                 run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
                 if run.returncode != 0:
                     break
-                output += run.stdout.decode('utf-8').strip()
+                output += run.stdout.strip()
             else:
                 # Found all patterns
                 output += '\nERROR'
