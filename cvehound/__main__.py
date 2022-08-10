@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import re
+import shutil
 import subprocess
 import logging
 import json
@@ -135,6 +136,10 @@ def main(args=sys.argv[1:]):
         if not args['kernel_config']:
             print('Please, use --check-strict with --kernel-config', file=sys.stderr)
             sys.exit(1)
+
+    if not shutil.which('spatch'):
+        print("coccinelle is not installed", file=sys.stderr)
+        sys.exit(1)
 
     loglevel = logging.WARNING
     if args['verbose'] > 1:
