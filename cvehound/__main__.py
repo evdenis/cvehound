@@ -262,7 +262,7 @@ def main(args=sys.argv[1:]):
             if result:
                 report['results'][cve] = result
         except subprocess.CalledProcessError as e:
-            logging.error('Failed to run: ' + ' '.join(e.cmd))
+            logging.error('Failed to run: ' + ' '.join(e.cmd) + '\nError: ' + e.stderr)
         except UnsupportedVersion as err:
             logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
