@@ -55,6 +55,9 @@ $ sudo apt install python3-pip coccinelle libpython2.7
 
 # Fedora
 $ sudo dnf install python3-pip coccinelle
+
+# macOS
+$ brew install coccinelle
 ```
 
 ## Installation
