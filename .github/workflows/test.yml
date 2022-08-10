@@ -28,7 +28,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install CVEhound
-      run: pip3 install 'git+https://github.com/evdenis/cvehound.git@master'
+      run: python -m pip install git+$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git@$GITHUB_REF_NAME
 
     - name: Run CVEHound
       run: |
