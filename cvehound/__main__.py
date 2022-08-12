@@ -9,6 +9,8 @@ import subprocess
 import logging
 import json
 
+from concurrent.futures import ProcessPoolExecutor
+
 from cvehound import CVEhound
 from cvehound.util import *
 from cvehound.exception import UnsupportedVersion
@@ -256,11 +258,18 @@ def main(args=sys.argv[1:]):
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
-    for cve in args['cve']:
+
+    futures = []
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as p:
+        for cve in args['cve']:
+            f = p.submit(hound.check_cve, cve, args['all_files'])
+            futures.append(f)
+
+    # Processing of results is delayed until CVE checking is complete
+    for f in futures:
         try:
-            result = hound.check_cve(cve, args['all_files'])
-            if result:
-                report['results'][cve] = result
+            if f.result():
+                report['results'][cve] = f.result()
         except subprocess.CalledProcessError as e:
             logging.error('Failed to run: ' + ' '.join(e.cmd) + '\nError: ' + e.stderr)
         except UnsupportedVersion as err:
