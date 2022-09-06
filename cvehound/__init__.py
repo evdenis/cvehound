@@ -145,10 +145,11 @@ class CVEhound:
             try:
                 cocci_cmd = ['spatch', '--no-includes', '--include-headers',
                              '-D', 'detect', '--no-show-diff', '-j', '1',
-                             *includes,
-                             '--python', os.path.realpath(sys.executable),
                              '--chunksize', '1',
-                             '--cocci-file', rule, *files]
+                             *includes]
+                if self.spatch_version > 104: # Not suppored on coccinelle 1.0.4
+                    cocci_cmd.extend(['--python', os.path.realpath(sys.executable)])
+                cocci_cmd.extend(['--cocci-file', rule, *files])
 
                 logging.debug(' '.join(cocci_cmd))
 
