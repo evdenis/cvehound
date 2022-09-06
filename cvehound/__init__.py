@@ -162,7 +162,7 @@ class CVEhound:
         else:
             for pattern in self.get_grep_pattern(rule):
                 args = ['grep', '-rPzle', pattern, *files]
-                run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False)
+                run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False, universal_newlines=True)
                 if run.returncode != 0:
                     break
                 output += run.stdout.strip()
