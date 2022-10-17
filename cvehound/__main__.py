@@ -9,7 +9,7 @@ import subprocess
 import logging
 import json
 
-from concurrent.futures import ProcessPoolExecutor
+import concurrent.futures
 
 from cvehound import CVEhound
 from cvehound.util import *
@@ -259,21 +259,20 @@ def main(args=sys.argv[1:]):
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
 
-    futures = []
-    with ProcessPoolExecutor(max_workers=os.cpu_count()) as p:
-        for cve in args['cve']:
-            f = p.submit(hound.check_cve, cve, args['all_files'])
-            futures.append(f)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        future_to_cve = { executor.submit(hound.check_cve, cve, args['all_files']): cve
+                          for cve in args['cve'] }
 
-    # Processing of results is delayed until CVE checking is complete
-    for f in futures:
-        try:
-            if f.result():
-                report['results'][cve] = f.result()
-        except subprocess.CalledProcessError as e:
-            logging.error('Failed to run: ' + ' '.join(e.cmd) + '\nError: ' + e.stderr)
-        except UnsupportedVersion as err:
-            logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
+        for future in concurrent.futures.as_completed(future_to_cve):
+            cve = future_to_cve[future]
+            try:
+                result = future.result()
+                if result:
+                    report['results'][cve] = result
+            except subprocess.CalledProcessError as e:
+                logging.error('Failed to run: ' + ' '.join(e.cmd) + '\nError: ' + e.stderr)
+            except UnsupportedVersion as err:
+                logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
     if args['report']:
         with open(args['report'], 'wt', encoding='utf-8') as fh:
