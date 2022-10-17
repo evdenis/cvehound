@@ -144,8 +144,8 @@ class CVEhound:
                 raise UnsupportedVersion(self.spatch_version, cve, rule_ver)
             try:
                 cocci_cmd = ['spatch', '--no-includes', '--include-headers',
-                             '-D', 'detect', '--no-show-diff', '-j', '1',
-                             '--chunksize', '1',
+                             '-D', 'detect', '--chunksize', '1', '-j', '1',
+                             '--no-show-diff', '--very-quiet',
                              *includes]
                 if self.spatch_version > 104: # Not suppored on coccinelle 1.0.4
                     cocci_cmd.extend(['--python', os.path.realpath(sys.executable)])
