@@ -243,7 +243,11 @@ def main(args=sys.argv[1:]):
             if ignore:
                 continue
         cves.append(cve)
-    args['cve'] = cves
+
+    args['files'].sort()
+    args['ignore_files'].sort()
+    args['cwe'].sort()
+    args['cve'] = sorted(cves)
 
     report = { 'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
     report['args']['cve'] = args['cve']
