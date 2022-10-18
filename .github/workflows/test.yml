@@ -47,7 +47,7 @@ jobs:
         coccinelle-version: [system, 1.0.7, 1.0.8, 1.0.9, 1.1.0, 1.1.1, git]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
