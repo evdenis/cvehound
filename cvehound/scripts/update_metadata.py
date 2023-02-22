@@ -6,6 +6,7 @@ import pkg_resources
 import gzip
 import json
 import subprocess
+import ssl
 from urllib.request import urlopen, Request
 from datetime import datetime
 import lxml.etree as etree
@@ -13,8 +14,11 @@ from io import BytesIO
 from zipfile import ZipFile
 
 def get_exploit_status_from_fstec():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     req = Request('https://bdu.fstec.ru/files/documents/vulxml.zip', headers={'User-Agent': 'Mozilla/5.0'})
-    with urlopen(req) as uh:
+    with urlopen(req, context=ctx) as uh:
         with ZipFile(BytesIO(uh.read())) as zh:
             with zh.open('export/export.xml') as fh:
                 parser = etree.XMLParser(recover=True)
