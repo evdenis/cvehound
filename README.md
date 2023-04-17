@@ -38,6 +38,7 @@ code patterns of known CVEs and missing fixes for them.
  - CVE-2022-26490 fix [missing backports](https://lore.kernel.org/all/20220321174006.47972-1-denis.e.efremov@oracle.com/)
  - Similar to CVE-2021-28660 [fix in r8188eu driver](https://lore.kernel.org/all/20220518070052.108287-1-denis.e.efremov@oracle.com/#r)
  - Similar to CVE-2021-28660 [fix in rtl8723bs driver](https://lore.kernel.org/all/20220520035730.5533-1-efremov@linux.com/)
+ - Security [regression CVE-2020-10781](https://lkml.org/lkml/2023/4/17/744)
  - See [tests exceptions](https://github.com/evdenis/cvehound/blob/master/tests/test_01_on_branch.py#L7) for more examples
 
 ## Prerequisites
