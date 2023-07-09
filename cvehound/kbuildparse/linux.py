@@ -408,10 +408,10 @@ class LinuxBefore(BaseClasses.BeforePass):
 
 class _00_LinuxDefinitions(BaseClasses.DuringPass):
 
-    regex_subst_match = re.compile(r".*-\$\(subst m,y,\$\(" + CONFIG_FORMAT + "\)\)\s*[\+|:|]=.*")
-    regex_subst_sub = re.compile(r"(.*)-\$\(subst m,y,\$\(" + CONFIG_FORMAT + "\)\)\s*(\+=|=|:=)(.*)")
-    regex_my_match = re.compile(r".*-\$\(" + CONFIG_FORMAT + ":m=y\)\s*[\+|:|]=.*")
-    regex_my_sub = re.compile(r"(.*)-\$\(" + CONFIG_FORMAT + ":m=y\)\s*(\+=|=|:=)(.*)")
+    regex_subst_match = re.compile(r".*-\$\(subst m,y,\$\(" + CONFIG_FORMAT + r"\)\)\s*[\+|:|]=.*")
+    regex_subst_sub = re.compile(r"(.*)-\$\(subst m,y,\$\(" + CONFIG_FORMAT + r"\)\)\s*(\+=|=|:=)(.*)")
+    regex_my_match = re.compile(r".*-\$\(" + CONFIG_FORMAT + r":m=y\)\s*[\+|:|]=.*")
+    regex_my_sub = re.compile(r"(.*)-\$\(" + CONFIG_FORMAT + r":m=y\)\s*(\+=|=|:=)(.*)")
     regex_def = re.compile(r"\s*([A-Z_-]+)\s*[\?:]?=\s*(.*)")
 
     def __init__(self, model, arch):
