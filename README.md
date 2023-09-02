@@ -36,6 +36,7 @@ code patterns of known CVEs and missing fixes for them.
  - CVE-2020-27825 fix [missing backports](https://lkml.org/lkml/2021/1/21/1278) for [5.4, 4.19, 4.14, 4.9, 4.4 kernels](https://www.spinics.net/lists/stable/msg440412.html)
  - CVE-2021-4149 fix [missing backports](https://lore.kernel.org/stable/d1a3f31f-2205-6dce-0f33-6611972e48cd@gmx.com/T/#t) to [4.19, 4.14, 4.9 kernels](https://lore.kernel.org/stable/20220309064748.160978-1-denis.e.efremov@oracle.com/)
  - CVE-2022-26490 fix [missing backports](https://lore.kernel.org/all/20220321174006.47972-1-denis.e.efremov@oracle.com/)
+ - CVE-2023-1989 fix missing backports for [6.1, 5.15, 5.10, 5.4, 4.19, 4.14 kernels](https://lore.kernel.org/stable/20230902102200.24474-1-efremov@linux.com/)
  - Similar to CVE-2021-28660 [fix in r8188eu driver](https://lore.kernel.org/all/20220518070052.108287-1-denis.e.efremov@oracle.com/#r)
  - Similar to CVE-2021-28660 [fix in rtl8723bs driver](https://lore.kernel.org/all/20220520035730.5533-1-efremov@linux.com/)
  - Similar to CVE-2022-26490 [fix](https://lore.kernel.org/all/20221122004246.4186422-4-mfaltesek@google.com/) in [st-nci driver](https://lore.kernel.org/all/fc85ff14-70d6-0c3e-247d-eda2284a5f6b@oracle.com/)
