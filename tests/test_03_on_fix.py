@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import pytest
-import pkg_resources
 import os
 
 from cvehound.exception import UnsupportedVersion
