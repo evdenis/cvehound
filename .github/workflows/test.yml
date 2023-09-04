@@ -18,13 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.5", "3.6", "3.7", "3.8", "3.9", "3.10"]
-        os: [ubuntu-18.04, ubuntu-latest, macos-latest]
-        exclude:
-        - os: ubuntu-latest
+        include:
+        - os: ubuntu-20.04
           python-version: "3.5"
         - os: ubuntu-latest
-          python-version: "3.6"
+          python-version: "3.11"
+        - os: macos-latest
+          python-version: "3.10"
     runs-on: ${{ matrix.os }}
     steps:
     - name: Set up Python ${{ matrix.python-version }}
