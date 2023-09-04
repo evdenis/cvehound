@@ -26,8 +26,8 @@ code patterns of known CVEs and missing fixes for them.
 [ZeroNights 2021 Presentation (RU)](docs/ZN2021_CVEhound_ru.pdf)
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=GG-YHLn5E1Q">
-    <img src="https://img.youtube.com/vi/GG-YHLn5E1Q/0.jpg" alt="ZeroNights 2021 Presentation"/>
+  <a href="https://www.youtube.com/watch?v=-QwLkpYzQIk">
+    <img src="https://img.youtube.com/vi/-QwLkpYzQIk/0.jpg" alt="ZeroNights 2021 Presentation"/>
   </a>
 </p>
 
