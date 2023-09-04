@@ -35,7 +35,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Install CVEhound
-      run: python -m pip install .
+      run: python -m pip --disable-pip-version-check install .
 
     - name: Run CVEHound
       run: |
