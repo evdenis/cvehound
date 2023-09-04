@@ -27,12 +27,12 @@ jobs:
           python-version: "3.10"
     runs-on: ${{ matrix.os }}
     steps:
+    - uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-
-    - uses: actions/checkout@v3
 
     - name: Install CVEhound
       run: python -m pip --disable-pip-version-check install .
@@ -52,7 +52,7 @@ jobs:
         coccinelle-version: [1.0.7, 1.0.8, 1.0.9, 1.1.0, 1.1.1, git]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
