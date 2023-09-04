@@ -58,7 +58,7 @@ jobs:
 
     - name: Get Date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m')"
+      run: echo "date=$(date +'%Y-%m')" >> $GITHUB_OUTPUT
 
     - name: Cache Opam
       uses: actions/cache@v3
