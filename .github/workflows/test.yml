@@ -61,7 +61,7 @@ jobs:
       run: echo "::set-output name=date::$(date +'%Y-%m')"
 
     - name: Cache Opam
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       if: ${{ matrix.coccinelle-version != 'system' }}
       with:
         path: ~/.opam
@@ -136,7 +136,7 @@ jobs:
         python -m pip install -e '.[tests]'
 
     - name: Cache Kernel Bundle
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: clone.bundle
         key: linux-${{ steps.date.outputs.date }}
