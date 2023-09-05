@@ -64,6 +64,10 @@ class CVEhound:
             self.config_map = None
             self.config = None
 
+        if self.spatch_version <= 104:
+            logging.warning('spatch (coccinelle) version is too old.\n'
+                            'Please, consider updating to >= 1.0.7 version.')
+
     def get_grep_pattern(self, rule):
         patterns = []
         with open(rule, 'rt') as fh:
