@@ -159,7 +159,7 @@ def main(args=sys.argv[1:]):
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
     if args['cve'] == ['all']:
-        args.cve = hound.get_all_cves()
+        args['cve'] = hound.get_all_cves()
     elif args['cve'] == ['assigned']:
         args['cve'] = hound.get_assigned_cves()
     elif args['cve'] == ['disputed']:
