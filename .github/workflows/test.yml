@@ -97,7 +97,7 @@ jobs:
       uses: actions/checkout@v4
       if: ${{ matrix.coccinelle-version == 'git' }}
       with:
-        repository: 'https://github.com/coccinelle/coccinelle'
+        repository: 'coccinelle/coccinelle'
 
     - name: Install latest Coccinelle from git
       if: ${{ matrix.coccinelle-version == 'git' }}
