@@ -54,6 +54,7 @@ Install prerequisites:
 ``` shell
 # Ubuntu, coccinelle uses libpython2.7 internally
 # Seems like some ppas mark libpython dependency as optional
+$ sudo add-apt-repository ppa:npalix/coccinelle
 $ sudo apt install python3-pip coccinelle libpython2.7
 
 # Fedora
@@ -76,6 +77,12 @@ directly from the repository (clone it on your computer beforehand):
 
 ``` shell
 $ pip install -e .
+```
+
+To update the cve rules from github repository:
+
+``` shell
+$ cvehound_update_rules
 ```
 
 ## How to use
