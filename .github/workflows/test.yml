@@ -101,13 +101,19 @@ jobs:
         eval $(opam env)
         opam install -y coccinelle.${{ matrix.coccinelle-version }}
 
+    - name: Clone Coccinelle
+      uses: actions/checkout@v4
+      if: ${{ matrix.coccinelle-version == 'git' }}
+      with:
+        repository: coccinelle/coccinelle
+        path: coccinelle
+
     - name: Install latest Coccinelle from git
       if: ${{ matrix.coccinelle-version == 'git' }}
       run: |
         eval $(opam env)
         opam remove -y coccinelle
         opam install -y num camlp4 pcre pyml menhir
-        git clone https://github.com/coccinelle/coccinelle
         cd coccinelle
         ./autogen
         ./configure --prefix /usr/local --libdir /usr/local/lib --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
