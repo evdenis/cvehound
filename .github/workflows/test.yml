@@ -60,15 +60,6 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m')" >> $GITHUB_OUTPUT
 
-    - name: Cache Opam
-      uses: actions/cache@v3
-      if: ${{ matrix.coccinelle-version != 'system' }}
-      with:
-        path: ~/.opam
-        key: ${{ runner.os }}-opam-2.1.5-${{ matrix.ocaml-version }}-${{ matrix.coccinelle-version }}
-        restore-keys: |
-          ${{ runner.os }}-opam-2.1.5-${{ matrix.ocaml-version }}-
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
@@ -84,22 +75,17 @@ jobs:
       run: |
         sudo apt-get install -y coccinelle
 
-    - name: Set up Opam
+    - name: Setup Opam
       if: ${{ matrix.coccinelle-version != 'system' }}
-      run: |
-        sudo apt-get install -y python-dev aspcud ocaml
-        wget --quiet --no-clobber https://github.com/ocaml/opam/releases/download/2.1.5/opam-2.1.5-x86_64-linux -O opam
-        chmod +x opam
-        sudo mv opam /usr/local/bin
-        opam init --auto-setup --disable-sandboxing --compiler=${{ matrix.ocaml-version }}
-        opam update
-        opam upgrade --yes
+      uses: ocaml/setup-ocaml@v2
+      with:
+        ocaml-compiler: ${{ matrix.ocaml-version }}
+        opam-disable-sandboxing: true
+        cache-prefix: ${{ matrix.coccinelle-version }}
 
     - name: Install Coccinelle with opam (${{ matrix.coccinelle-version }})
       if: ${{ matrix.coccinelle-version != 'system' && matrix.coccinelle-version != 'git' }}
-      run: |
-        eval $(opam env)
-        opam install -y coccinelle.${{ matrix.coccinelle-version }}
+      run: opam install -y coccinelle.${{ matrix.coccinelle-version }}
 
     - name: Clone Coccinelle
       uses: actions/checkout@v4
@@ -112,13 +98,8 @@ jobs:
       if: ${{ matrix.coccinelle-version == 'git' }}
       run: |
         eval $(opam env)
-        opam remove -y coccinelle
-        opam install -y num camlp4 pcre pyml menhir
         cd coccinelle
-        ./autogen
-        ./configure --prefix /usr/local --libdir /usr/local/lib --enable-python --enable-ocaml --enable-pcre-syntax --enable-pcre --enable-opt --disable-bytes
-        make all.opt
-        sudo make install
+        opam install -y .
 
     - name: Spatch Version
       run: |
