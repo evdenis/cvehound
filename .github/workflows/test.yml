@@ -13,6 +13,9 @@ on:
   schedule:
     - cron: '0 0 * * MON'
 
+env:
+  STABLE_BRANCHES: ("linux-6.1.y" "linux-5.15.y" "linux-5.10.y" "linux-5.4.y" "linux-4.19.y" "linux-4.14.y")
+
 jobs:
   install:
     strategy:
@@ -139,11 +142,13 @@ jobs:
         git clone clone.bundle tests/linux
         cd tests/linux
         git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-        git remote add next git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
-        git remote add stable git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-        git remote update origin
-        git fetch stable
-        git fetch next
+        git remote set-branches origin master
+        git remote add next --no-tags git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+        git remote set-branches next master
+        stable=${{env.STABLE_BRANCHES}}
+        git remote add stable --no-tags git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+        git remote set-branches stable ${stable[@]}
+        git fetch --all
         cd -
 
     - name: Test with pytest
