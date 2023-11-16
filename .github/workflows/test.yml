@@ -14,7 +14,7 @@ on:
     - cron: '0 0 * * MON'
 
 env:
-  STABLE_BRANCHES: ("linux-6.1.y" "linux-5.15.y" "linux-5.10.y" "linux-5.4.y" "linux-4.19.y" "linux-4.14.y")
+  STABLE_BRANCHES: ("linux-6.6.y" "linux-6.1.y" "linux-5.15.y" "linux-5.10.y" "linux-5.4.y" "linux-4.19.y" "linux-4.14.y")
 
 jobs:
   install:
