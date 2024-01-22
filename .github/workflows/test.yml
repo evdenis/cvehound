@@ -128,7 +128,7 @@ jobs:
         python -m pip install -e '.[tests]'
 
     - name: Cache Kernel Bundle
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: clone.bundle
         key: linux-${{ steps.date.outputs.date }}
