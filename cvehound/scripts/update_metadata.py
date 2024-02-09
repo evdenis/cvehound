@@ -73,6 +73,9 @@ def main(args=sys.argv):
     with urlopen('https://github.com/nluedtke/linux_kernel_cves/raw/master/data/kernel_cves.json') as fh:
         js = json.loads(fh.read().decode('utf-8'))
 
+    # Corrupted data https://github.com/nluedtke/linux_kernel_cves/pull/379
+    js = dict(filter(lambda x: x[0].startswith('CVE-'), js.items()))
+
     for cve, info in js.items():
         fix = info.get('fixes', '')
         if fix and repo:
