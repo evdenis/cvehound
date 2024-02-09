@@ -4,7 +4,7 @@
 
 virtual detect
 
-@err exists@
+@err@
 position p;
 @@
 
