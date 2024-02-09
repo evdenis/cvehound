@@ -8,6 +8,22 @@ from cvehound import CVEhound, get_rule_cves
 from git import Repo
 from subprocess import run
 
+missing_backports = [
+    ('CVE-2019-12455', 'stable/linux-4.19.y'), # Disputed
+    ('CVE-2021-4037', 'stable/linux-4.19.y'),
+    ('CVE-2022-0998', 'stable/linux-5.15.y'),
+    ('CVE-2022-1789', 'stable/linux-4.19.y'),
+    ('CVE-2022-1789', 'stable/linux-5.4.y'),
+    ('CVE-2022-3061', 'stable/linux-4.19.y'),
+    ('CVE-2022-3061', 'stable/linux-5.4.y'),
+    ('CVE-2023-4133', 'stable/linux-4.19.y'),
+    ('CVE-2023-4133', 'stable/linux-5.4.y'),
+    ('CVE-2023-4133', 'stable/linux-5.10.y'),
+    ('CVE-2023-4133', 'stable/linux-5.15.y'),
+    ('CVE-2023-4133', 'stable/linux-6.1.y'),
+    ('CVE-2023-23005', 'stable/linux-6.1.y'),
+]
+
 def mount_tmpfs(target, req_mem_gb):
     if os.path.ismount(target):
         return True
