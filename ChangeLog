@@ -1,5 +1,13 @@
 # ChangeLog
 
+## 1.2.0 - Feb 15 2024
+
+ - Added +98 new CVE descriptions
+ - Added `--exclude <file>` option to exclude CVE-ids from the file from checks
+ - Added macOS support (it's possible to run the tool on the system)
+ - Added multiprocessing support
+ - Fixed ordering in reports (reproducibility)
+
 ## 1.1.0 - Jun 04 2022
 
  - Added +69 new CVE descriptions
