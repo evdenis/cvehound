@@ -1,5 +1,12 @@
 # ChangeLog
 
+## 1.2.1 - May 03 2024
+
+ - Added +11 new CVE descriptions
+ - Updated CVE-2023-6817 detection
+ - Updated CVE-2021-28950 detection
+ - Added coccinelle 1.2 support
+
 ## 1.2.0 - Feb 15 2024
 
  - Added +98 new CVE descriptions
