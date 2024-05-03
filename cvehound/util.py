@@ -58,7 +58,11 @@ def get_spatch_version():
             stderr=subprocess.DEVNULL, universal_newlines=True
     ).strip().split('\n')[0]
     res = re.match(r'spatch\s+version\s+([\d.]+)', version)
-    return int(res.group(1).replace('.', ''))
+    version_string = res.group(1)
+    nums = version_string.count('.')
+    if nums == 1:
+        version_string += '.0'
+    return int(version_string.replace('.', ''))
 
 def get_rule_cves():
     known = {}
