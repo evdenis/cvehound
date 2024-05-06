@@ -27,6 +27,8 @@ missing_backports = [
     ('CVE-2024-26595', 'stable/linux-5.10.y'),
     ('CVE-2024-26595', 'stable/linux-5.15.y'),
     ('CVE-2024-26595', 'stable/linux-6.1.y'),
+    ('CVE-2024-26733', 'stable/linux-4.19.y'),
+    ('CVE-2024-26733', 'stable/linux-5.4.y'),
 ]
 
 def mount_tmpfs(target, req_mem_gb):
