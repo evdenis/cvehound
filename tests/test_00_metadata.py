@@ -56,6 +56,7 @@ def test_cves_metadata_cwe(hound):
         ('CVE-2021-3635', "wrong fixes tag, commit fixes not only flowtables but also objs"),
         ('CVE-2022-3170', "CVE fix consists of 2 commits, 2nd commit fixes 1st one"),
         ('CVE-2024-0193', "wrong fixes tag, 5f68718b34a5 fixes race"),
+        ('CVE-2024-26720', "the problem is also present in the earlier commits"),
     ]
 )
 def test_fixes(hound, repo, cve):
