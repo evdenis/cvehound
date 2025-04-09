@@ -9,25 +9,18 @@ from git import Repo
 from subprocess import run
 
 missing_backports = [
-    ('CVE-2019-12455', 'stable/linux-4.19.y'), # Disputed
-    ('CVE-2021-4037', 'stable/linux-4.19.y'),
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
-    ('CVE-2022-1789', 'stable/linux-4.19.y'),
     ('CVE-2022-1789', 'stable/linux-5.4.y'),
-    ('CVE-2022-3061', 'stable/linux-4.19.y'),
     ('CVE-2022-3061', 'stable/linux-5.4.y'),
-    ('CVE-2023-4133', 'stable/linux-4.19.y'),
     ('CVE-2023-4133', 'stable/linux-5.4.y'),
     ('CVE-2023-4133', 'stable/linux-5.10.y'),
     ('CVE-2023-4133', 'stable/linux-5.15.y'),
     ('CVE-2023-4133', 'stable/linux-6.1.y'),
     ('CVE-2023-23005', 'stable/linux-6.1.y'),
-    ('CVE-2024-26595', 'stable/linux-4.19.y'),
     ('CVE-2024-26595', 'stable/linux-5.4.y'),
     ('CVE-2024-26595', 'stable/linux-5.10.y'),
     ('CVE-2024-26595', 'stable/linux-5.15.y'),
     ('CVE-2024-26595', 'stable/linux-6.1.y'),
-    ('CVE-2024-26733', 'stable/linux-4.19.y'),
     ('CVE-2024-26733', 'stable/linux-5.4.y'),
     ('CVE-2024-26799', 'stable/linux-6.1.y'),
 ]
@@ -158,7 +151,6 @@ def pytest_configure(config):
             'stable/linux-5.15.y',
             'stable/linux-5.10.y',
             'stable/linux-5.4.y',
-            'stable/linux-4.19.y',
         ]
 
     cves = config.getoption('cve')
