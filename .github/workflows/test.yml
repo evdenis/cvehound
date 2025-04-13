@@ -108,14 +108,14 @@ jobs:
       run: |
         which opam >/dev/null 2>&1 && eval $(opam env)
         spatch --version
-        if [[ ${{ matrix.coccinelle-version }} != 'system' && ${{ matrix.coccinelle-version }} != 'git' ]]; then
-          spatch_version="$(spatch --version | head -1)"
-          if [[ ${{ matrix.coccinelle-version }} != '1.0.9' ]]; then
-            if [[ "$spatch_version" != "spatch version ${{ matrix.coccinelle-version }}"* ]]; then
-              echo "Wrong coccinelle version installed" >&2
-              exit 1
-            fi
-          elif [[ "$spatch_version" != "spatch version 1.0.8"* ]]; then
+        spatch_version="$(spatch --version | head -1)"
+        if [[ ${{ matrix.coccinelle-version }} != 'system' && ${{ matrix.coccinelle-version }} != 'git' && ${{ matrix.coccinelle-version }} != '1.0.9' ]]; then
+          if [[ "$spatch_version" != "spatch version ${{ matrix.coccinelle-version }}"* ]]; then
+            echo "Wrong coccinelle version installed" >&2
+            exit 1
+          fi
+        elif [[ ${{ matrix.coccinelle-version }} == '1.0.9' ]]; then
+          if [[ "$spatch_version" != "spatch version 1.0.8"* ]]; then
               echo "Wrong coccinelle version installed" >&2
               exit 1
           fi
