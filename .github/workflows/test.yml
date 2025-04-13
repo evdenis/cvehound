@@ -57,6 +57,10 @@ jobs:
           - python-version: 3.9
             os: ubuntu-22.04
             ocaml-version: 4.08.1
+            coccinelle-version: 1.3.0
+          - python-version: 3.9
+            os: ubuntu-22.04
+            ocaml-version: 4.08.1
             coccinelle-version: git
     runs-on: ${{ matrix.os }}
     steps:
@@ -115,7 +119,8 @@ jobs:
         spatch --version
         spatch_version="$(spatch --version | head -1)"
         if [[ ${{ matrix.coccinelle-version }} != 'system' && ${{ matrix.coccinelle-version }} != 'git' && ${{ matrix.coccinelle-version }} != '1.0.9' ]]; then
-          if [[ "$spatch_version" != "spatch version ${{ matrix.coccinelle-version }}"* ]]; then
+          spatch_major_version="$(echo ${{ matrix.coccinelle-version }} | cut -d '.' -f 1-2)"
+          if [[ "$spatch_version" != "spatch version ${{ matrix.coccinelle-version }}"* && "$spatch_version" != "spatch version ${spatch_major_version} "* ]]; then
             echo "Wrong coccinelle version installed" >&2
             exit 1
           fi
