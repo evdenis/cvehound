@@ -52,7 +52,12 @@ jobs:
         python-version: [3.9]
         os: [ubuntu-22.04]
         ocaml-version: [4.07.1]
-        coccinelle-version: [1.0.8, 1.0.9, 1.1.0, system, 1.2, git]
+        coccinelle-version: [1.0.8, 1.0.9, 1.1.0, system, 1.2]
+        include:
+          - python-version: 3.9
+            os: ubuntu-22.04
+            ocaml-version: 4.08.1
+            coccinelle-version: git
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
