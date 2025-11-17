@@ -2,7 +2,6 @@
 
 import os
 import sys
-import pkg_resources
 import gzip
 import json
 import subprocess
@@ -12,6 +11,7 @@ from datetime import datetime
 import lxml.etree as etree
 from io import BytesIO
 from zipfile import ZipFile
+from importlib.resources import files
 
 def get_exploit_status_from_fstec():
     ctx = ssl.create_default_context()
@@ -66,7 +66,7 @@ def main(args=sys.argv):
         filename = args[2]
     else:
         filename = os.environ.get('CVEHOUND_METADATA',
-                                  pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
+                                  str(files('cvehound').joinpath('data/kernel_cves.json.gz')))
 
     public, private = get_exploit_status_from_fstec()
 

@@ -2,14 +2,14 @@
 
 import os
 import sys
-import pkg_resources
 import shutil
 from urllib.request import urlopen
 from io import BytesIO
 from zipfile import ZipFile
+from importlib.resources import files
 
 def main(args=sys.argv):
-    rule_dir = pkg_resources.resource_filename('cvehound', 'cve')
+    rule_dir = str(files('cvehound').joinpath('cve'))
 
     for rule in os.listdir(rule_dir):
         entry = os.path.join(rule_dir, rule)
