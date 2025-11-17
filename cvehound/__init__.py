@@ -77,8 +77,7 @@ class CVEhound:
                     continue
                 if line.startswith('//'):
                     continue
-                if line:
-                    patterns.append(line)
+                patterns.append(line)
         return patterns
 
     def _print_found_cve(self, cve):
