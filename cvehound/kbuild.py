@@ -106,7 +106,7 @@ class KbuildParser(object):
         used_vars = re.findall(r"\$\((" + self.variable_name_regex + r")\)", content)
         content = re.sub(r"\$\(src\)", srcpath, content)
         for var in used_vars:
-            if not var in defs:
+            if var not in defs:
                 continue
             content = re.sub(r"\$\(" + var + r"\)", defs[var], content)
         return content
@@ -133,7 +133,7 @@ class KbuildParser(object):
             lhs, rhs = match.groups()
             resolved = self.resolve(rhs, defs)
             if re.match(self.variable_name_regex, lhs):
-                if not lhs in defs:
+                if lhs not in defs:
                     defs[lhs] = ''
                 defs[lhs] += ' ' + resolved
             line = '{} += {}'.format(lhs, resolved)
