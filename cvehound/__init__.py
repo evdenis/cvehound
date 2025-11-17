@@ -214,11 +214,8 @@ class CVEhound:
                                 result_file['config'] = False
                                 if config_affected is None:
                                     config_affected = False
-                    elif not file.endswith('.h'):
-                        result_file['logic'] = str(True)
-                        result_file['config'] = True
-                        config_affected = True
-                    elif file.endswith('.h'): # FIXME: only .h file?
+                    else:
+                        # No config constraint for this file
                         result_file['logic'] = str(True)
                         result_file['config'] = True
                         config_affected = True
