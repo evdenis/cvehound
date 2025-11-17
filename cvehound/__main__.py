@@ -236,12 +236,16 @@ def main(args=sys.argv[1:]):
             if not add:
                 continue
         if args['ignore_files']:
-            ignore = True
+            should_check = False
             for rulefile in hound.get_rule_files(cve):
-                if all(map(lambda x: not rulefile.startswith(x) and not rulefile.endswith('.h'), args['ignore_files'])):
-                    ignore = False
+                # Header files don't affect the ignore decision
+                if rulefile.endswith('.h'):
+                    continue
+                # If this file doesn't match any ignore pattern, we should check this CVE
+                if not any(rulefile.startswith(x) for x in args['ignore_files']):
+                    should_check = True
                     break
-            if ignore:
+            if not should_check:
                 continue
         cves.append(cve)
 
