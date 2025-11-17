@@ -34,7 +34,7 @@ setup(
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
     python_requires='>=3.9',
-    install_requires=['sympy', 'lxml'],
+    install_requires=['sympy', 'lxml', 'pyyaml'],
     tests_require=test_deps,
     extras_require=extras,
     classifiers=[
