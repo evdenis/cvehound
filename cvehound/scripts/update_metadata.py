@@ -5,14 +5,8 @@ import sys
 import gzip
 import json
 import subprocess
-import ssl
 import glob
-import shutil
 from urllib.request import urlopen, Request
-from datetime import datetime
-import lxml.etree as etree
-from io import BytesIO
-from zipfile import ZipFile
 from importlib.resources import files
 
 try:
@@ -23,44 +17,29 @@ except ImportError:
 
 KERNEL_VULNS_REPO = 'https://git.kernel.org/pub/scm/linux/security/vulns.git'
 CIP_KERNEL_SEC_REPO = 'https://gitlab.com/cip-project/cip-kernel/cip-kernel-sec.git'
+# Using GitHub mirror of CISA KEV data for better reliability
+CISA_KEV_URL = 'https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json'
 
-def get_exploit_status_from_fstec():
-    """Fetch exploit status from FSTEC database."""
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    req = Request('https://bdu.fstec.ru/files/documents/vulxml.zip', headers={'User-Agent': 'Mozilla/5.0'})
-    with urlopen(req, context=ctx) as uh:
-        with ZipFile(BytesIO(uh.read())) as zh:
-            with zh.open('export/export.xml') as fh:
-                parser = etree.XMLParser(recover=True)
-                tree = etree.parse(fh, parser)
+def get_exploit_status_from_cisa_kev():
+    """Fetch exploit status from CISA Known Exploited Vulnerabilities catalog."""
+    exploited_cves = set()
 
-    public = set()
-    private = set()
-    for item in tree.xpath('//vul'):
-        bdu_id = item.xpath('identifier/text()')[0]
-        cve_id = None
-        for vuln_id in item.xpath('identifiers/identifier'):
-            if 'CVE' == vuln_id.get('type'):
-                cve_id = vuln_id.text
-                break
-        is_linux = False
-        for name in item.xpath('vulnerable_software/soft/name/text()'):
-            if name == 'Linux' or name == 'linux':
-                is_linux = True
-        if not is_linux:
-            continue
-        if not cve_id:
-            continue
+    try:
+        req = Request(CISA_KEV_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        with urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode('utf-8'))
 
-        exploit_status = item.xpath('exploit_status/text()')[0]
-        if 'открыт' in exploit_status: # 'открытом' == 'public'
-            public.add(cve_id)
-        elif 'уществует' in exploit_status: # == exists
-            private.add(cve_id)
+        # CISA KEV format has vulnerabilities in a list
+        vulnerabilities = data.get('vulnerabilities', [])
+        for vuln in vulnerabilities:
+            cve_id = vuln.get('cveID')
+            if cve_id:
+                exploited_cves.add(cve_id)
 
-    return public, private
+    except Exception as e:
+        print(f"Warning: Failed to fetch CISA KEV data: {e}", file=sys.stderr)
+
+    return exploited_cves
 
 def get_commit_date(repo, commit):
     """Get the date of a commit from a git repository."""
@@ -232,12 +211,9 @@ def main(args=sys.argv):
     temp_dir = os.path.join(os.path.dirname(filename), '.cve_repos_cache')
     os.makedirs(temp_dir, exist_ok=True)
 
-    print("Fetching exploit status from FSTEC...")
-    try:
-        public, private = get_exploit_status_from_fstec()
-    except Exception as e:
-        print(f"Warning: Failed to fetch FSTEC data: {e}", file=sys.stderr)
-        public, private = set(), set()
+    print("Fetching exploit status from CISA KEV...")
+    exploited_cves = get_exploit_status_from_cisa_kev()
+    print(f"Found {len(exploited_cves)} known exploited CVEs from CISA KEV")
 
     print("Fetching CVE data from kernel.org vulns.git...")
     kernel_vulns_cves = fetch_kernel_vulns_data(temp_dir)
@@ -259,7 +235,7 @@ def main(args=sys.argv):
             fix_date = get_commit_date(repo, fix)
             if fix_date:
                 info['fix_date'] = fix_date
-        info['exploit'] = cve in public or cve in private
+        info['exploit'] = cve in exploited_cves
 
     print(f"Writing metadata to {filename}...")
     with gzip.open(filename, 'wt', encoding='utf-8') as fh:
