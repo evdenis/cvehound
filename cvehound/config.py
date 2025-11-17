@@ -15,7 +15,7 @@ class Config(Mapping):
 
     def __getitem__(self, key):
         try:
-            self._storage[key]
+            return self._storage[key]
         except Exceptions:
             return False
 
