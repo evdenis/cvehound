@@ -12,7 +12,8 @@ import json
 import concurrent.futures
 
 from cvehound import CVEhound
-from cvehound.util import *
+from cvehound.util import (get_cvehound_version, get_spatch_version, get_rule_cves,
+                           parse_config, get_config_data, get_kernel_version)
 from cvehound.exception import UnsupportedVersion
 from cvehound.cwe import CWE
 
