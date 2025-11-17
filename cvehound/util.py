@@ -49,8 +49,10 @@ def get_cvehound_version():
         version = subprocess.check_output(
             desc, cwd=location, stderr=subprocess.DEVNULL, universal_newlines=True
         ).strip()
-    finally:
-        return version
+    except Exception:
+        pass
+
+    return version
 
 def get_spatch_version():
     version = subprocess.check_output(
