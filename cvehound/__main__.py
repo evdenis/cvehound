@@ -177,7 +177,7 @@ def main(args=sys.argv[1:]):
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
 
-    for file in args['exclude']:
+    for file in args['exclude'][:]:
         if os.path.exists(file):
             args['exclude'].remove(file)
             with open(file, 'rt', encoding='utf-8') as fh:
