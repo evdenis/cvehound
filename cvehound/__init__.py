@@ -151,7 +151,7 @@ class CVEhound:
                              '-D', 'detect', '--chunksize', '1', '-j', '1',
                              '--no-show-diff', '--very-quiet',
                              *includes]
-                if self.spatch_version > 104: # Not suppored on coccinelle 1.0.4
+                if self.spatch_version > 104: # Not supported on coccinelle 1.0.4
                     cocci_cmd.extend(['--python', os.path.realpath(sys.executable)])
                 cocci_cmd.extend(['--cocci-file', rule, *files])
 
