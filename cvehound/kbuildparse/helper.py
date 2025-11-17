@@ -82,7 +82,7 @@ def get_multiline_from_file(infile):
             break
         current = remove_makefile_comment(current)
     line += current
-    line.rstrip()
+    line = line.rstrip()
     return (True, line)
 
 def get_config_string(item, model=None):
