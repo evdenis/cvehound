@@ -160,10 +160,12 @@ def pytest_configure(config):
         cves = cves.keys()
 
 def pytest_unconfigure(config):
-    umount(linux_mount)
-    umount(overlaydir)
-    os.rmdir(overlaydir)
-    os.rmdir(linux_mount)
+    if linux_mount:
+        umount(linux_mount)
+        os.rmdir(linux_mount)
+    if overlaydir:
+        umount(overlaydir)
+        os.rmdir(overlaydir)
 
 @pytest.fixture
 def repo():
