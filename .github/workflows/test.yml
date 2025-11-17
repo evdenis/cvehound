@@ -36,6 +36,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
 
     - name: Install CVEhound
       run: python -m pip --disable-pip-version-check install .
