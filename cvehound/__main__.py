@@ -26,7 +26,7 @@ def check_config(config):
         'cwe',
         'files',
         'ignore_files',
-        'kernel_config'
+        'kernel_config',
         'check_strict',
         'report',
         'all_files',
