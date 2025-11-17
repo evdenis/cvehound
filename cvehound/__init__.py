@@ -108,7 +108,7 @@ class CVEhound:
                 else:
                     logging.info(' - ' + file + ': ' + logic)
 
-        if 'affected' not in config or config['affected'] == None:
+        if 'affected' not in config or config['affected'] is None:
             return
         config_affected = 'affected' if config['affected'] else 'not affected'
         if self.config:
@@ -212,7 +212,7 @@ class CVEhound:
                                 config_affected = True
                             else:
                                 result_file['config'] = False
-                                if config_affected == None:
+                                if config_affected is None:
                                     config_affected = False
                     elif not file.endswith('.h'):
                         result_file['logic'] = str(True)
@@ -223,7 +223,7 @@ class CVEhound:
                         result_file['config'] = True
                         config_affected = True
                     config_result['files'][rel_file] = result_file
-            if config_affected != None:
+            if config_affected is not None:
                 config_result['affected'] = config_affected
 
         if self.check_strict and 'affected' in config_result and config_result['affected'] or not self.check_strict:
