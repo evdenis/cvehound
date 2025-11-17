@@ -31,8 +31,18 @@ def main(args=sys.argv):
         os.chdir(rule_dir)
         for entry in rules:
             to = entry[prefix_len:].strip()
-            if not to or not (os.path.isfile(entry) or os.path.isdir(entry)):
+            if not to:
                 continue
+            # Skip directories - they're created automatically when moving files
+            if os.path.isdir(entry):
+                continue
+            # Only process existing files
+            if not os.path.isfile(entry):
+                continue
+            # Ensure target directory exists
+            target_dir = os.path.dirname(to)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
             os.rename(entry, to)
         shutil.rmtree('cvehound-master')
 
