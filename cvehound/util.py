@@ -1,11 +1,12 @@
 import os
 import re
 import subprocess
-import pkg_resources
 import json
 import gzip
 from shutil import which
 from configparser import ConfigParser
+from importlib.metadata import version, distribution
+from importlib.resources import files
 
 def tool_exists(name):
     return which(name) is not None
@@ -38,21 +39,22 @@ def get_kernel_version(path):
     return version
 
 def get_cvehound_version():
-    version = pkg_resources.get_distribution('cvehound').version
-    location = pkg_resources.get_distribution('cvehound').location
+    pkg_version = version('cvehound')
+    dist = distribution('cvehound')
+    location = str(dist.locate_file(''))
 
     if not os.path.exists(os.path.join(location, '.git')):
-        return version
+        return pkg_version
 
     try:
         desc = ['git', 'describe', '--tags', '--dirty']
-        version = subprocess.check_output(
+        pkg_version = subprocess.check_output(
             desc, cwd=location, stderr=subprocess.DEVNULL, universal_newlines=True
         ).strip()
     except Exception:
         pass
 
-    return version
+    return pkg_version
 
 def get_spatch_version():
     version = subprocess.check_output(
@@ -70,8 +72,9 @@ def get_rule_cves():
     known = {}
     assigned = {}
     disputed = {}
-    for root, dirs, files in os.walk(pkg_resources.resource_filename('cvehound', 'cve/')):
-        for cve in files:
+    cve_dir = str(files('cvehound').joinpath('cve'))
+    for root, dirs, file_list in os.walk(cve_dir):
+        for cve in file_list:
             path = os.path.join(root, cve)
             name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
             known[name] = path
@@ -84,7 +87,7 @@ def get_rule_cves():
 def get_cves_metadata(path):
     if not path:
         path = os.environ.get('CVEHOUND_METADATA',
-               pkg_resources.resource_filename('cvehound', 'data/kernel_cves.json.gz'))
+               str(files('cvehound').joinpath('data/kernel_cves.json.gz')))
     data = None
     with gzip.open(path, 'rt', encoding='utf-8') as fh:
         data = json.load(fh)
