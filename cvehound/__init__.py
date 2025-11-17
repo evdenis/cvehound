@@ -226,7 +226,7 @@ class CVEhound:
             if config_affected is not None:
                 config_result['affected'] = config_affected
 
-        if self.check_strict and 'affected' in config_result and config_result['affected'] or not self.check_strict:
+        if (self.check_strict and 'affected' in config_result and config_result['affected']) or not self.check_strict:
             if cve in self.metadata:
                 result = self.metadata[cve]
             result['config'] = config_result
