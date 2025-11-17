@@ -16,7 +16,7 @@ class Config(Mapping):
     def __getitem__(self, key):
         try:
             return self._storage[key]
-        except Exceptions:
+        except KeyError:
             return False
 
     def __iter__(self):
