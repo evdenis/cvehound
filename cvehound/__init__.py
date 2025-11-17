@@ -207,7 +207,7 @@ class CVEhound:
                         result_file['logic'] = str(config)
                         if self.config:
                             affected = config.subs(self.config.get_mapping())
-                            if affected == True:
+                            if affected:
                                 result_file['config'] = True
                                 config_affected = True
                             else:
