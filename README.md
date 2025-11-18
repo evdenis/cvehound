@@ -4,14 +4,14 @@
 
 # CVEhound
 
-CVEhound is a tool for checking linux sources for known CVEs.
+CVEhound is a tool for checking Linux sources for known CVEs.
 The tool is based on [coccinelle](https://coccinelle.gitlabpages.inria.fr/website/)
 rules and grep patterns. The tool checks sources for vulnerable
 code patterns of known CVEs and missing fixes for them.
 
 - **What:** The tool tries to find "unfixed" code of known CVEs;
 - **How:** The tool uses [coccinelle/grep](cvehound/cve) rules with patterns that helps to detect known CVE bugs or their fixes. Thus, sources are checked either for a presence of "unfixed" code pieces (e.g. [CVE-2020-12912](cvehound/cve/CVE-2020-12912.cocci)), or for an absence of a fix (e.g. [CVE-2020-26088](cvehound/cve/CVE-2020-26088.cocci));
-- **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without a development log. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you an information about what CVEs were fixed by kernel developers upto this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
+- **Why:** If you have a git log then it's easier to check what CVEs are fixed based on a git history. However, many vendors (samsung, huawei, various iot, routers manufacturers) publish kernel sources as archives without a development log. In most cases their kernels are based on LTS kernels, but versions are far from upstream. Linux version string from Makefile will only give you information about what CVEs were fixed by kernel developers up to this version. It will not help you to understand what fixes were backported by a vendor itself. In this case it's possible to apply the tool and check "missing" CVE fixes.
 
 ### CVEHound: Audit Kernel Sources for Missing CVE Fixes
 
@@ -97,7 +97,7 @@ Found: CVE-2020-29371
 Found: CVE-2020-26088
 ```
 
-where *dir* should point to linux kernel sources. CVEhound will check the
+where *dir* should point to the Linux kernel sources. CVEhound will check the
 sources for all cve patterns that you can find in [cve dir](/cvehound/cve/).
 To check the sources for particular CVEs one can use:
 
@@ -128,7 +128,7 @@ Config: ./linux/.config not affected
 
 Other args:
  - `--report` - will produce json file with found CVEs
-   Most of metainformation in generated report is taken from linuxkernelcves.com
+   Most of the metainformation in the generated report is taken from linuxkernelcves.com
  - `--kernel-config` or `--kernel-config <file>` - will infer the kernel configuration required to
    build the affected code (based on Kbuild/Makefiles, ifdefs are not checked) and
    check kernel .config file if there is one
@@ -151,7 +151,7 @@ Templates:
 - `contrib/template.cocci` - Enhanced template with examples and comments
 - `contrib/blank.cocci` - Minimal template for new rules
 
-## LICENSE
+## License
 
 Python code is licensed under GPLv3. All rules in cvehound/cve folder are licensed under GPLv2.
 
