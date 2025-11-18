@@ -137,6 +137,20 @@ Other args:
  - `--exploit` - check only for CVEs that are known to be exploitable (according to
    the FSTEC BDU database)
 
+## Contributing
+
+### Writing CVE Detection Rules
+
+If you'd like to contribute new CVE detection rules, please see our comprehensive guides:
+
+- **[Writing Coccinelle Detection Rules for CVE Patterns](docs/WRITING_RULES.md)** - Complete guide with step-by-step instructions, patterns, and examples
+- **[Coccinelle CVE Detection Cheat Sheet](docs/COCCINELLE_CHEATSHEET.md)** - Quick reference for common patterns
+- **[AI Agent Guide](docs/AI_AGENT_GUIDE.md)** - Systematic approach for AI agents writing CVE rules
+
+Templates:
+- `contrib/template.cocci` - Enhanced template with examples and comments
+- `contrib/blank.cocci` - Minimal template for new rules
+
 ## LICENSE
 
 Python code is licensed under GPLv3. All rules in cvehound/cve folder are licensed under GPLv2.
