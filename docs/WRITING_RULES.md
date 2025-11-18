@@ -94,8 +94,8 @@ The git commit hash that fixed the vulnerability in the mainline kernel. This he
 ```
 
 #### `Fixes:` or `Detect-To:` (Optional)
-- **Fixes**: The commit hash that introduced the vulnerability
-- **Detect-To**: The last vulnerable commit before the fix
+- **Fixes**: The commit hash that introduced the vulnerability (if explicitly known)
+- **Detect-To**: Used when the vulnerable commit is not marked explicitly in the commit message, or when we can only guess which commit is vulnerable. Indicates the rule should detect the vulnerability up to this commit.
 
 ```cocci
 /// Fixes: 4e7c22d447bb6d7e37bfe39ff658486ae78e8d77
@@ -156,15 +156,18 @@ func(...)
 
 ### Wildcards (`*`)
 
-The asterisk marks important lines that should be reported or transformed:
+The asterisk marks lines for debugging purposes (optional):
 
 ```cocci
 @err@
 position p;
 @@
 
-* dangerous_function@p(...)    // Mark this line as error
+* dangerous_function@p(...)    // Asterisk is optional, aids in debugging
+  dangerous_function@p(...)    // Also works without asterisk
 ```
+
+Note: Asterisks are optional and only serve debugging purposes for pattern visualization.
 
 ### When Constraints
 
@@ -583,7 +586,7 @@ some_visibility_func(...)
 
 Key points:
 - Use `position p;` to capture the location
-- Mark the vulnerable line with `*`
+- Optionally mark lines with `*` for debugging
 - Add `@p` to associate the position with that location
 
 ### Step 6: Add Context (if needed)
@@ -655,7 +658,7 @@ If you miss the vulnerability:
 2. **Use meaningful rule names**: `@err@`, `@missing_check@`, `@vuln_pattern@`
 3. **Add comments**: Explain complex patterns
 4. **Test thoroughly**: Test on both vulnerable and fixed versions
-5. **Use position markers**: Always use `position p;` for error reporting
+5. **Use position markers**: Always use `position p;` and `@p` for error reporting
 6. **Match function context**: Include function name when possible
 7. **Use constraints**: Leverage `when !=` to avoid false positives
 8. **Consider variations**: Use alternatives for different code styles
