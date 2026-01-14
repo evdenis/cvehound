@@ -4,7 +4,6 @@ import os
 import sys
 import subprocess
 import logging
-from subprocess import PIPE
 import collections
 from datetime import datetime
 from sympy.logic import simplify_logic
@@ -156,7 +155,7 @@ class CVEhound:
 
                 logging.debug(' '.join(cocci_cmd))
 
-                run = subprocess.run(cocci_cmd, stdout=PIPE, stderr=PIPE, check=True, universal_newlines=True)
+                run = subprocess.run(cocci_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, universal_newlines=True)
                 output = run.stdout.strip()
             except subprocess.CalledProcessError as e:
                 err = e.stderr.split('\n')[-2]
@@ -166,7 +165,7 @@ class CVEhound:
         else:
             for pattern in self.get_grep_pattern(rule):
                 args = ['grep', '-rPzle', pattern, *files]
-                run = subprocess.run(args, stdout=PIPE, stderr=PIPE, check=False, universal_newlines=True)
+                run = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, universal_newlines=True)
                 if run.returncode != 0:
                     break
                 output += run.stdout.strip()
