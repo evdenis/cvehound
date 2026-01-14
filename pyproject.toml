@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cvehound"
+version = "1.2.1"
+description = "A tool to check linux kernel source dump for known CVEs"
+readme = "README.md"
+license = {text = "GPLv3"}
+authors = [{name = "Denis Efremov", email = "efremov@linux.com"}]
+requires-python = ">=3.9"
+keywords = ["cve", "linux", "kernel", "spatch", "cve-scanning", "coccinelle"]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = ["sympy", "lxml"]
+
+[project.optional-dependencies]
+tests = ["pytest", "gitpython", "psutil"]
+
+[project.scripts]
+cvehound = "cvehound.__main__:main"
+cvehound_update_metadata = "cvehound.scripts.update_metadata:main"
+cvehound_update_rules = "cvehound.scripts.update_rules:main"
+
+[project.urls]
+Homepage = "http://github.com/evdenis/cvehound"
+
+[tool.setuptools.packages.find]
+include = ["cvehound", "cvehound.*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.cocci", "*.grep", "*.gz"]
