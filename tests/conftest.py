@@ -100,7 +100,7 @@ def pytest_configure(config):
         p = psutil.Process()
         p.nice(-100)
         p.ionice(psutil.IOPRIO_CLASS_RT, value=0)
-    except:
+    except Exception:
         pass
 
     linux = config.getoption('dir')
@@ -114,7 +114,7 @@ def pytest_configure(config):
             repo.remotes.origin.fetch()
             repo.remotes.stable.fetch()
             repo.remotes.next.fetch()
-        except:
+        except Exception:
             pass
     else:
         cwd = os.getcwd()
