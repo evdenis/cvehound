@@ -207,9 +207,9 @@ def main(args=sys.argv[1:]):
     if args['all_files'] and args['ignore_files']:
         print('--ignore-files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
+    path_pattern = re.compile(r'^[_a-zA-Z-./0-9]+$')
     for f in [*args['files'], *args['ignore_files']]:
-        path = re.compile(r'^[_a-zA-Z-./0-9]+$')
-        if not path.match(f):
+        if not path_pattern.match(f):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
