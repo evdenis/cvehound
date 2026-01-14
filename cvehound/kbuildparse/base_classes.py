@@ -26,7 +26,7 @@ class InitClass(object):
     def get_file_for_subdirectory(self, directory):
         """ This method must implement the selection and precedence rules
         for files in a given subdirectory. """
-        sys.exit("E: get_file_for_subdirectory not implemented!")
+        raise NotImplementedError("get_file_for_subdirectory not implemented!")
 
     def process(self, parser, args, dirs_to_process):
         """ Initialize data structures that are needed across runs, such as
