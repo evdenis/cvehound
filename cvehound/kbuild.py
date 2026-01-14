@@ -78,7 +78,7 @@ class KbuildParser(object):
         self.leave_symbolic_level()
 
     def get_config(self):
-        return self.output.config 
+        return self.output.config
 
     # A bit of a hack to support ifdefs around variable additions in the
     # Makefiles included by drivers/gpu/drm/amd/amdgpu/Makefile - it uses
@@ -191,4 +191,3 @@ class KbuildParser(object):
                     lines.extend(self.resolve_includes(line, srcpath, defs))
 
         return lines
-
