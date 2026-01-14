@@ -9,16 +9,16 @@ description = "A tool to check linux kernel source dump for known CVEs"
 readme = "README.md"
 license = {text = "GPLv3"}
 authors = [{name = "Denis Efremov", email = "efremov@linux.com"}]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 keywords = ["cve", "linux", "kernel", "spatch", "cve-scanning", "coccinelle"]
 classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = ["sympy", "lxml"]
 
@@ -40,7 +40,7 @@ include = ["cvehound", "cvehound.*"]
 "*" = ["*.cocci", "*.grep", "*.gz"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -49,3 +49,14 @@ ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "single"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
