@@ -7,11 +7,6 @@ from configparser import ConfigParser
 from importlib.metadata import version, distribution
 from importlib.resources import files
 
-def removesuffix(string, suffix):
-    if suffix and string.endswith(suffix):
-        return string[:-len(suffix)]
-    return string[:]
-
 def get_config_data(path):
     with open(path, 'rt') as fh:
         ver_pattern = re.compile(r'# Linux/(\S+)\s+(\S+)\s+Kernel Configuration')
@@ -72,7 +67,7 @@ def get_rule_cves():
     for root, dirs, file_list in os.walk(cve_dir):
         for cve in file_list:
             path = os.path.join(root, cve)
-            name = removesuffix(removesuffix(cve, '.grep'), '.cocci')
+            name = cve.removesuffix('.grep').removesuffix('.cocci')
             known[name] = path
             if 'disputed' in root:
                 disputed[name] = path
