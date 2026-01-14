@@ -27,7 +27,7 @@ This document provides comprehensive guidance for AI assistants working with the
 - Identify vulnerable code patterns across kernel versions
 
 ### Key Statistics
-- **Language**: Python 3 (>=3.9)
+- **Language**: Python 3 (>=3.11)
 - **Version**: 1.2.1 (from `cvehound/__init__.py`)
 - **CVE Rules**: 525+ detection rules in `cvehound/cve/`
 - **License**: Python code (GPLv3), CVE rules (GPLv2)
@@ -83,7 +83,8 @@ cvehound/
 │   └── workflows/
 │       ├── test.yml       # CI/CD pipeline
 │       └── publish.yml    # PyPI publishing
-├── setup.py               # Package configuration
+├── .pre-commit-config.yaml # Pre-commit hooks configuration
+├── pyproject.toml         # Package configuration and tool settings
 ├── README.md              # User-facing documentation
 ├── pytest.ini             # Pytest configuration
 └── tox.ini                # Tox configuration
@@ -101,12 +102,16 @@ cvehound/
 - **Language**: Semantic Patch Language (.cocci files)
 
 ### 2. Python 3
-- **Versions**: 3.9, 3.10, 3.11 (as of setup.py)
+- **Versions**: 3.11, 3.12, 3.13 (requires >=3.11)
 - **Key Libraries**:
   - `sympy`: Symbolic logic solver for config expressions
   - `lxml`: XML parsing for Kbuild files
   - `pytest`: Testing framework
   - `gitpython`: Git repository interaction (tests)
+- **Development Tools**:
+  - `ruff`: Fast Python linter and formatter
+  - `mypy`: Static type checker (strict mode)
+  - `pre-commit`: Git hooks for code quality
 
 ### 3. Grep with PCRE
 - **Why**: Faster than Coccinelle for simple pattern matching
@@ -127,6 +132,10 @@ cd cvehound
 # Install in editable mode with test dependencies
 pip install -e '.[tests]'
 
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
 # Verify installation
 cvehound --version
 cvehound --help
@@ -140,6 +149,27 @@ sudo dnf install coccinelle
 
 # Install Coccinelle (macOS)
 brew install coccinelle
+```
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks to ensure code quality. Hooks run automatically on `git commit`:
+
+- **trailing-whitespace**: Remove trailing whitespace
+- **end-of-file-fixer**: Ensure files end with newline
+- **check-yaml**: Validate YAML files
+- **check-added-large-files**: Prevent large files from being committed
+- **ruff**: Python linter (auto-fixes issues)
+- **ruff-format**: Python code formatter
+- **mypy**: Static type checker (strict mode)
+
+```bash
+# Run hooks manually on all files
+pre-commit run --all-files
+
+# Run specific hook
+pre-commit run ruff --all-files
+pre-commit run mypy --all-files
 ```
 
 ### Branch Strategy
@@ -165,6 +195,7 @@ brew install coccinelle
    - `docs:` - Documentation changes
    - `test:` - Test additions/changes
    - `refactor:` - Code refactoring
+   - `build:` - Build system, dependencies, tooling
    - `contrib:` - Contribution templates/guides
    - `rules:` - CVE rule additions/updates
 
