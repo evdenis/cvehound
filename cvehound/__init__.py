@@ -5,7 +5,7 @@ import sys
 import subprocess
 import logging
 import collections
-from datetime import datetime
+from datetime import datetime, timezone
 from sympy.logic import simplify_logic
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata, parse_coccinelle_output
@@ -92,7 +92,7 @@ class CVEhound:
             if 'cvss3' in info and 'score' in info['cvss3']:
                 logging.info('CVSS3: ' + str(info['cvss3']['score']))
             if 'fix_date' in info:
-                logging.info('FIX DATE: ' + str(datetime.utcfromtimestamp(info['fix_date']).strftime('%Y-%m-%d')))
+                logging.info('FIX DATE: ' + datetime.fromtimestamp(info['fix_date'], tz=timezone.utc).strftime('%Y-%m-%d'))
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
     def _print_affected_files(self, config):
