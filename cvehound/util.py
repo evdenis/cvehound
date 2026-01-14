@@ -3,13 +3,9 @@ import re
 import subprocess
 import json
 import gzip
-from shutil import which
 from configparser import ConfigParser
 from importlib.metadata import version, distribution
 from importlib.resources import files
-
-def tool_exists(name):
-    return which(name) is not None
 
 def removesuffix(string, suffix):
     if suffix and string.endswith(suffix):
