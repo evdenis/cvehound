@@ -634,6 +634,8 @@ def check_cve(self, cve):
 - Use custom exceptions from `cvehound.exception`
 - Handle subprocess errors gracefully
 - Provide meaningful error messages
+- Use `except Exception:` instead of bare `except:` to allow `KeyboardInterrupt` and `SystemExit` to propagate
+- Use `raise NotImplementedError()` for abstract methods instead of `sys.exit()`
 
 ### Logging
 
@@ -652,6 +654,15 @@ logging.debug('Running spatch on file.c')
 - Always use `os.path.join()` for path construction
 - Use `os.path.abspath()` for absolute paths
 - Handle both POSIX and Windows paths (where applicable)
+
+### Code Quality Guidelines
+
+- **Use built-in methods**: Prefer Python built-ins over custom implementations (e.g., use `str.removesuffix()` instead of custom functions for Python 3.9+)
+- **Avoid redundant imports**: Don't import both a module and specific items from it (e.g., don't use both `import subprocess` and `from subprocess import PIPE`)
+- **Compile regexes outside loops**: Move `re.compile()` calls outside of loops to avoid recompilation on each iteration
+- **Use comprehensions**: Prefer list/generator comprehensions over explicit loops for simple transformations
+- **Avoid deprecated APIs**: Use `datetime.fromtimestamp(ts, tz=timezone.utc)` instead of deprecated `datetime.utcfromtimestamp(ts)`
+- **Remove dead code**: Delete unused functions, imports, and variable initializations
 
 ### Coccinelle Rule Style
 
@@ -974,7 +985,7 @@ report = ch.get_report()
 
 ## Document Maintenance
 
-- **Last Updated**: 2024-11
+- **Last Updated**: 2026-01
 - **CVEhound Version**: 1.2.1
 - **Maintainer**: CVEhound Contributors
 - **Review Cycle**: Update when major changes occur
@@ -985,6 +996,7 @@ This document should be updated when:
 - New documentation is created
 - Testing strategy evolves
 - Significant patterns emerge from contributions
+- Code refactoring or cleanup is performed
 
 ---
 
