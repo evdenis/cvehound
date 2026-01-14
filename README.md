@@ -45,7 +45,7 @@ code patterns of known CVEs and missing fixes for them.
 
 ## Prerequisites
 
-- Python 3 (>=3.5)
+- Python 3 (>=3.11)
 - pip (Python package manager)
 - grep with pcre support (-P flag)
 - coccinelle (>= 1.0.7)
@@ -138,6 +138,27 @@ Other args:
    the FSTEC BDU database)
 
 ## Contributing
+
+### Development Setup
+
+``` shell
+# Clone and install in editable mode
+$ git clone https://github.com/evdenis/cvehound.git
+$ cd cvehound
+$ pip install -e '.[tests]'
+
+# Install pre-commit hooks
+$ pip install pre-commit
+$ pre-commit install
+
+# Run linting and type checking
+$ pre-commit run --all-files
+```
+
+The project uses:
+- **ruff** for linting and formatting
+- **mypy** for static type checking (strict mode)
+- **pre-commit** for automated code quality checks
 
 ### Writing CVE Detection Rules
 
