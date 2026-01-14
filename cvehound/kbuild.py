@@ -91,16 +91,10 @@ class KbuildParser(object):
     parseable_regex = re.compile(r"\$\((.*?) (.*?)\s*,\s*(.*)\)$")
 
     def process_addprefix(self, prefix, targets):
-        l = []
-        for t in targets.split():
-            l.append(prefix + t)
-        return " ".join(l)
+        return " ".join(prefix + t for t in targets.split())
 
     def process_addsuffix(self, suffix, targets):
-        l = []
-        for t in targets.split():
-            l.append(t + suffix)
-        return " ".join(l)
+        return " ".join(t + suffix for t in targets.split())
 
     def replace_variables(self, content, defs, srcpath):
         used_vars = re.findall(r"\$\((" + self.variable_name_regex + r")\)", content)
