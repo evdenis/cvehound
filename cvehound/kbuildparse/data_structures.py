@@ -15,53 +15,57 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+from typing import Any
 
-class VariableStore(dict):
+
+class VariableStore(dict[str, Any]):
     """Class managing variables for easy access across different
     subclasses."""
 
-    def __init__(self):
+    nxt: 'VariableStore | None'
+
+    def __init__(self) -> None:
         super().__init__()
         self.nxt = None
 
-    def create_variable(self, name, variable):
+    def create_variable(self, name: str, variable: Any) -> None:
         """Create a variable with name referenced in @name."""
         self[name] = variable
 
-    def get_variable(self, name):
+    def get_variable(self, name: str) -> Any | None:
         """Get a variable of name @name from the store. Returns None,
         if no corresponding variable was found."""
         if name in self:
             return self[name]
         return None
 
-    def increment_variable(self, name, amount=1):
+    def increment_variable(self, name: str, amount: int = 1) -> None:
         """int has no reference semantics, so incrementing a number
         requires rewriting the entry in the dictionary."""
         self[name] += amount
 
-    def decrement_variable(self, name, amount=1):
+    def decrement_variable(self, name: str, amount: int = 1) -> None:
         """see increment_variable"""
         self[name] -= amount
 
 
-class Precondition(list):
+class Precondition(list[str]):
     """Class representing a list of preconditions for a file."""
 
-    def add_condition(self, condition, keep_duplicates=True):
+    def add_condition(self, condition: str, keep_duplicates: bool = True) -> None:
         """Add a condition to this Precondition."""
         if keep_duplicates or condition not in self:
             self.append(condition)
 
-    def __hash__(self):
+    def __hash__(self) -> int:  # type: ignore[override]
         """Hashing is deferred to superclass."""
-        return hash(super())
+        return hash(tuple(self))
 
 
-class Alternatives(list):
+class Alternatives(list['Precondition']):
     """Class representing a list of alternative Preconditions."""
 
-    def add_alternative(self, precondition):
+    def add_alternative(self, precondition: 'Precondition') -> None:
         """Add an alternative Precondition."""
         self.append(precondition)
 
@@ -69,10 +73,10 @@ class Alternatives(list):
 class LineObject:
     """Class representing a line with conditions."""
 
-    def __init__(self, line):
+    def __init__(self, line: str) -> None:
         self.raw_line = line
         self.processed_line = line
-        self.condition = []
+        self.condition: list[str] = []
         # Invalid means that this line is inside a if{n}{def,eq} block for which
         # we could not evaluate the correct condition.
         self.invalid = False

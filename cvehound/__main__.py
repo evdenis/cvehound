@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import Any
 
 from cvehound import CVEhound
 from cvehound.cwe import CWE
@@ -23,7 +24,7 @@ from cvehound.util import (
 )
 
 
-def check_config(config):
+def check_config(config: dict[str, Any]) -> None:
     valid_config_options = {
         'kernel',
         'cve',
@@ -45,7 +46,9 @@ def check_config(config):
         sys.exit(1)
 
 
-def main(args=sys.argv[1:]):
+def main(args: list[str] | None = None) -> None:
+    if args is None:
+        args = sys.argv[1:]
     parser = argparse.ArgumentParser(
         prog='cvehound',
         description='A tool to check linux kernel sources dump for known CVEs',
@@ -132,42 +135,43 @@ def main(args=sys.argv[1:]):
         print("Can't parse config file:", err, file=sys.stderr)
         sys.exit(1)
     check_config(config_args)
-    args = config_args
-    cmdargs = vars(cmdargs)
-    for arg in cmdargs:
-        if cmdargs[arg] != parser.get_default(arg) or arg not in args:
-            args[arg] = cmdargs[arg]
+    merged_args: dict[str, Any] = config_args
+    cmdargs_dict = vars(cmdargs)
+    for arg in cmdargs_dict:
+        if cmdargs_dict[arg] != parser.get_default(arg) or arg not in merged_args:
+            merged_args[arg] = cmdargs_dict[arg]
+    args_cfg = merged_args
 
-    if not args['kernel']:
+    if not args_cfg['kernel']:
         parser.print_usage()
         print('cvehound: error: the following arguments are required: --kernel/-k', file=sys.stderr)
         sys.exit(1)
 
-    if args['metadata']:
-        if not os.path.isfile(args['metadata']):
-            print("Can't find metadata file", args['metadata'], file=sys.stderr)
+    if args_cfg['metadata']:
+        if not os.path.isfile(args_cfg['metadata']):
+            print("Can't find metadata file", args_cfg['metadata'], file=sys.stderr)
             sys.exit(1)
-        if not args['metadata'].endswith('.gz'):
-            print('Metadata file', args['metadata'], 'is not the gz archive', file=sys.stderr)
+        if not args_cfg['metadata'].endswith('.gz'):
+            print('Metadata file', args_cfg['metadata'], 'is not the gz archive', file=sys.stderr)
             sys.exit(1)
 
-    if not all(os.path.isfile(os.path.join(args['kernel'], f)) for f in ['Makefile']):
-        print(args['kernel'], "isn't a kernel directory", file=sys.stderr)
+    if not all(os.path.isfile(os.path.join(args_cfg['kernel'], f)) for f in ['Makefile']):
+        print(args_cfg['kernel'], "isn't a kernel directory", file=sys.stderr)
         sys.exit(1)
 
-    if args['kernel_config'] == '-':
-        config = os.path.normpath(os.path.join(args['kernel'], '.config'))
+    if args_cfg['kernel_config'] == '-':
+        config = os.path.normpath(os.path.join(args_cfg['kernel'], '.config'))
         if os.path.isfile(config):
-            args['kernel_config'] = config
+            args_cfg['kernel_config'] = config
     else:
-        if args['kernel_config'] and not os.path.isfile(args['kernel_config']):
-            print("Can't find config file", args['kernel_config'], file=sys.stderr)
+        if args_cfg['kernel_config'] and not os.path.isfile(args_cfg['kernel_config']):
+            print("Can't find config file", args_cfg['kernel_config'], file=sys.stderr)
             sys.exit(1)
 
-    if args['kernel_config'] and args['verbose'] == 0:
-        args['verbose'] = 1
+    if args_cfg['kernel_config'] and args_cfg['verbose'] == 0:
+        args_cfg['verbose'] = 1
 
-    if args['check_strict'] and not args['kernel_config']:
+    if args_cfg['check_strict'] and not args_cfg['kernel_config']:
         print('Please, use --check-strict with --kernel-config', file=sys.stderr)
         sys.exit(1)
 
@@ -176,47 +180,50 @@ def main(args=sys.argv[1:]):
         sys.exit(1)
 
     loglevel = logging.WARNING
-    if args['verbose'] > 1:
+    if args_cfg['verbose'] > 1:
         loglevel = logging.DEBUG
-    elif args['verbose'] > 0:
+    elif args_cfg['verbose'] > 0:
         loglevel = logging.INFO
     logging.basicConfig(level=loglevel, format='%(message)s')
 
-    config_info = {}
-    if args['kernel_config'] and args['kernel_config'] != '-':
-        config_info = get_config_data(args['kernel_config'])
+    config_info: dict[str, str] = {}
+    if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
+        config_info = get_config_data(args_cfg['kernel_config'])
 
     hound = CVEhound(
-        args['kernel'],
-        args['metadata'],
-        args['kernel_config'],
-        args['check_strict'],
+        args_cfg['kernel'],
+        args_cfg['metadata'],
+        args_cfg['kernel_config'],
+        args_cfg['check_strict'],
         config_info.get('arch', 'x86'),
     )
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
-    if args['cve'] == ['all']:
-        args['cve'] = hound.get_all_cves()
-    elif args['cve'] == ['assigned']:
-        args['cve'] = hound.get_assigned_cves()
-    elif args['cve'] == ['disputed']:
-        args['cve'] = hound.get_disputed_cves()
+    cve_set: set[str]
+    if args_cfg['cve'] == ['all']:
+        cve_set = hound.get_all_cves()
+    elif args_cfg['cve'] == ['assigned']:
+        cve_set = hound.get_assigned_cves()
+    elif args_cfg['cve'] == ['disputed']:
+        cve_set = hound.get_disputed_cves()
     else:
+        cve_set = set(args_cfg['cve'])
         known_cves = hound.get_all_cves()
-        for i, cve in enumerate(args['cve']):
+        for i, cve in enumerate(args_cfg['cve']):
             if not cve.startswith('CVE-'):
                 cve = 'CVE-' + cve
-                args['cve'][i] = cve
+                args_cfg['cve'][i] = cve
             if not cve_id.match(cve):
                 print('Wrong CVE-ID:', cve, file=sys.stderr)
                 sys.exit(1)
             if cve not in known_cves:
                 print('Unknown CVE:', cve, file=sys.stderr)
                 sys.exit(1)
+        cve_set = set(args_cfg['cve'])
 
-    for file in args['exclude'][:]:
+    for file in args_cfg['exclude'][:]:
         if os.path.exists(file):
-            args['exclude'].remove(file)
+            args_cfg['exclude'].remove(file)
             with open(file, encoding='utf-8') as fh:
                 for line in fh:
                     line = line.strip()
@@ -227,86 +234,86 @@ def main(args=sys.argv[1:]):
                     if not cve_id.match(line):
                         print('Wrong CVE-ID:', line, 'in file', file, file=sys.stderr)
                         sys.exit(1)
-                    args['exclude'].append(line)
+                    args_cfg['exclude'].append(line)
 
-    for i, cve in enumerate(args['exclude']):
+    for i, cve in enumerate(args_cfg['exclude']):
         if not cve.startswith('CVE-'):
             cve = 'CVE-' + cve
-            args['exclude'][i] = cve
+            args_cfg['exclude'][i] = cve
         if not cve_id.match(cve):
             print('Wrong CVE-ID:', cve, file=sys.stderr)
             sys.exit(1)
 
-    if args['all_files'] and args['files']:
+    if args_cfg['all_files'] and args_cfg['files']:
         print('--files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
-    if args['all_files'] and args['ignore_files']:
+    if args_cfg['all_files'] and args_cfg['ignore_files']:
         print('--ignore-files filter and --all-files are not compatible', file=sys.stderr)
         sys.exit(1)
     path_pattern = re.compile(r'^[_a-zA-Z-./0-9]+$')
-    for f in [*args['files'], *args['ignore_files']]:
+    for f in [*args_cfg['files'], *args_cfg['ignore_files']]:
         if not path_pattern.match(f):
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
-    filter_cwes = frozenset(args['cwe'])
-    cves = []
-    for cve in args['cve']:
-        if cve in args['exclude']:
+    filter_cwes = frozenset(args_cfg['cwe'])
+    cves: list[str] = []
+    for cve in cve_set:
+        if cve in args_cfg['exclude']:
             continue
-        if args['exploit'] and not hound.get_cve_exploit(cve):
+        if args_cfg['exploit'] and not hound.get_cve_exploit(cve):
             continue
-        if args['cwe']:
+        if args_cfg['cwe']:
             rule_cwe_desc = hound.get_cve_cwe(cve)
             if not rule_cwe_desc:
                 continue
             rule_cwes = frozenset(CWE[rule_cwe_desc])
             if not (rule_cwes & filter_cwes):
                 continue
-        if args['files']:
+        if args_cfg['files']:
             add = False
             for rulefile in hound.get_rule_files(cve):
-                if any(rulefile.startswith(x) for x in args['files']):
+                if any(rulefile.startswith(x) for x in args_cfg['files']):
                     add = True
                     break
             if not add:
                 continue
-        if args['ignore_files']:
+        if args_cfg['ignore_files']:
             should_check = False
             for rulefile in hound.get_rule_files(cve):
                 # Header files don't affect the ignore decision
                 if rulefile.endswith('.h'):
                     continue
                 # If this file doesn't match any ignore pattern, we should check this CVE
-                if not any(rulefile.startswith(x) for x in args['ignore_files']):
+                if not any(rulefile.startswith(x) for x in args_cfg['ignore_files']):
                     should_check = True
                     break
             if not should_check:
                 continue
         cves.append(cve)
 
-    args['files'].sort()
-    args['ignore_files'].sort()
-    args['cwe'].sort()
-    args['cve'] = sorted(cves)
+    args_cfg['files'].sort()
+    args_cfg['ignore_files'].sort()
+    args_cfg['cwe'].sort()
+    cves_sorted = sorted(cves)
 
-    report = {'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
-    report['args']['cve'] = args['cve']
-    report['args']['kernel'] = args['kernel']
-    report['args']['config'] = args['kernel_config']
-    report['args']['only_cwe'] = args['cwe']
-    report['args']['only_files'] = args['files']
-    report['args']['all_files'] = args['all_files']
-    report['args']['check_strict'] = args['check_strict']
-    report['kernel'] = get_kernel_version(args['kernel'])
-    if args['kernel_config'] and args['kernel_config'] != '-':
+    report: dict[str, Any] = {'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
+    report['args']['cve'] = cves_sorted
+    report['args']['kernel'] = args_cfg['kernel']
+    report['args']['config'] = args_cfg['kernel_config']
+    report['args']['only_cwe'] = args_cfg['cwe']
+    report['args']['only_files'] = args_cfg['files']
+    report['args']['all_files'] = args_cfg['all_files']
+    report['args']['check_strict'] = args_cfg['check_strict']
+    report['kernel'] = get_kernel_version(args_cfg['kernel'])
+    if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         future_to_cve = {
-            executor.submit(hound.check_cve, cve, args['all_files']): cve for cve in args['cve']
+            executor.submit(hound.check_cve, cve, args_cfg['all_files']): cve for cve in cves_sorted
         }
 
         for future in concurrent.futures.as_completed(future_to_cve):
@@ -320,10 +327,10 @@ def main(args=sys.argv[1:]):
             except UnsupportedVersion as err:
                 logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
-    if args['report']:
-        with open(args['report'], 'w', encoding='utf-8') as fh:
+    if args_cfg['report']:
+        with open(args_cfg['report'], 'w', encoding='utf-8') as fh:
             json.dump(report, fh, indent=4, sort_keys=True)
-        print('Report saved to:', args['report'])
+        print('Report saved to:', args_cfg['report'])
 
 
 if __name__ == '__main__':

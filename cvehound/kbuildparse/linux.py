@@ -19,10 +19,14 @@ import collections
 import logging
 import os
 import re
+from typing import TYPE_CHECKING, Any
 
 import cvehound.kbuildparse.base_classes as BaseClasses
 import cvehound.kbuildparse.data_structures as DataStructures
 import cvehound.kbuildparse.helper as Helper
+
+if TYPE_CHECKING:
+    from cvehound.kbuildparse.data_structures import Precondition, VariableStore
 
 # Helper functions in module
 CONFIG_FORMAT = r'CONFIG_([A-Za-z0-9_-]+)'
@@ -34,7 +38,9 @@ REGEX_ENDIF = re.compile(r'\s*endif\s*')
 REGEX_ELSE = re.compile(r'\s*else\s*')
 
 
-def regex_ifneq_match(line, ifdef_condition, global_vars, model):
+def regex_ifneq_match(
+    line: str, ifdef_condition: 'Precondition', global_vars: 'VariableStore', model: Any
+) -> bool:
     """Check if @line resembles a line describing a condition
     with if(n)eq. If so, update the condition in @ifdef_condition and
     return True, otherwise return False."""
@@ -62,7 +68,9 @@ def regex_ifneq_match(line, ifdef_condition, global_vars, model):
     return True
 
 
-def regex_ifndef_match(line, ifdef_condition, global_vars, model):
+def regex_ifndef_match(
+    line: str, ifdef_condition: 'Precondition', global_vars: 'VariableStore', model: Any
+) -> bool:
     """Check if @line resembles a line describing a condition
     with if(n)def. If so, update the condition in @ifdef_condition and
     return True, otherwise return False."""
@@ -88,7 +96,9 @@ def regex_ifndef_match(line, ifdef_condition, global_vars, model):
     return True
 
 
-def regex_endif_match(line, ifdef_condition, global_vars):
+def regex_endif_match(
+    line: str, ifdef_condition: 'Precondition', global_vars: 'VariableStore'
+) -> bool:
     """Check if @line resembles a line describing the end of a conditional
     block (endif). If so, update the condition in @ifdef_condition and
     return True, otherwise return False."""
@@ -103,7 +113,9 @@ def regex_endif_match(line, ifdef_condition, global_vars):
     return True
 
 
-def regex_else_match(line, ifdef_condition, global_vars):
+def regex_else_match(
+    line: str, ifdef_condition: 'Precondition', global_vars: 'VariableStore'
+) -> bool:
     """Check if @line resembles a line describing an else.
     If so, update the condition in ifdef_condition and
     return True, otherwise return False."""
@@ -125,7 +137,13 @@ def regex_else_match(line, ifdef_condition, global_vars):
     return True
 
 
-def update_if_condition(line, ifdef_condition, global_vars, local_vars, model):
+def update_if_condition(
+    line: str,
+    ifdef_condition: 'Precondition',
+    global_vars: 'VariableStore',
+    local_vars: 'VariableStore',
+    model: Any,
+) -> bool:
     """Update the @ifdef_condition with information from @line.
     If updating succeeded, return True. Otherwise signal skipping
     of the line by returning True if we're inside an unparseable block and
@@ -158,11 +176,13 @@ class LinuxInit(BaseClasses.InitClass):
     mips_plat_line = r'platform-\$\(' + CONFIG_FORMAT + r'\)\s*\+=\s*(.*)'
     regex_mips_plat = re.compile(mips_plat_line)
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         """Constructor for InitLinux, takes model and arch parameters."""
         super().__init__(model, arch)
 
-    def parse_architecture_regular(self, line, local_arch_dirs):
+    def parse_architecture_regular(
+        self, line: str, local_arch_dirs: dict[str, list['Precondition']]
+    ) -> bool:
         """Parse an architecture Makefile. This looks for any additional
         lists (core|init|drivers|net|libs) and saves the corresponding
         conditions for those directories."""
@@ -191,7 +211,9 @@ class LinuxInit(BaseClasses.InitClass):
             local_arch_dirs[match].append(current_precondition[:])
         return True
 
-    def parse_arm_architecture(self, line, local_arch_dirs):
+    def parse_arm_architecture(
+        self, line: str, local_arch_dirs: dict[str, list['Precondition']]
+    ) -> bool:
         """Parse the Makefile at arch/arm/ and look for
         machine-$() and plat-$() lists describing the subdirectories."""
 
@@ -226,7 +248,9 @@ class LinuxInit(BaseClasses.InitClass):
             local_arch_dirs[fullpath].append(current_precondition[:])
         return True
 
-    def parse_blackfin_architecture(self, line, local_arch_dirs):
+    def parse_blackfin_architecture(
+        self, line: str, local_arch_dirs: dict[str, list['Precondition']]
+    ) -> bool:
         """Parse the Makefile at arch/blackfin/ and look for any
         lines describing machine-$(CONFIG_XY) lists."""
 
@@ -267,7 +291,9 @@ class LinuxInit(BaseClasses.InitClass):
                 local_arch_dirs[fullpath].append(current_precondition[:])
         return True
 
-    def parse_mips_platform(self, path, local_arch_dirs):
+    def parse_mips_platform(
+        self, path: str, local_arch_dirs: dict[str, list['Precondition']]
+    ) -> None:
         """Parse a arch/mips/*/Platform file. Mips describes the dependencies
         there, which is why we need to parse this as well."""
 
@@ -289,7 +315,9 @@ class LinuxInit(BaseClasses.InitClass):
                     current_precondition.add_condition(config)
                     local_arch_dirs[fulldir].append(current_precondition)
 
-    def parse_mips_architecture(self, line, local_arch_dirs):
+    def parse_mips_architecture(
+        self, line: str, local_arch_dirs: dict[str, list['Precondition']]
+    ) -> bool:
         """Parses the main mips Makefile. Calls parse_mips_platform for
         any found Platform file in a subdirectory."""
 
@@ -307,7 +335,9 @@ class LinuxInit(BaseClasses.InitClass):
                     self.parse_mips_platform(subpath, local_arch_dirs)
         return True
 
-    def parse_architecture_path(self, path, dirs_to_process):
+    def parse_architecture_path(
+        self, path: str, dirs_to_process: dict[str, 'Precondition']
+    ) -> None:
         """Gather additional information from an architecture
         directory. The arch-Makefiles behave a little bit differently
         depending on the architecture, which is why other helper
@@ -345,7 +375,7 @@ class LinuxInit(BaseClasses.InitClass):
         for item in local_arch_dirs:
             dirs_to_process[item] = Helper.build_precondition(local_arch_dirs[item])
 
-    def get_file_for_subdirectory(self, directory):
+    def get_file_for_subdirectory(self, directory: str) -> str:
         """Select the correct Kbuild makefile in directory."""
         if not directory.endswith('/'):
             directory += '/'
@@ -354,7 +384,9 @@ class LinuxInit(BaseClasses.InitClass):
             descend = directory + 'Makefile'
         return descend
 
-    def process(self, parser, dirs_to_process, kernel_dir='.'):
+    def process(
+        self, parser: Any, dirs_to_process: dict[str, 'Precondition'], kernel_dir: str = '.'
+    ) -> None:
         """Here we can read the command line arguments, create global
         variables and insert items into a list of directories which will
         be processed."""
@@ -391,11 +423,11 @@ class LinuxInit(BaseClasses.InitClass):
 class LinuxBefore(BaseClasses.BeforePass):
     """Initialization of per-file variables for Linux."""
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         """Constructor for BeforeLinux, takes model and arch parameters"""
         super().__init__(model, arch)
 
-    def process(self, parser, basepath):
+    def process(self, parser: Any, basepath: str) -> None:
         """Initialize data structures before main processing loop."""
         # Composite object handling
         parser.local_vars.create_variable(
@@ -428,10 +460,10 @@ class _00_LinuxDefinitions(BaseClasses.DuringPass):
     regex_my_sub = re.compile(r'(.*)-\$\(' + CONFIG_FORMAT + r':m=y\)\s*(\+=|=|:=)(.*)')
     regex_def = re.compile(r'\s*([A-Z_-]+)\s*[\?:]?=\s*(.*)')
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         super().__init__(model, arch)
 
-    def do_line_replacements(self, parser, line):
+    def do_line_replacements(self, parser: Any, line: str) -> str:
         """Replace occurences of known patterns and definitions in line and
         return them."""
 
@@ -451,7 +483,7 @@ class _00_LinuxDefinitions(BaseClasses.DuringPass):
 
         return line
 
-    def process(self, parser, line, basepath):
+    def process(self, parser: Any, line: DataStructures.LineObject, basepath: str) -> bool:
         _line = line.raw_line
         # Assumes definitions are UPPERCASE and done with :=
         definition = self.regex_def.match(_line)
@@ -470,10 +502,10 @@ class _00_LinuxDefinitions(BaseClasses.DuringPass):
 class _01_LinuxIf(BaseClasses.DuringPass):
     """Evaluation of ifdef/ifeq conditions in Linux."""
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         super().__init__(model, arch)
 
-    def process(self, parser, line, basepath):
+    def process(self, parser: Any, line: DataStructures.LineObject, basepath: str) -> bool:
         """Process lines starting with if{n}{eq,def}. If the condition could
         not be properly parsed, the line and all following lines until the
         corresponding endif are marked as invalid - update_if_condition will
@@ -504,10 +536,10 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
     subdir_line = r'\s*subdir-(y|\$\(' + CONFIG_FORMAT + r'\))\s*\+=(.*)'
     regex_subdir = re.compile(subdir_line)
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         super().__init__(model, arch)
 
-    def __process(self, parser, line, basepath):
+    def __process(self, parser: Any, line: DataStructures.LineObject, basepath: str) -> bool:
         line = line.processed_line
 
         # Try obj-... +=/:=/= objfile.o
@@ -608,7 +640,7 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
 
         return True
 
-    def process(self, parser, line, basepath):
+    def process(self, parser: Any, line: DataStructures.LineObject, basepath: str) -> None:
         if '$(BITS)' in line.processed_line:
             line_1 = DataStructures.LineObject(line.raw_line)
             line_1.processed_line = line.processed_line.replace(r'$(BITS)', '32')
@@ -623,8 +655,8 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
         else:
             lines = [line]
 
-        for line in lines:
-            self.__process(parser, line, basepath)
+        for ln in lines:
+            self.__process(parser, ln, basepath)
 
 
 class _01_LinuxExpandMacros(BaseClasses.AfterPass):
@@ -633,11 +665,19 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
     # Static strings/regexes
     regex_base = re.compile(r'([A-Za-z0-9,_-]+)\.o|\$\(([A-Za-z0-9,_-]+)\)')
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         """Constructor for _01_LinuxExpandMacros."""
         super().__init__(model, arch)
 
-    def expand_macro(self, name, path, condition, already_expanded, parser, maxdepth=3):
+    def expand_macro(
+        self,
+        name: str,
+        path: str,
+        condition: 'Precondition',
+        already_expanded: set[str],
+        parser: Any,
+        maxdepth: int = 3,
+    ) -> None:
         """Expand a macro named @name. Preconditions to the folder are given
         in @condition. The input file is @path and to avoid endless
         recursion processing is aborted if the current name is already present
@@ -741,12 +781,12 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
 
         already_expanded.discard(name)
 
-    def process(self, parser, path, condition_for_current_dir):
+    def process(self, parser: Any, path: str, condition_for_current_dir: 'Precondition') -> None:
         """Process macros from composite_map variable."""
         # Macro expansion
         for obj in parser.local_vars.get_variable('composite_map'):
             downward_condition = Helper.build_precondition(parser.local_vars['composite_map'][obj])
-            already_expanded = set()
+            already_expanded: set[str] = set()
 
             # Pass an empty set as the already_expanded parameter, as
             # expand_macro is allowed to call itself recursively
@@ -756,11 +796,11 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
 class _02_LinuxProcessSubdirectories(BaseClasses.AfterPass):
     """Process subdirectories in Linux."""
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         """Constructor for _02_LinuxProcessSubdirectories."""
         super().__init__(model, arch)
 
-    def process(self, parser, path, condition_for_current_dir):
+    def process(self, parser: Any, path: str, condition_for_current_dir: 'Precondition') -> None:
         """Process all subdirectories."""
         for directory in parser.local_vars['dir_cond_collection']:
             downward_condition = Helper.build_precondition(
@@ -774,12 +814,12 @@ class _02_LinuxProcessSubdirectories(BaseClasses.AfterPass):
 class _03_LinuxOutput(BaseClasses.AfterPass):
     """Output class for Linux."""
 
-    def __init__(self, model, arch):
+    def __init__(self, model: str, arch: str) -> None:
         """Constructor for _03_LinuxOutput."""
         super().__init__(model, arch)
-        self.config = {}
+        self.config: dict[str, str] = {}
 
-    def process(self, parser, path, condition_for_current_dir):
+    def process(self, parser: Any, path: str, condition_for_current_dir: 'Precondition') -> None:
         """Print conditions collected in file_features variable."""
         for item in sorted(parser.local_vars['file_features']):
             # Build the precondition, including the conditions for the current

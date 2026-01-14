@@ -16,14 +16,17 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+from typing import IO, Any
 
 import cvehound.kbuildparse.data_structures as DataStructures
 
 
-def build_precondition(input_list, additional=None):
+def build_precondition(
+    input_list: list[list[str]], additional: list[str] | None = None
+) -> DataStructures.Precondition:
     """Build a DataStructures.Precondition object from a given @input_list.
     Additional constraints from @additional are added to the Precondition."""
-    alternatives = []
+    alternatives: list[str] = []
     for alternative in input_list:
         string = ' & '.join(alternative)
         if string != '':
@@ -49,7 +52,7 @@ def build_precondition(input_list, additional=None):
     return ret
 
 
-def guess_source_for_target(target):
+def guess_source_for_target(target: str) -> str | None:
     """
     for the given target, try to determine its source file.
     generic version for linux and busybox
@@ -62,12 +65,12 @@ def guess_source_for_target(target):
     return None
 
 
-def remove_makefile_comment(line):
+def remove_makefile_comment(line: str) -> str:
     """Strips everything after the first # (Makefile comment) from a line."""
     return line.split('#', 1)[0].rstrip()
 
 
-def get_multiline_from_file(infile):
+def get_multiline_from_file(infile: IO[str]) -> tuple[bool, str]:
     """Reads a line from infile. If the line ends with a line continuation,
     it is substituted with a space and the next line is appended. Returns
     (True, line) if reading has succeeded, (False, "") otherwise. The boolean
@@ -91,7 +94,7 @@ def get_multiline_from_file(infile):
     return (True, line)
 
 
-def get_config_string(item, model=None):
+def get_config_string(item: str, model: Any = None) -> str:
     """Return a string with CONFIG_ for a given item. If the item is
     a tristate symbol in model, CONFIG_$(item)_MODULE is added as an
     alternative."""

@@ -6,9 +6,10 @@ import subprocess
 from configparser import ConfigParser
 from importlib.metadata import distribution, version
 from importlib.resources import files
+from typing import Any
 
 
-def get_config_data(path):
+def get_config_data(path: str) -> dict[str, str]:
     with open(path) as fh:
         ver_pattern = re.compile(r'# Linux/(\S+)\s+(\S+)\s+Kernel Configuration')
         for line in fh:
@@ -18,24 +19,23 @@ def get_config_data(path):
     return {}
 
 
-def get_kernel_version(path):
+def get_kernel_version(path: str) -> dict[str, str]:
     with open(os.path.join(path, 'Makefile')) as fh:
         makefile = fh.read()
-    version = {}
+    ver: dict[str, str] = {}
     for key in ['version', 'patchlevel', 'sublevel', 'extraversion', 'name']:
         res = re.search('^' + key.upper() + r'[ \t]*=[ \t]*(.*)[ \t]*$', makefile, re.MULTILINE)
         if res:
-            version[key] = res.group(1)
+            ver[key] = res.group(1)
         else:
-            version[key] = ''
-    version['full'] = (
-        '.'.join([version['version'], version['patchlevel'], version['sublevel']])
-        + version['extraversion']
+            ver[key] = ''
+    ver['full'] = (
+        '.'.join([ver['version'], ver['patchlevel'], ver['sublevel']]) + ver['extraversion']
     )
-    return version
+    return ver
 
 
-def get_cvehound_version():
+def get_cvehound_version() -> str:
     pkg_version = version('cvehound')
     dist = distribution('cvehound')
     location = str(dist.locate_file(''))
@@ -54,15 +54,17 @@ def get_cvehound_version():
     return pkg_version
 
 
-def get_spatch_version():
-    version = (
+def get_spatch_version() -> int:
+    version_output = (
         subprocess.check_output(
             ['spatch', '--version'], stderr=subprocess.DEVNULL, universal_newlines=True
         )
         .strip()
         .split('\n')[0]
     )
-    res = re.match(r'spatch\s+version\s+([\d.]+)', version)
+    res = re.match(r'spatch\s+version\s+([\d.]+)', version_output)
+    if res is None:
+        raise RuntimeError('Could not parse spatch version')
     version_string = res.group(1)
     nums = version_string.count('.')
     if nums == 1:
@@ -70,10 +72,10 @@ def get_spatch_version():
     return int(version_string.replace('.', ''))
 
 
-def get_rule_cves():
-    known = {}
-    assigned = {}
-    disputed = {}
+def get_rule_cves() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    known: dict[str, str] = {}
+    assigned: dict[str, str] = {}
+    disputed: dict[str, str] = {}
     cve_dir = str(files('cvehound').joinpath('cve'))
     for root, _dirs, file_list in os.walk(cve_dir):
         for cve in file_list:
@@ -87,7 +89,7 @@ def get_rule_cves():
     return (known, assigned, disputed)
 
 
-def get_cves_metadata(path):
+def get_cves_metadata(path: str | None) -> Any:
     if not path:
         path = os.environ.get(
             'CVEHOUND_METADATA', str(files('cvehound').joinpath('data/kernel_cves.json.gz'))
@@ -98,24 +100,24 @@ def get_cves_metadata(path):
     return data
 
 
-def parse_coccinelle_output(output):
-    files = []
+def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
+    result: list[dict[str, str | int]] = []
     for line in output.splitlines():
         file, hline, _ = line.split(':', 2)
-        files.append(
+        result.append(
             {
                 'file': file,
                 'line': int(hline),
             }
         )
-    return files
+    return result
 
 
-def parse_config(file):
+def parse_config(file: str) -> dict[str, Any]:
     parser = ConfigParser()
     with open(file) as fh:
         parser.read_string('[cvehound]\n' + fh.read())
-    config = dict(parser['cvehound'])
+    config: dict[str, Any] = dict(parser['cvehound'])
 
     for key in ['cve', 'exclude', 'cwe', 'files', 'ignore_files']:
         if key not in config:

@@ -1,9 +1,9 @@
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
 
-class Config(Mapping):
-    def __init__(self, config):
-        enabled = {}
+class Config(Mapping[str, bool]):
+    def __init__(self, config: str) -> None:
+        enabled: dict[str, bool] = {}
         with open(config, encoding='utf8') as fh:
             for line in fh:
                 line = line.strip()
@@ -13,17 +13,17 @@ class Config(Mapping):
                     enabled[line.split(' ')[1]] = False
         self._storage = enabled
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> bool:
         try:
             return self._storage[key]
         except KeyError:
             return False
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._storage)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._storage)
 
-    def get_mapping(self):
+    def get_mapping(self) -> dict[str, bool]:
         return self._storage

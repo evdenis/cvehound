@@ -60,3 +60,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["cvehound.kbuild", "cvehound.kbuildparse.*"]
+ignore_errors = true

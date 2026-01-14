@@ -15,7 +15,7 @@ from zipfile import ZipFile
 import lxml.etree as etree
 
 
-def get_exploit_status_from_fstec():
+def get_exploit_status_from_fstec() -> tuple[set[str], set[str]]:
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -30,17 +30,17 @@ def get_exploit_status_from_fstec():
         parser = etree.XMLParser(recover=True)
         tree = etree.parse(fh, parser)
 
-    public = set()
-    private = set()
-    for item in tree.xpath('//vul'):
-        item.xpath('identifier/text()')[0]
-        cve_id = None
-        for vuln_id in item.xpath('identifiers/identifier'):
-            if vuln_id.get('type') == 'CVE':
-                cve_id = vuln_id.text
+    public: set[str] = set()
+    private: set[str] = set()
+    for item in tree.xpath('//vul'):  # type: ignore[union-attr]
+        item.xpath('identifier/text()')[0]  # type: ignore[union-attr, index]
+        cve_id: str | None = None
+        for vuln_id in item.xpath('identifiers/identifier'):  # type: ignore[union-attr]
+            if vuln_id.get('type') == 'CVE':  # type: ignore[union-attr]
+                cve_id = vuln_id.text  # type: ignore[union-attr]
                 break
         is_linux = False
-        for name in item.xpath('vulnerable_software/soft/name/text()'):
+        for name in item.xpath('vulnerable_software/soft/name/text()'):  # type: ignore[union-attr]
             if name == 'Linux' or name == 'linux':
                 is_linux = True
         if not is_linux:
@@ -48,16 +48,16 @@ def get_exploit_status_from_fstec():
         if not cve_id:
             continue
 
-        exploit_status = item.xpath('exploit_status/text()')[0]
-        if 'открыт' in exploit_status:  # 'открытом' == 'public'
+        exploit_status = item.xpath('exploit_status/text()')[0]  # type: ignore[union-attr, index]
+        if 'открыт' in exploit_status:  # type: ignore[operator]  # 'открытом' == 'public'
             public.add(cve_id)
-        elif 'уществует' in exploit_status:  # == exists
+        elif 'уществует' in exploit_status:  # type: ignore[operator]  # == exists
             private.add(cve_id)
 
     return public, private
 
 
-def get_commit_date(repo, commit):
+def get_commit_date(repo: str, commit: str) -> int:
     return int(
         subprocess.check_output(
             ['git', 'show', '-s', '--format=%ct', commit],
@@ -68,7 +68,9 @@ def get_commit_date(repo, commit):
     )
 
 
-def main(args=sys.argv):
+def main(args: list[str] | None = None) -> None:
+    if args is None:
+        args = sys.argv
     if len(args) < 2 or not os.path.isdir(os.path.join(args[1], '.git')):
         print(f'Usage: {args[0]} <kernel_repo_dir> [metadata_file]', file=sys.stderr)
         sys.exit(1)

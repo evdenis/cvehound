@@ -1,5 +1,5 @@
 class UnsupportedVersion(Exception):
-    def __init__(self, spatch_version, cve, rule_version):
+    def __init__(self, spatch_version: int, cve: str, rule_version: int) -> None:
         # Convert version integer (e.g., 107) to dotted string (e.g., "1.0.7")
         # Version encoding: XYZ represents version X.Y.Z
         self.spatch_version = (

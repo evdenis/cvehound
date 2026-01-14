@@ -5,7 +5,8 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from sympy.logic import simplify_logic
 
@@ -21,15 +22,24 @@ from cvehound.util import (
 
 __VERSION__ = '1.2.1'
 
+RuleMetadata = dict[str, Any]
+
 
 class CVEhound:
-    def __init__(self, kernel, metadata=None, config=None, check_strict=False, arch='x86'):
+    def __init__(
+        self,
+        kernel: str,
+        metadata: str | None = None,
+        config: str | None = None,
+        check_strict: bool = False,
+        arch: str = 'x86',
+    ) -> None:
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
-        self.metadata = get_cves_metadata(metadata)
+        self.metadata: dict[str, Any] = get_cves_metadata(metadata)
         self.spatch_version = get_spatch_version()
         self.check_strict = check_strict
-        self.rules_metadata = {}
+        self.rules_metadata: dict[str, RuleMetadata] = {}
         (self.cve_all_rules, self.cve_assigned_rules, self.cve_disputed_rules) = get_rule_cves()
 
         ipaths = [
@@ -41,33 +51,29 @@ class CVEhound:
             'include/uapi',
             'include/generated/uapi',
         ]
-        ipaths = (os.path.join(kernel, f) for f in ipaths)
-        includes = []
-        for i in ipaths:
+        includes: list[str] = []
+        for ipath in ipaths:
             includes.append('-I')
-            includes.append(i)
+            includes.append(os.path.join(kernel, ipath))
         self.includes = includes
 
+        self.config_file: str | None = None
+        self.config_map: dict[str, str] | None = None
+        self.config: Config | None = None
+
         if config:
-            parser = KbuildParser(None, arch)
-            dirs_to_process = collections.OrderedDict()
-            parser.init_class.process(parser, dirs_to_process, kernel)
+            kbuild_parser = KbuildParser(None, arch)  # type: ignore[no-untyped-call]
+            dirs_to_process: dict[str, Any] = collections.OrderedDict()
+            kbuild_parser.init_class.process(kbuild_parser, dirs_to_process, kernel)
 
             for item in dirs_to_process:
-                descend = parser.init_class.get_file_for_subdirectory(item)
-                parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
+                descend = kbuild_parser.init_class.get_file_for_subdirectory(item)
+                kbuild_parser.process_kbuild_or_makefile(descend, dirs_to_process[item])  # type: ignore[no-untyped-call]
 
-            self.config_map = parser.get_config()
+            self.config_map = kbuild_parser.get_config()  # type: ignore[no-untyped-call]
             if config != '-':
                 self.config_file = config
                 self.config = Config(config)
-            else:
-                self.config_file = None
-                self.config = None
-        else:
-            self.config_file = None
-            self.config_map = None
-            self.config = None
 
         if self.spatch_version <= 104:
             logging.warning(
@@ -75,8 +81,8 @@ class CVEhound:
                 'Please, consider updating to >= 1.0.7 version.'
             )
 
-    def get_grep_pattern(self, rule):
-        patterns = []
+    def get_grep_pattern(self, rule: str) -> list[str]:
+        patterns: list[str] = []
         with open(rule) as fh:
             for line in fh:
                 line = line.strip()
@@ -87,7 +93,7 @@ class CVEhound:
                 patterns.append(line)
         return patterns
 
-    def _print_found_cve(self, cve):
+    def _print_found_cve(self, cve: str) -> None:
         logging.warning('Found: ' + cve)
         if cve in self.metadata:
             info = self.metadata[cve]
@@ -102,11 +108,11 @@ class CVEhound:
             if 'fix_date' in info:
                 logging.info(
                     'FIX DATE: '
-                    + datetime.fromtimestamp(info['fix_date'], tz=timezone.utc).strftime('%Y-%m-%d')
+                    + datetime.fromtimestamp(info['fix_date'], tz=UTC).strftime('%Y-%m-%d')
                 )
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
-    def _print_affected_files(self, config):
+    def _print_affected_files(self, config: dict[str, Any]) -> None:
         if 'files' in config and config['files']:
             logging.info('Affected Files:')
             for file in config['files']:
@@ -122,24 +128,26 @@ class CVEhound:
         if 'affected' not in config or config['affected'] is None:
             return
         config_affected = 'affected' if config['affected'] else 'not affected'
-        if self.config:
+        if self.config and self.config_file:
             logging.info('Config: ' + self.config_file + ' ' + config_affected)
         else:
             logging.info('Config: any ' + config_affected)
 
-    def check_cve(self, cve, all_files=False):
-        result = {}
+    def check_cve(self, cve: str, all_files: bool = False) -> dict[str, Any] | bool:
+        result: dict[str, Any] = {}
         is_grep = False
         rule = self.cve_all_rules[cve]
         if rule.endswith('.grep'):
             is_grep = True
 
-        files = []
+        files: list[str] = []
         if not all_files:
-            files = self.get_rule_files(cve)
-            files = (os.path.join(self.kernel, f) for f in files)
-            files = filter(lambda f: os.path.exists(f), files)
-            files = list(files)
+            rule_files = self.get_rule_files(cve)
+            files = [
+                os.path.join(self.kernel, f)
+                for f in rule_files
+                if os.path.exists(os.path.join(self.kernel, f))
+            ]
         if not files:
             files = [self.kernel]
 
@@ -199,35 +207,36 @@ class CVEhound:
         if 'ERROR' not in output:
             return False
 
-        config_result = {}
+        config_result: dict[str, Any] = {}
         if self.config_map:
-            kernel_files = {}
+            kernel_files: dict[str, str] = {}
             for line in output.split('\n'):
-                file = []
+                file_list: list[str] = []
                 if not is_grep:
-                    file = [line.split(':')[0]]
+                    file_list = [line.split(':')[0]]
                 else:
                     while True:
                         try:
                             rindex = line.rindex(self.kernel)
                         except ValueError:
                             break
-                        file.append(line[rindex:])
+                        file_list.append(line[rindex:])
                         line = line[:rindex]
-                for f in filter(lambda f: os.path.isfile(f), file):
-                    kernel_files[f] = self.config_map.get(f, '')
+                for f in file_list:
+                    if os.path.isfile(f):
+                        kernel_files[f] = self.config_map.get(f, '')
             if kernel_files:
-                config_affected = None
+                config_affected: bool | None = None
                 if 'files' not in config_result:
                     config_result['files'] = {}
-                for file, config in kernel_files.items():
-                    rel_file = file[len(self.kernel) + 1 :]
-                    result_file = {}
-                    if config:
-                        config = simplify_logic(config)
-                        result_file['logic'] = str(config)
+                for kfile, kconfig in kernel_files.items():
+                    rel_file = kfile[len(self.kernel) + 1 :]
+                    result_file: dict[str, Any] = {}
+                    if kconfig:
+                        simplified = simplify_logic(kconfig)
+                        result_file['logic'] = str(simplified)
                         if self.config:
-                            affected = config.subs(self.config.get_mapping())
+                            affected = simplified.subs(self.config.get_mapping())
                             if affected:
                                 result_file['config'] = True
                                 config_affected = True
@@ -241,8 +250,8 @@ class CVEhound:
                         result_file['config'] = True
                         config_affected = True
                     config_result['files'][rel_file] = result_file
-            if config_affected is not None:
-                config_result['affected'] = config_affected
+                if config_affected is not None:
+                    config_result['affected'] = config_affected
 
         if (
             self.check_strict and 'affected' in config_result and config_result['affected']
@@ -264,11 +273,11 @@ class CVEhound:
 
         return result
 
-    def get_rule_metadata(self, cve):
-        files = []
-        fix = None
-        fixes = None
-        version = 0
+    def get_rule_metadata(self, cve: str) -> RuleMetadata:
+        files: list[str] = []
+        fix: str | None = None
+        fixes: str | None = None
+        version: int | str = 0
 
         if cve in self.rules_metadata:
             return self.rules_metadata[cve]
@@ -293,35 +302,42 @@ class CVEhound:
         self.rules_metadata[cve] = meta
         return meta
 
-    def get_cve_metadata(self, cve):
-        return self.metadata.get(cve, {})
+    def get_cve_metadata(self, cve: str) -> dict[str, Any]:
+        result: dict[str, Any] = self.metadata.get(cve, {})
+        return result
 
-    def get_cve_cwe(self, cve):
-        return self.get_cve_metadata(cve).get('cwe', None)
+    def get_cve_cwe(self, cve: str) -> str | None:
+        cwe: str | None = self.get_cve_metadata(cve).get('cwe', None)
+        return cwe
 
-    def get_cve_exploit(self, cve):
-        return self.get_cve_metadata(cve).get('exploit', False)
+    def get_cve_exploit(self, cve: str) -> bool:
+        exploit: bool = self.get_cve_metadata(cve).get('exploit', False)
+        return exploit
 
-    def get_all_cves(self):
+    def get_all_cves(self) -> set[str]:
         return set(self.cve_all_rules.keys())
 
-    def get_assigned_cves(self):
+    def get_assigned_cves(self) -> set[str]:
         return set(self.cve_assigned_rules.keys())
 
-    def get_disputed_cves(self):
+    def get_disputed_cves(self) -> set[str]:
         return set(self.cve_disputed_rules.keys())
 
-    def get_rule(self, cve):
+    def get_rule(self, cve: str) -> str:
         return self.cve_all_rules[cve]
 
-    def get_rule_fix(self, cve):
-        return self.get_rule_metadata(cve)['fix']
+    def get_rule_fix(self, cve: str) -> str | None:
+        fix: str | None = self.get_rule_metadata(cve)['fix']
+        return fix
 
-    def get_rule_fixes(self, cve):
-        return self.get_rule_metadata(cve)['fixes']
+    def get_rule_fixes(self, cve: str) -> str | None:
+        fixes: str | None = self.get_rule_metadata(cve)['fixes']
+        return fixes
 
-    def get_rule_files(self, cve):
-        return self.get_rule_metadata(cve)['files']
+    def get_rule_files(self, cve: str) -> list[str]:
+        files: list[str] = self.get_rule_metadata(cve)['files']
+        return files
 
-    def get_rule_version(self, cve):
-        return self.get_rule_metadata(cve)['version']
+    def get_rule_version(self, cve: str) -> int:
+        version: int = self.get_rule_metadata(cve)['version']
+        return version
