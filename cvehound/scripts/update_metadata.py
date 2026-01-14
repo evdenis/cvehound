@@ -1,36 +1,42 @@
 #!/usr/bin/env python3
 
-import os
-import sys
+import contextlib
 import gzip
 import json
-import subprocess
+import os
 import ssl
-from urllib.request import urlopen, Request
-from datetime import datetime
-import lxml.etree as etree
-from io import BytesIO
-from zipfile import ZipFile
+import subprocess
+import sys
 from importlib.resources import files
+from io import BytesIO
+from urllib.request import Request, urlopen
+from zipfile import ZipFile
+
+import lxml.etree as etree
+
 
 def get_exploit_status_from_fstec():
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    req = Request('https://bdu.fstec.ru/files/documents/vulxml.zip', headers={'User-Agent': 'Mozilla/5.0'})
-    with urlopen(req, context=ctx) as uh:
-        with ZipFile(BytesIO(uh.read())) as zh:
-            with zh.open('export/export.xml') as fh:
-                parser = etree.XMLParser(recover=True)
-                tree = etree.parse(fh, parser)
+    req = Request(
+        'https://bdu.fstec.ru/files/documents/vulxml.zip', headers={'User-Agent': 'Mozilla/5.0'}
+    )
+    with (
+        urlopen(req, context=ctx) as uh,
+        ZipFile(BytesIO(uh.read())) as zh,
+        zh.open('export/export.xml') as fh,
+    ):
+        parser = etree.XMLParser(recover=True)
+        tree = etree.parse(fh, parser)
 
     public = set()
     private = set()
     for item in tree.xpath('//vul'):
-        bdu_id = item.xpath('identifier/text()')[0]
+        item.xpath('identifier/text()')[0]
         cve_id = None
         for vuln_id in item.xpath('identifiers/identifier'):
-            if 'CVE' == vuln_id.get('type'):
+            if vuln_id.get('type') == 'CVE':
                 cve_id = vuln_id.text
                 break
         is_linux = False
@@ -43,21 +49,28 @@ def get_exploit_status_from_fstec():
             continue
 
         exploit_status = item.xpath('exploit_status/text()')[0]
-        if 'открыт' in exploit_status: # 'открытом' == 'public'
+        if 'открыт' in exploit_status:  # 'открытом' == 'public'
             public.add(cve_id)
-        elif 'уществует' in exploit_status: # == exists
+        elif 'уществует' in exploit_status:  # == exists
             private.add(cve_id)
 
     return public, private
 
+
 def get_commit_date(repo, commit):
-    return int(subprocess.check_output(
-            ['git', 'show', '-s', '--format=%ct', commit], cwd=repo, stderr=subprocess.DEVNULL, universal_newlines=True
-    ).strip())
+    return int(
+        subprocess.check_output(
+            ['git', 'show', '-s', '--format=%ct', commit],
+            cwd=repo,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+        ).strip()
+    )
+
 
 def main(args=sys.argv):
     if len(args) < 2 or not os.path.isdir(os.path.join(args[1], '.git')):
-        print('Usage: {} <kernel_repo_dir> [metadata_file]'.format(args[0]), file=sys.stderr)
+        print(f'Usage: {args[0]} <kernel_repo_dir> [metadata_file]', file=sys.stderr)
         sys.exit(1)
     repo = args[1]
 
@@ -65,12 +78,15 @@ def main(args=sys.argv):
     if len(args) == 3:
         filename = args[2]
     else:
-        filename = os.environ.get('CVEHOUND_METADATA',
-                                  str(files('cvehound').joinpath('data/kernel_cves.json.gz')))
+        filename = os.environ.get(
+            'CVEHOUND_METADATA', str(files('cvehound').joinpath('data/kernel_cves.json.gz'))
+        )
 
     public, private = get_exploit_status_from_fstec()
 
-    with urlopen('https://github.com/nluedtke/linux_kernel_cves/raw/master/data/kernel_cves.json') as fh:
+    with urlopen(
+        'https://github.com/nluedtke/linux_kernel_cves/raw/master/data/kernel_cves.json'
+    ) as fh:
         js = json.loads(fh.read().decode('utf-8'))
 
     # Corrupted data https://github.com/nluedtke/linux_kernel_cves/pull/379
@@ -79,14 +95,13 @@ def main(args=sys.argv):
     for cve, info in js.items():
         fix = info.get('fixes', '')
         if fix and repo:
-            try:
+            with contextlib.suppress(Exception):
                 info['fix_date'] = get_commit_date(repo, fix)
-            except Exception:
-                pass
         info['exploit'] = cve in public or cve in private
 
     with gzip.open(filename, 'wt', encoding='utf-8') as fh:
         json.dump(js, fh)
+
 
 if __name__ == '__main__':
     main(sys.argv)

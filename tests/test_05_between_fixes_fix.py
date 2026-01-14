@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import pytest
-import os
 import re
+
+import pytest
 from git import GitCommandError
 
 from cvehound.exception import UnsupportedVersion
+
 
 @pytest.mark.slow
 def test_between_fixes_fix(hound, repo, cve):
@@ -16,7 +17,9 @@ def test_between_fixes_fix(hound, repo, cve):
 
     repo.git.checkout('--force', fixes)
 
-    commits = repo.git.log('--format=%H', '--no-merges', '--ancestry-path', fixes + '..' + fix + '~', '--', files)
+    commits = repo.git.log(
+        '--format=%H', '--no-merges', '--ancestry-path', fixes + '..' + fix + '~', '--', files
+    )
     for commit in commits.split():
         checkout_files = files
         try:

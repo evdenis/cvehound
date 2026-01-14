@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import os
-import pytest
 import tempfile
-import psutil
-from cvehound import CVEhound, get_rule_cves
-from git import Repo
 from subprocess import run
+
+import psutil
+import pytest
+from git import Repo
+
+from cvehound import CVEhound, get_rule_cves
 
 missing_backports = [
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
@@ -25,31 +27,57 @@ missing_backports = [
     ('CVE-2024-26799', 'stable/linux-6.1.y'),
 ]
 
+
 def mount_tmpfs(target, req_mem_gb):
     if os.path.ismount(target):
         return True
     lines = []
     with open('/proc/meminfo') as fh:
         lines = fh.readlines()
-    meminfo = dict((i.split()[0].rstrip(':'),int(i.split()[1])) for i in lines)
-    av_mem_gb = int(meminfo['MemAvailable'] / 1024 ** 2)
+    meminfo = {i.split()[0].rstrip(':'): int(i.split()[1]) for i in lines}
+    av_mem_gb = int(meminfo['MemAvailable'] / 1024**2)
     if av_mem_gb >= req_mem_gb + 1:
-        ret = run(['sudo', '--non-interactive',
-                   'mount', '-t', 'tmpfs', '-o', 'rw,noatime,nosuid,nodev,noexec,size=' + str(req_mem_gb) + 'G', 'tmpfs', target])
+        ret = run(
+            [
+                'sudo',
+                '--non-interactive',
+                'mount',
+                '-t',
+                'tmpfs',
+                '-o',
+                'rw,noatime,nosuid,nodev,noexec,size=' + str(req_mem_gb) + 'G',
+                'tmpfs',
+                target,
+            ]
+        )
         return ret.returncode == 0
     else:
         return False
 
+
 def mount_overlayfs(lower, upper, workdir, target):
     if os.path.ismount(target):
         return True
-    ret = run(['sudo', '--non-interactive',
-               'mount', '-t', 'overlay', '-o', 'rw,lowerdir=' + lower + ',upperdir=' + upper + ',workdir=' + workdir, 'overlay', target])
+    ret = run(
+        [
+            'sudo',
+            '--non-interactive',
+            'mount',
+            '-t',
+            'overlay',
+            '-o',
+            'rw,lowerdir=' + lower + ',upperdir=' + upper + ',workdir=' + workdir,
+            'overlay',
+            target,
+        ]
+    )
     return ret.returncode == 0
+
 
 def umount(target):
     if os.path.ismount(target):
         run(['sudo', '--non-interactive', 'umount', target])
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -64,17 +92,15 @@ def pytest_addoption(parser):
         default=[],
         help='list of linux-stable branches to run tests on',
     )
+    parser.addoption('--runslow', action='store_true', default=False, help='run slow tests')
+    parser.addoption('--runlkc', action='store_true', default=False, help='run lkc metadata tests')
     parser.addoption(
-        '--runslow', action='store_true', default=False, help='run slow tests'
-    )
-    parser.addoption(
-        '--runlkc', action='store_true', default=False, help='run lkc metadata tests'
-    )
-    parser.addoption(
-        '--dir', action='store',
+        '--dir',
+        action='store',
         default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'linux'),
-        help='linux kernel sources dir'
+        help='linux kernel sources dir',
     )
+
 
 overlaydir = None
 linux_mount = None
@@ -82,6 +108,7 @@ linux_repo = None
 _cvehound = None
 branches = []
 cves = []
+
 
 def pytest_configure(config):
     global overlaydir
@@ -120,9 +147,15 @@ def pytest_configure(config):
         cwd = os.getcwd()
         os.makedirs(linux, exist_ok=True)
         os.chdir(linux)
-        repo = Repo.clone_from('git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git', '.')
-        repo.create_remote('stable', 'git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git')
-        repo.create_remote('next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git')
+        repo = Repo.clone_from(
+            'git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git', '.'
+        )
+        repo.create_remote(
+            'stable', 'git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git'
+        )
+        repo.create_remote(
+            'next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git'
+        )
         repo.remotes.stable.fetch()
         repo.remotes.next.fetch()
         os.chdir(cwd)
@@ -159,6 +192,7 @@ def pytest_configure(config):
         (cves, _, _) = get_rule_cves()
         cves = cves.keys()
 
+
 def pytest_unconfigure(config):
     if linux_mount:
         umount(linux_mount)
@@ -167,15 +201,20 @@ def pytest_unconfigure(config):
         umount(overlaydir)
         os.rmdir(overlaydir)
 
+
 @pytest.fixture
 def repo():
     return linux_repo
+
 
 @pytest.fixture
 def hound():
     return _cvehound
 
+
 prev_branch = None
+
+
 @pytest.fixture
 def branch(request):
     global prev_branch
@@ -184,12 +223,14 @@ def branch(request):
         prev_branch = request.param
     return request.param
 
+
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:
         metafunc.parametrize('branch', branches, indirect=True)
 
     if 'cve' in metafunc.fixturenames:
         metafunc.parametrize('cve', cves)
+
 
 def pytest_collection_modifyitems(config, items):
     runslow = config.getoption('--runslow')

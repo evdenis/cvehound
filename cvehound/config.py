@@ -1,10 +1,10 @@
 from collections.abc import Mapping
 
-class Config(Mapping):
 
+class Config(Mapping):
     def __init__(self, config):
         enabled = {}
-        with open(config, 'rt', encoding='utf8') as fh:
+        with open(config, encoding='utf8') as fh:
             for line in fh:
                 line = line.strip()
                 if line.startswith('CONFIG_'):

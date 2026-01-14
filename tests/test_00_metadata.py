@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
 import re
+
 import pytest
+
 from cvehound.cwe import CWE
+
 
 def test_metadata(hound, cve):
     meta = hound.get_rule_metadata(cve)
@@ -17,7 +20,7 @@ def test_metadata(hound, cve):
 
     found = False
     cve_id = re.compile(r'CVE-\d{4}-\d{4,7}')
-    with open(rule, 'rt') as fh:
+    with open(rule) as fh:
         for line in fh:
             res = cve_id.search(line)
             if res:
@@ -27,11 +30,13 @@ def test_metadata(hound, cve):
     assert found, 'no CVE-id in the rule'
     assert hound.get_cve_metadata(cve), 'no metadata in kernel_cves.json'
 
+
 def test_cwe():
     for cwe in CWE:
         if cwe == 'Other' or cwe == 'Unspecified':
             continue
-        assert CWE[cwe], 'No CWE-id for "{}"'.format(cwe)
+        assert CWE[cwe], f'No CWE-id for "{cwe}"'
+
 
 def test_cves_metadata_cwe(hound):
     meta = hound.metadata
@@ -39,25 +44,32 @@ def test_cves_metadata_cwe(hound):
         if 'cwe' in meta[cve]:
             assert meta[cve]['cwe'] in CWE, 'Unknown CWE description "{}"'.format(meta[cve]['cwe'])
 
+
 @pytest.mark.ownfixes(
     ('cve', 'reason'),
     [
-        ('CVE-2021-0605',  "limited SA dump is not implemented in Linux-2.6.12-rc2"),
-        ('CVE-2020-27825', "wrong fixes tag, see https://lore.kernel.org/linux-arm-msm/20210121140951.2a554a5e@gandalf.local.home/"),
-        ('CVE-2020-14386', "wrong fixes tag, see https://seclists.org/oss-sec/2020/q3/150"),
-        ('CVE-2019-15924', "wrong fixes tag, create_workqueue also can return NULL"),
-        ('CVE-2021-20265', "wrong fixes tag, see https://lkml.org/lkml/2016/2/24/1054"),
-        ('CVE-2015-8961', "wrong fixes tag, the error was introduced in 9d5065940693"),
-        ('CVE-2017-12188', "wrong fixes tag, see https://www.spinics.net/lists/kvm/msg156651.html"),
-        ('CVE-2017-7558', "wrong fixes tag, 52c52a61a39f intoduces it a bit earlier"),
-        ('CVE-2016-9919', "wrong fixes tag, see https://bugzilla.redhat.com/show_bug.cgi?id=1403260"),
-        ('CVE-2019-18809', "wrong fixes tag (too far)"),
-        ('CVE-2019-19051', "wrong fixes tag because the fix fixing the fix fixing the memory leak"),
-        ('CVE-2021-3635', "wrong fixes tag, commit fixes not only flowtables but also objs"),
-        ('CVE-2022-3170', "CVE fix consists of 2 commits, 2nd commit fixes 1st one"),
-        ('CVE-2024-0193', "wrong fixes tag, 5f68718b34a5 fixes race"),
-        ('CVE-2024-26720', "the problem is also present in the earlier commits"),
-    ]
+        ('CVE-2021-0605', 'limited SA dump is not implemented in Linux-2.6.12-rc2'),
+        (
+            'CVE-2020-27825',
+            'wrong fixes tag, see https://lore.kernel.org/linux-arm-msm/20210121140951.2a554a5e@gandalf.local.home/',
+        ),
+        ('CVE-2020-14386', 'wrong fixes tag, see https://seclists.org/oss-sec/2020/q3/150'),
+        ('CVE-2019-15924', 'wrong fixes tag, create_workqueue also can return NULL'),
+        ('CVE-2021-20265', 'wrong fixes tag, see https://lkml.org/lkml/2016/2/24/1054'),
+        ('CVE-2015-8961', 'wrong fixes tag, the error was introduced in 9d5065940693'),
+        ('CVE-2017-12188', 'wrong fixes tag, see https://www.spinics.net/lists/kvm/msg156651.html'),
+        ('CVE-2017-7558', 'wrong fixes tag, 52c52a61a39f intoduces it a bit earlier'),
+        (
+            'CVE-2016-9919',
+            'wrong fixes tag, see https://bugzilla.redhat.com/show_bug.cgi?id=1403260',
+        ),
+        ('CVE-2019-18809', 'wrong fixes tag (too far)'),
+        ('CVE-2019-19051', 'wrong fixes tag because the fix fixing the fix fixing the memory leak'),
+        ('CVE-2021-3635', 'wrong fixes tag, commit fixes not only flowtables but also objs'),
+        ('CVE-2022-3170', 'CVE fix consists of 2 commits, 2nd commit fixes 1st one'),
+        ('CVE-2024-0193', 'wrong fixes tag, 5f68718b34a5 fixes race'),
+        ('CVE-2024-26720', 'the problem is also present in the earlier commits'),
+    ],
 )
 def test_fixes(hound, repo, cve):
     cve_fix = hound.get_rule_fix(cve)
@@ -65,30 +77,35 @@ def test_fixes(hound, repo, cve):
     cve_fixes = cve_fixes[0:12]
 
     msg = repo.git.show('-s', '--format=%s\n%b', cve_fix)
-    msg_fixes = list(map(lambda x: repo.git.rev_parse('--verify', x)[0:12],
-                         re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)))
+    msg_fixes = [
+        repo.git.rev_parse('--verify', x)[0:12]
+        for x in re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)
+    ]
     if msg_fixes:
         if len(msg_fixes) == 1:
             msg_fixes = msg_fixes[0]
-        assert cve_fixes in msg_fixes, \
-            "{} vs {}".format(cve_fixes[0:12], msg_fixes)
+        assert cve_fixes in msg_fixes, f'{cve_fixes[0:12]} vs {msg_fixes}'
+
 
 def test_cve_disputed(hound, cve):
     meta = hound.get_cve_metadata(cve)
     rule = hound.cve_all_rules[cve]
-    if 'nvd_text' in meta and not 'disputed' in rule:
-        assert ' DIS' not in meta['nvd_text'], "{} DISPUTED".format(cve)
+    if 'nvd_text' in meta and 'disputed' not in rule:
+        assert ' DIS' not in meta['nvd_text'], f'{cve} DISPUTED'
+
 
 def test_cve_rejected(hound, cve):
     meta = hound.get_cve_metadata(cve)
     if 'nvd_text' in meta:
-        assert ' REJ' not in meta['nvd_text'], "{} REJECTED".format(cve)
+        assert ' REJ' not in meta['nvd_text'], f'{cve} REJECTED'
+
 
 @pytest.mark.lkc
 def test_cves_metadata_fix(hound, cve):
     fix = hound.get_rule_fix(cve)
     lkc_fix = hound.get_cve_metadata(cve)['fixes']
-    assert fix == lkc_fix, "{} vs. {}".format(fix[0:12], lkc_fix[0:12])
+    assert fix == lkc_fix, f'{fix[0:12]} vs. {lkc_fix[0:12]}'
+
 
 @pytest.mark.lkc
 def test_cves_metadata_fixes(hound, cve):
@@ -96,7 +113,8 @@ def test_cves_metadata_fixes(hound, cve):
     lkc_fixes = hound.get_cve_metadata(cve)['breaks']
     if fixes == 'v2.6.12-rc2':
         fixes = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
-    assert fixes == lkc_fixes, "{} vs. {}".format(fixes[0:12], lkc_fixes[0:12])
+    assert fixes == lkc_fixes, f'{fixes[0:12]} vs. {lkc_fixes[0:12]}'
+
 
 @pytest.mark.lkc
 def test_cves_metadata_fix_all(hound, repo):
@@ -121,6 +139,7 @@ def test_cves_metadata_fix_all(hound, repo):
             broken.append(cve)
     assert not broken, broken
 
+
 @pytest.mark.lkc
 def test_cves_metadata_fixes_all(hound, repo):
     broken = []
@@ -142,6 +161,7 @@ def test_cves_metadata_fixes_all(hound, repo):
             broken.append(cve)
     assert not broken, broken
 
+
 @pytest.mark.lkc
 def test_cves_metadata_fixes_all_git(hound, repo):
     broken = []
@@ -161,8 +181,10 @@ def test_cves_metadata_fixes_all_git(hound, repo):
             fixes = repo.git.rev_parse('--verify', fixes + '^{commit}')
             fixes = fixes[0:12]
             msg = repo.git.show('-s', '--format=%s\n%b', fixes)
-            msg_fixes = list(map(lambda x: repo.git.rev_parse('--verify', x)[0:12],
-                             re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)))
+            msg_fixes = [
+                repo.git.rev_parse('--verify', x)[0:12]
+                for x in re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)
+            ]
         except Exception:
             continue
 
@@ -173,6 +195,7 @@ def test_cves_metadata_fixes_all_git(hound, repo):
                 broken.append(cve)
 
     assert not broken, broken
+
 
 @pytest.mark.lkc
 def test_cves_metadata_title(hound, repo):

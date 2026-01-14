@@ -38,3 +38,14 @@ include = ["cvehound", "cvehound.*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.cocci", "*.grep", "*.gz"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "single"

@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import subprocess
-import logging
 import collections
+import logging
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
+
 from sympy.logic import simplify_logic
-from cvehound.exception import UnsupportedVersion
-from cvehound.util import get_spatch_version, get_rule_cves, get_cves_metadata, parse_coccinelle_output
-from cvehound.kbuild import KbuildParser
+
 from cvehound.config import Config
+from cvehound.exception import UnsupportedVersion
+from cvehound.kbuild import KbuildParser
+from cvehound.util import (
+    get_cves_metadata,
+    get_rule_cves,
+    get_spatch_version,
+    parse_coccinelle_output,
+)
 
 __VERSION__ = '1.2.1'
 
 
 class CVEhound:
-
     def __init__(self, kernel, metadata=None, config=None, check_strict=False, arch='x86'):
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
@@ -33,9 +39,9 @@ class CVEhound:
             os.path.join('arch', arch, 'include/generated/uapi'),
             'include',
             'include/uapi',
-            'include/generated/uapi'
+            'include/generated/uapi',
         ]
-        ipaths = map(lambda f: os.path.join(kernel, f), ipaths)
+        ipaths = (os.path.join(kernel, f) for f in ipaths)
         includes = []
         for i in ipaths:
             includes.append('-I')
@@ -64,12 +70,14 @@ class CVEhound:
             self.config = None
 
         if self.spatch_version <= 104:
-            logging.warning('spatch (coccinelle) version is too old.\n'
-                            'Please, consider updating to >= 1.0.7 version.')
+            logging.warning(
+                'spatch (coccinelle) version is too old.\n'
+                'Please, consider updating to >= 1.0.7 version.'
+            )
 
     def get_grep_pattern(self, rule):
         patterns = []
-        with open(rule, 'rt') as fh:
+        with open(rule) as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -92,7 +100,10 @@ class CVEhound:
             if 'cvss3' in info and 'score' in info['cvss3']:
                 logging.info('CVSS3: ' + str(info['cvss3']['score']))
             if 'fix_date' in info:
-                logging.info('FIX DATE: ' + datetime.fromtimestamp(info['fix_date'], tz=timezone.utc).strftime('%Y-%m-%d'))
+                logging.info(
+                    'FIX DATE: '
+                    + datetime.fromtimestamp(info['fix_date'], tz=timezone.utc).strftime('%Y-%m-%d')
+                )
         logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
     def _print_affected_files(self, config):
@@ -102,7 +113,9 @@ class CVEhound:
                 logic = config['files'][file]['logic']
                 if self.config:
                     affected = 'affected' if config['files'][file]['config'] else 'not affected'
-                    logging.info(' - ' + file + ': ' + logic + '\n   ' + self.config_file + ': ' + affected)
+                    logging.info(
+                        ' - ' + file + ': ' + logic + '\n   ' + self.config_file + ': ' + affected
+                    )
                 else:
                     logging.info(' - ' + file + ': ' + logic)
 
@@ -124,11 +137,11 @@ class CVEhound:
         files = []
         if not all_files:
             files = self.get_rule_files(cve)
-            files = map(lambda f: os.path.join(self.kernel, f), files)
+            files = (os.path.join(self.kernel, f) for f in files)
             files = filter(lambda f: os.path.exists(f), files)
             files = list(files)
         if not files:
-            files = [ self.kernel ]
+            files = [self.kernel]
 
         includes = self.includes.copy()
         kconfig = os.path.join(self.kernel, 'include/linux/kconfig.h')
@@ -145,17 +158,27 @@ class CVEhound:
             if rule_ver and rule_ver > self.spatch_version:
                 raise UnsupportedVersion(self.spatch_version, cve, rule_ver)
             try:
-                cocci_cmd = ['spatch', '--no-includes', '--include-headers',
-                             '-D', 'detect', '--chunksize', '1', '-j', '1',
-                             '--no-show-diff', '--very-quiet',
-                             *includes]
-                if self.spatch_version > 104: # Not supported on coccinelle 1.0.4
+                cocci_cmd = [
+                    'spatch',
+                    '--no-includes',
+                    '--include-headers',
+                    '-D',
+                    'detect',
+                    '--chunksize',
+                    '1',
+                    '-j',
+                    '1',
+                    '--no-show-diff',
+                    '--very-quiet',
+                    *includes,
+                ]
+                if self.spatch_version > 104:  # Not supported on coccinelle 1.0.4
                     cocci_cmd.extend(['--python', os.path.realpath(sys.executable)])
                 cocci_cmd.extend(['--cocci-file', rule, *files])
 
                 logging.debug(' '.join(cocci_cmd))
 
-                run = subprocess.run(cocci_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, universal_newlines=True)
+                run = subprocess.run(cocci_cmd, capture_output=True, check=True, text=True)
                 output = run.stdout.strip()
             except subprocess.CalledProcessError as e:
                 err = e.stderr.split('\n')[-2]
@@ -165,7 +188,7 @@ class CVEhound:
         else:
             for pattern in self.get_grep_pattern(rule):
                 args = ['grep', '-rPzle', pattern, *files]
-                run = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, universal_newlines=True)
+                run = subprocess.run(args, capture_output=True, check=False, text=True)
                 if run.returncode != 0:
                     break
                 output += run.stdout.strip()
@@ -182,7 +205,7 @@ class CVEhound:
             for line in output.split('\n'):
                 file = []
                 if not is_grep:
-                    file = [ line.split(':')[0] ]
+                    file = [line.split(':')[0]]
                 else:
                     while True:
                         try:
@@ -198,7 +221,7 @@ class CVEhound:
                 if 'files' not in config_result:
                     config_result['files'] = {}
                 for file, config in kernel_files.items():
-                    rel_file = file[len(self.kernel)+1:]
+                    rel_file = file[len(self.kernel) + 1 :]
                     result_file = {}
                     if config:
                         config = simplify_logic(config)
@@ -221,7 +244,9 @@ class CVEhound:
             if config_affected is not None:
                 config_result['affected'] = config_affected
 
-        if (self.check_strict and 'affected' in config_result and config_result['affected']) or not self.check_strict:
+        if (
+            self.check_strict and 'affected' in config_result and config_result['affected']
+        ) or not self.check_strict:
             if cve in self.metadata:
                 result = self.metadata[cve]
             result['config'] = config_result
@@ -229,7 +254,7 @@ class CVEhound:
             if not is_grep:
                 result['files'] = parse_coccinelle_output(output)
             else:
-                result['files'] = list(map(lambda x: { "file": x } , files))
+                result['files'] = [{'file': x} for x in files]
             self._print_found_cve(cve)
             self._print_affected_files(config_result)
             logging.debug(output)
@@ -248,7 +273,7 @@ class CVEhound:
         if cve in self.rules_metadata:
             return self.rules_metadata[cve]
 
-        with open(self.cve_all_rules[cve], 'rt') as fh:
+        with open(self.cve_all_rules[cve]) as fh:
             for line in fh:
                 if not line.startswith('///'):
                     break
@@ -264,12 +289,7 @@ class CVEhound:
                     version = line.partition('Version:')[2].strip()
                     version = int(version.replace('.', ''))
 
-        meta = {
-            'files': files,
-            'fix': fix,
-            'fixes': fixes,
-            'version': version
-        }
+        meta = {'files': files, 'fix': fix, 'fixes': fixes, 'version': version}
         self.rules_metadata[cve] = meta
         return meta
 

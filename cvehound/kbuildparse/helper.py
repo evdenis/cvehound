@@ -1,4 +1,4 @@
-""" Helper module for kbuildparse."""
+"""Helper module for kbuildparse."""
 
 # Copyright (C) 2014-2015 Andreas Ruprecht <andreas.ruprecht@fau.de>
 #
@@ -16,15 +16,17 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+
 import cvehound.kbuildparse.data_structures as DataStructures
 
+
 def build_precondition(input_list, additional=None):
-    """ Build a DataStructures.Precondition object from a given @input_list.
+    """Build a DataStructures.Precondition object from a given @input_list.
     Additional constraints from @additional are added to the Precondition."""
     alternatives = []
     for alternative in input_list:
-        string = " & ".join(alternative)
-        if string != "":
+        string = ' & '.join(alternative)
+        if string != '':
             alternatives.append(string)
         else:
             # This case means that at least one unconditional path was found ->
@@ -32,7 +34,7 @@ def build_precondition(input_list, additional=None):
             alternatives = []
             break
 
-    alt_string = " | ".join(alternatives)
+    alt_string = ' | '.join(alternatives)
 
     ret = DataStructures.Precondition()
     if additional:
@@ -40,11 +42,12 @@ def build_precondition(input_list, additional=None):
             ret.add_condition(condition, keep_duplicates=False)
 
     if len(alternatives) > 1:
-        ret.add_condition("(" + alt_string + ")", keep_duplicates=False)
+        ret.add_condition('(' + alt_string + ')', keep_duplicates=False)
     elif len(alt_string) > 1:
         ret.add_condition(alt_string, keep_duplicates=False)
 
     return ret
+
 
 def guess_source_for_target(target):
     """
@@ -58,21 +61,23 @@ def guess_source_for_target(target):
             return sourcefile
     return None
 
+
 def remove_makefile_comment(line):
-    """ Strips everything after the first # (Makefile comment) from a line."""
-    return line.split("#", 1)[0].rstrip()
+    """Strips everything after the first # (Makefile comment) from a line."""
+    return line.split('#', 1)[0].rstrip()
+
 
 def get_multiline_from_file(infile):
-    """ Reads a line from infile. If the line ends with a line continuation,
+    """Reads a line from infile. If the line ends with a line continuation,
     it is substituted with a space and the next line is appended. Returns
     (True, line) if reading has succeeded, (False, "") otherwise. The boolean
     value is required to distinguish an error from empty lines in the input
     (which might also occur by stripping the comment from a line which only
     contains that comment)."""
-    line = ""
+    line = ''
     current = infile.readline()
     if not current:
-        return (False, "")
+        return (False, '')
     current = remove_makefile_comment(current)
     while current.endswith('\\'):
         current = current.replace('\\', ' ')
@@ -85,12 +90,13 @@ def get_multiline_from_file(infile):
     line = line.rstrip()
     return (True, line)
 
+
 def get_config_string(item, model=None):
-    """ Return a string with CONFIG_ for a given item. If the item is
+    """Return a string with CONFIG_ for a given item. If the item is
     a tristate symbol in model, CONFIG_$(item)_MODULE is added as an
     alternative."""
-    if item.startswith("CONFIG_"):
+    if item.startswith('CONFIG_'):
         item = item[7:]
-    if model and model.get_type(item) == "tristate":
-        return "(CONFIG_" + item + " || CONFIG_" + item + "_MODULE)"
-    return "CONFIG_" + item
+    if model and model.get_type(item) == 'tristate':
+        return '(CONFIG_' + item + ' || CONFIG_' + item + '_MODULE)'
+    return 'CONFIG_' + item

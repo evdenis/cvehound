@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import shutil
-from urllib.request import urlopen
-from io import BytesIO
-from zipfile import ZipFile
+import sys
 from importlib.resources import files
+from io import BytesIO
+from urllib.request import urlopen
+from zipfile import ZipFile
+
 
 def main(args=sys.argv):
     rule_dir = str(files('cvehound').joinpath('cve'))
@@ -19,7 +20,7 @@ def main(args=sys.argv):
             else:
                 os.unlink(entry)
         except Exception as e:
-            print('Failed to delete {}: {}'.format(entry, e))
+            print(f'Failed to delete {entry}: {e}')
 
     with urlopen('https://github.com/evdenis/cvehound/archive/refs/heads/master.zip') as uh:
         rules = []
@@ -45,6 +46,7 @@ def main(args=sys.argv):
                 os.makedirs(target_dir, exist_ok=True)
             os.rename(entry, to)
         shutil.rmtree('cvehound-master')
+
 
 if __name__ == '__main__':
     main(sys.argv)
