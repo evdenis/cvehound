@@ -1,5 +1,3 @@
-import gzip
-import json
 import os
 import re
 import subprocess
@@ -89,17 +87,6 @@ def get_rule_cves() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     return (known, assigned, disputed)
 
 
-def get_cves_metadata(path: str | None) -> Any:
-    if not path:
-        path = os.environ.get(
-            'CVEHOUND_METADATA', str(files('cvehound').joinpath('data/kernel_cves.json.gz'))
-        )
-    data = None
-    with gzip.open(path, 'rt', encoding='utf-8') as fh:
-        data = json.load(fh)
-    return data
-
-
 def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
     result: list[dict[str, str | int]] = []
     for line in output.splitlines():
@@ -119,7 +106,7 @@ def parse_config(file: str) -> dict[str, Any]:
         parser.read_string('[cvehound]\n' + fh.read())
     config: dict[str, Any] = dict(parser['cvehound'])
 
-    for key in ['cve', 'exclude', 'cwe', 'files', 'ignore_files']:
+    for key in ['cve', 'exclude', 'files', 'ignore_files']:
         if key not in config:
             continue
         config[key] = config[key].split()
@@ -130,7 +117,7 @@ def parse_config(file: str) -> dict[str, Any]:
         except ValueError:
             raise Exception('"verbose" should be an integer') from None
 
-    for key in ['check_strict', 'all_files', 'exploit']:
+    for key in ['check_strict', 'all_files']:
         if key not in config:
             continue
         if config[key].lower() in ['y', 't', '1', 'yes', 'true']:

@@ -5,7 +5,6 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
 from typing import Any
 
 from sympy.logic import simplify_logic
@@ -14,7 +13,6 @@ from cvehound.config import Config
 from cvehound.exception import UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
-    get_cves_metadata,
     get_rule_cves,
     get_spatch_version,
     parse_coccinelle_output,
@@ -29,14 +27,12 @@ class CVEhound:
     def __init__(
         self,
         kernel: str,
-        metadata: str | None = None,
         config: str | None = None,
         check_strict: bool = False,
         arch: str = 'x86',
     ) -> None:
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
-        self.metadata: dict[str, Any] = get_cves_metadata(metadata)
         self.spatch_version = get_spatch_version()
         self.check_strict = check_strict
         self.rules_metadata: dict[str, RuleMetadata] = {}
@@ -95,22 +91,6 @@ class CVEhound:
 
     def _print_found_cve(self, cve: str) -> None:
         logging.warning('Found: ' + cve)
-        if cve in self.metadata:
-            info = self.metadata[cve]
-            if 'cmt_msg' in info:
-                logging.info('MSG: ' + info['cmt_msg'])
-            if 'cwe' in info:
-                logging.info('CWE: ' + info['cwe'])
-            if 'cvss2' in info and 'score' in info['cvss2']:
-                logging.info('CVSS2: ' + str(info['cvss2']['score']))
-            if 'cvss3' in info and 'score' in info['cvss3']:
-                logging.info('CVSS3: ' + str(info['cvss3']['score']))
-            if 'fix_date' in info:
-                logging.info(
-                    'FIX DATE: '
-                    + datetime.fromtimestamp(info['fix_date'], tz=UTC).strftime('%Y-%m-%d')
-                )
-        logging.info('https://www.linuxkernelcves.com/cves/' + cve)
 
     def _print_affected_files(self, config: dict[str, Any]) -> None:
         if 'files' in config and config['files']:
@@ -256,8 +236,6 @@ class CVEhound:
         if (
             self.check_strict and 'affected' in config_result and config_result['affected']
         ) or not self.check_strict:
-            if cve in self.metadata:
-                result = self.metadata[cve]
             result['config'] = config_result
             result['spatch_output'] = output
             if not is_grep:
@@ -301,18 +279,6 @@ class CVEhound:
         meta = {'files': files, 'fix': fix, 'fixes': fixes, 'version': version}
         self.rules_metadata[cve] = meta
         return meta
-
-    def get_cve_metadata(self, cve: str) -> dict[str, Any]:
-        result: dict[str, Any] = self.metadata.get(cve, {})
-        return result
-
-    def get_cve_cwe(self, cve: str) -> str | None:
-        cwe: str | None = self.get_cve_metadata(cve).get('cwe', None)
-        return cwe
-
-    def get_cve_exploit(self, cve: str) -> bool:
-        exploit: bool = self.get_cve_metadata(cve).get('exploit', False)
-        return exploit
 
     def get_all_cves(self) -> set[str]:
         return set(self.cve_all_rules.keys())

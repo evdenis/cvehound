@@ -4,8 +4,6 @@ import re
 
 import pytest
 
-from cvehound.cwe import CWE
-
 
 def test_metadata(hound, cve):
     meta = hound.get_rule_metadata(cve)
@@ -28,21 +26,6 @@ def test_metadata(hound, cve):
                 found = True
 
     assert found, 'no CVE-id in the rule'
-    assert hound.get_cve_metadata(cve), 'no metadata in kernel_cves.json'
-
-
-def test_cwe():
-    for cwe in CWE:
-        if cwe == 'Other' or cwe == 'Unspecified':
-            continue
-        assert CWE[cwe], f'No CWE-id for "{cwe}"'
-
-
-def test_cves_metadata_cwe(hound):
-    meta = hound.metadata
-    for cve in meta:
-        if 'cwe' in meta[cve]:
-            assert meta[cve]['cwe'] in CWE, 'Unknown CWE description "{}"'.format(meta[cve]['cwe'])
 
 
 @pytest.mark.ownfixes(
@@ -85,143 +68,3 @@ def test_fixes(hound, repo, cve):
         if len(msg_fixes) == 1:
             msg_fixes = msg_fixes[0]
         assert cve_fixes in msg_fixes, f'{cve_fixes[0:12]} vs {msg_fixes}'
-
-
-def test_cve_disputed(hound, cve):
-    meta = hound.get_cve_metadata(cve)
-    rule = hound.cve_all_rules[cve]
-    if 'nvd_text' in meta and 'disputed' not in rule:
-        assert ' DIS' not in meta['nvd_text'], f'{cve} DISPUTED'
-
-
-def test_cve_rejected(hound, cve):
-    meta = hound.get_cve_metadata(cve)
-    if 'nvd_text' in meta:
-        assert ' REJ' not in meta['nvd_text'], f'{cve} REJECTED'
-
-
-@pytest.mark.lkc
-def test_cves_metadata_fix(hound, cve):
-    fix = hound.get_rule_fix(cve)
-    lkc_fix = hound.get_cve_metadata(cve)['fixes']
-    assert fix == lkc_fix, f'{fix[0:12]} vs. {lkc_fix[0:12]}'
-
-
-@pytest.mark.lkc
-def test_cves_metadata_fixes(hound, cve):
-    fixes = hound.get_rule_fixes(cve)
-    lkc_fixes = hound.get_cve_metadata(cve)['breaks']
-    if fixes == 'v2.6.12-rc2':
-        fixes = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
-    assert fixes == lkc_fixes, f'{fixes[0:12]} vs. {lkc_fixes[0:12]}'
-
-
-@pytest.mark.lkc
-def test_cves_metadata_fix_all(hound, repo):
-    broken = []
-    meta = hound.metadata
-    for cve in meta:
-        data = meta[cve]
-        if 'fixes' not in data:
-            continue
-        if 'vendor_specific' in data and data['vendor_specific']:
-            continue
-
-        fix = data['fixes']
-        if not fix:
-            continue
-        if not re.match(r'[0-9a-fA-F]{7,40}', fix):
-            continue
-
-        try:
-            repo.git.rev_parse('--verify', fix + '^{commit}')
-        except Exception:
-            broken.append(cve)
-    assert not broken, broken
-
-
-@pytest.mark.lkc
-def test_cves_metadata_fixes_all(hound, repo):
-    broken = []
-    meta = hound.metadata
-    for cve in meta:
-        data = meta[cve]
-        if 'breaks' not in data:
-            continue
-
-        fixes = data['breaks']
-        if not fixes:
-            continue
-        if not re.match(r'[0-9a-fa-f]{7,40}', fixes):
-            continue
-
-        try:
-            repo.git.rev_parse('--verify', fixes + '^{commit}')
-        except Exception:
-            broken.append(cve)
-    assert not broken, broken
-
-
-@pytest.mark.lkc
-def test_cves_metadata_fixes_all_git(hound, repo):
-    broken = []
-    meta = hound.metadata
-    for cve in meta:
-        data = meta[cve]
-        if 'breaks' not in data:
-            continue
-
-        fixes = data['breaks']
-        if not fixes:
-            continue
-        if not re.match(r'[0-9a-fa-f]{7,40}', fixes):
-            continue
-
-        try:
-            fixes = repo.git.rev_parse('--verify', fixes + '^{commit}')
-            fixes = fixes[0:12]
-            msg = repo.git.show('-s', '--format=%s\n%b', fixes)
-            msg_fixes = [
-                repo.git.rev_parse('--verify', x)[0:12]
-                for x in re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)
-            ]
-        except Exception:
-            continue
-
-        if msg_fixes:
-            if len(msg_fixes) == 1:
-                msg_fixes = msg_fixes[0]
-            if fixes not in msg_fixes:
-                broken.append(cve)
-
-    assert not broken, broken
-
-
-@pytest.mark.lkc
-def test_cves_metadata_title(hound, repo):
-    broken = []
-    meta = hound.metadata
-    for cve in meta:
-        data = meta[cve]
-
-        if 'cmt_msg' not in data:
-            continue
-        data_msg = data['cmt_msg']
-
-        fix = data['fixes']
-        if not fix:
-            continue
-        if not re.match(r'[0-9a-fa-f]{7,40}', fix):
-            continue
-
-        try:
-            fix = repo.git.rev_parse('--verify', fix + '^{commit}')
-            fix = fix[0:12]
-            git_msg = repo.git.show('-s', '--format=%s', fix)
-        except Exception:
-            continue
-
-        if data_msg != git_msg:
-            broken.append(cve)
-
-    assert not broken, broken

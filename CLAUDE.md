@@ -31,7 +31,7 @@ This document provides comprehensive guidance for AI assistants working with the
 - **Version**: 1.2.1 (from `cvehound/__init__.py`)
 - **CVE Rules**: 525+ detection rules in `cvehound/cve/`
 - **License**: Python code (GPLv3), CVE rules (GPLv2)
-- **Main Dependencies**: Coccinelle (>=1.0.7), sympy, lxml
+- **Main Dependencies**: Coccinelle (>=1.0.7), sympy
 
 ### Primary Use Cases
 1. **Vendor Kernel Auditing**: Check kernel sources released as archives without git history
@@ -48,7 +48,6 @@ cvehound/
 │   ├── __init__.py        # CVEhound class, core detection logic
 │   ├── __main__.py        # CLI entry point, argument parsing
 │   ├── config.py          # Kernel config file parser
-│   ├── cwe.py             # CWE (Common Weakness Enumeration) handling
 │   ├── exception.py       # Custom exceptions
 │   ├── kbuild.py          # Kbuild/Makefile parser for config mapping
 │   ├── util.py            # Utility functions (version detection, rule parsing)
@@ -56,11 +55,9 @@ cvehound/
 │   │   ├── CVE-*.cocci    # Coccinelle semantic patches
 │   │   ├── CVE-*.grep     # Grep-based detection patterns
 │   │   └── disputed/      # Disputed CVE rules
-│   ├── data/              # Static data files (CWE mappings, metadata)
 │   ├── kbuildparse/       # Kbuild parsing utilities
 │   └── scripts/           # Maintenance scripts
-│       ├── update_rules.py      # Update CVE rules from GitHub
-│       └── update_metadata.py   # Update CVE metadata
+│       └── update_rules.py      # Update CVE rules from GitHub
 ├── tests/                 # Test suite
 │   ├── conftest.py        # Pytest configuration
 │   ├── test_00_metadata.py      # Metadata validation tests
@@ -105,7 +102,6 @@ cvehound/
 - **Versions**: 3.11, 3.12, 3.13 (requires >=3.11)
 - **Key Libraries**:
   - `sympy`: Symbolic logic solver for config expressions
-  - `lxml`: XML parsing for Kbuild files
   - `pytest`: Testing framework
   - `gitpython`: Git repository interaction (tests)
 - **Development Tools**:
@@ -184,8 +180,8 @@ pre-commit run mypy --all-files
    ```
    docs: Update README with links to new documentation
    contrib: Add enhanced template with examples and guidance
-   feat: Add support for CWE filtering
-   fix: Correct metadata parsing for CVE-2020-12345
+   feat: Add support for file filtering
+   fix: Correct rule parsing for CVE-2020-12345
    test: Add test cases for CVE-2020-12912
    ```
 
@@ -314,14 +310,13 @@ pytest --runslow
 Main class that orchestrates CVE detection.
 
 **Key Methods**:
-- `__init__(kernel, metadata, config, check_strict, arch)` - Initialize with kernel path and options
+- `__init__(kernel, config, check_strict, arch)` - Initialize with kernel path and options
 - `check_cve(cve)` - Check kernel for a specific CVE
 - `check_kernel(cves)` - Check kernel for multiple CVEs
 - `get_report()` - Generate JSON report of findings
 
 **Important Attributes**:
 - `kernel` - Absolute path to kernel sources
-- `metadata` - CVE metadata from linuxkernelcves.com
 - `config_map` - Mapping of files to kernel config options
 - `cve_all_rules` - All available CVE rules
 - `cve_assigned_rules` - Non-disputed CVE rules
@@ -342,8 +337,6 @@ Handles command-line interface and argument parsing.
 - `--kernel-config [FILE]` - Check kernel .config file
 - `--report [FILE]` - Generate JSON report
 - `--files PATH [PATH ...]` - Limit check to specific files
-- `--cwe ID [ID ...]` - Filter by CWE IDs
-- `--exploit` - Only check exploitable CVEs
 
 #### 3. Config Parser (`cvehound/config.py`)
 
@@ -371,16 +364,7 @@ Helper functions for version detection, rule parsing, etc.
 **Key Functions**:
 - `get_spatch_version()` - Get Coccinelle version
 - `get_rule_cves()` - List all CVE rules
-- `get_cves_metadata(path)` - Load CVE metadata
 - `parse_coccinelle_output(output)` - Parse spatch output
-
-#### 6. CWE Handler (`cvehound/cwe.py`)
-
-Maps CVEs to CWE (Common Weakness Enumeration) categories.
-
-**Class**: `CWE`
-- Loads CWE definitions
-- Filters CVEs by CWE ID
 
 ### Data Flow
 
@@ -391,7 +375,6 @@ __main__.main()
     ↓
 CVEhound.__init__()
     ├→ Load CVE rules from cvehound/cve/
-    ├→ Load metadata from data/kernel_cves.json.gz
     ├→ Parse Kbuild files (if --kernel-config)
     └→ Setup Coccinelle include paths
     ↓
@@ -400,7 +383,7 @@ CVEhound.check_kernel(cves)
 For each CVE:
     ├→ CVEhound.check_cve(cve)
     │   ├→ Read rule file (cvehound/cve/CVE-*.cocci)
-    │   ├→ Get affected files from rule metadata
+    │   ├→ Get affected files from rule header metadata
     │   ├→ Run spatch on each affected file
     │   └→ Parse output for matches
     └→ If match found:
@@ -436,7 +419,7 @@ subprocess.run([
 
 ### Test Suite Organization
 
-1. **`test_00_metadata.py`**: Validates CVE metadata and rule format
+1. **`test_00_metadata.py`**: Validates CVE rule format
 2. **`test_01_on_branch.py`**: Tests CVE detection on specific branches
 3. **`test_02_on_init.py`**: Tests initialization and setup
 4. **`test_03_on_fix.py`**: Verifies CVE NOT detected on fix commits
@@ -468,7 +451,7 @@ pytest -vv
 
 ### Test Requirements
 
-- **Fast tests**: No external dependencies, metadata validation
+- **Fast tests**: No external dependencies, rule format validation
 - **Slow tests** (--runslow): Require Linux kernel git repository
   - Cloned to `tests/linux/`
   - Tests check CVE detection on actual kernel code
@@ -556,16 +539,7 @@ def test_cve_on_fix(cve, kernel, commit):
    git push
    ```
 
-### Task 2: Updating CVE Metadata
-
-```bash
-# Update metadata from linuxkernelcves.com
-cvehound_update_metadata
-
-# This updates cvehound/data/kernel_cves.json.gz
-```
-
-### Task 3: Updating CVE Rules from GitHub
+### Task 2: Updating CVE Rules from GitHub
 
 ```bash
 # Pull latest rules from repository
@@ -575,7 +549,7 @@ cvehound_update_rules
 # or /usr/share/cvehound/cve/ (system-wide)
 ```
 
-### Task 4: Running CVEhound on a Kernel
+### Task 3: Running CVEhound on a Kernel
 
 ```bash
 # Basic check (all assigned CVEs)
@@ -590,20 +564,14 @@ cvehound --kernel ~/linux-5.10 --kernel-config
 # Generate JSON report
 cvehound --kernel ~/linux-5.10 --report results.json
 
-# Filter by CWE
-cvehound --kernel ~/linux-5.10 --cwe 119 787
-
 # Check only specific files
 cvehound --kernel ~/linux-5.10 --files drivers/net/
-
-# Check only exploitable CVEs
-cvehound --kernel ~/linux-5.10 --exploit
 
 # Exclude specific CVEs
 cvehound --kernel ~/linux-5.10 --exclude CVE-2020-12345 CVE-2020-67890
 ```
 
-### Task 5: Debugging a Rule
+### Task 4: Debugging a Rule
 
 ```bash
 # Run spatch directly with debug output
@@ -621,7 +589,7 @@ spatch --no-includes --include-headers -D detect \
     /path/to/affected/file.c
 ```
 
-### Task 6: Contributing Documentation
+### Task 5: Contributing Documentation
 
 1. **For rule writing guides**: Edit `docs/WRITING_RULES.md`
 2. **For quick reference**: Edit `docs/COCCINELLE_CHEATSHEET.md`
@@ -799,19 +767,6 @@ pytest -m "not slow"
 python -c "from cvehound.kbuild import KbuildParser; parser = KbuildParser(...)"
 ```
 
-#### Issue 6: Metadata Issues
-
-**Symptom**: Missing CVE information in output
-
-**Solution**:
-```bash
-# Update metadata
-cvehound_update_metadata
-
-# Or specify custom metadata location
-cvehound --kernel ~/linux --metadata /path/to/kernel_cves.json.gz
-```
-
 ### Getting Help
 
 1. **Documentation**:
@@ -829,7 +784,6 @@ cvehound --kernel ~/linux --metadata /path/to/kernel_cves.json.gz
    - [Test Suite](tests/) - Working examples
 
 4. **CVE Information**:
-   - [Linux Kernel CVEs](https://www.linuxkernelcves.com/)
    - [Linux Kernel Git](https://git.kernel.org/)
    - [CVE Database](https://cve.mitre.org/)
 
@@ -908,12 +862,6 @@ cvehound --kernel ~/linux --metadata /path/to/kernel_cves.json.gz
 - **False positives**: Should be minimized but acceptable with context
 - **Testing**: Every rule should be tested on vulnerable and fixed code
 
-### Metadata Trust
-
-- **Source**: Metadata from linuxkernelcves.com (community-maintained)
-- **Updates**: Should be updated regularly with `cvehound_update_metadata`
-- **Validation**: Test suite validates metadata format
-
 ### Kernel Config Trust
 
 - **User-provided**: Kernel .config is provided by user
@@ -939,18 +887,15 @@ cvehound --kernel ~/linux --metadata /path/to/kernel_cves.json.gz
 - Improve documentation with more examples
 - Add support for other architectures (ARM, RISC-V)
 - Enhance Kbuild parser for edge cases
-- Add more CWE mappings
 
 ---
 
 ## Glossary
 
 - **CVE**: Common Vulnerabilities and Exposures
-- **CWE**: Common Weakness Enumeration
 - **Coccinelle**: Program matching and transformation tool
 - **Spatch**: Coccinelle's semantic patch command
 - **Kbuild**: Linux kernel build system
-- **FSTEC BDU**: Russian security database (exploit information)
 - **CVSS**: Common Vulnerability Scoring System
 - **Semantic patch**: Pattern that understands code semantics, not just syntax
 
@@ -985,9 +930,6 @@ pytest --runslow  # Include slow tests
 
 # Update rules
 cvehound_update_rules
-
-# Update metadata
-cvehound_update_metadata
 ```
 
 ### Important Files

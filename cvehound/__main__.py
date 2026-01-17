@@ -12,7 +12,6 @@ import sys
 from typing import Any
 
 from cvehound import CVEhound
-from cvehound.cwe import CWE
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import (
     get_config_data,
@@ -29,16 +28,13 @@ def check_config(config: dict[str, Any]) -> None:
         'kernel',
         'cve',
         'exclude',
-        'exploit',
         'verbose',
-        'cwe',
         'files',
         'ignore_files',
         'kernel_config',
         'check_strict',
         'report',
         'all_files',
-        'metadata',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -80,10 +76,6 @@ def main(args: list[str] | None = None) -> None:
         '-v', '--verbose', action='count', default=0, help='increase output verbosity'
     )
     parser.add_argument(
-        '--exploit', '-e', action='store_true', help='check only for CVEs with exploits'
-    )
-    parser.add_argument('--cwe', nargs='+', default=[], type=int, help='check only for CWE-ids')
-    parser.add_argument(
         '--files',
         nargs='+',
         default=[],
@@ -108,9 +100,6 @@ def main(args: list[str] | None = None) -> None:
     )
     parser.add_argument(
         '--all-files', action='store_true', help="don't use files hint from cocci rules"
-    )
-    parser.add_argument(
-        '--metadata', metavar='PATH', help='Path to non-standard location of kernel_cves.json.gz'
     )
     parser.add_argument('--version', action='version', version=get_cvehound_version())
     cmdargs = parser.parse_args()
@@ -146,14 +135,6 @@ def main(args: list[str] | None = None) -> None:
         parser.print_usage()
         print('cvehound: error: the following arguments are required: --kernel/-k', file=sys.stderr)
         sys.exit(1)
-
-    if args_cfg['metadata']:
-        if not os.path.isfile(args_cfg['metadata']):
-            print("Can't find metadata file", args_cfg['metadata'], file=sys.stderr)
-            sys.exit(1)
-        if not args_cfg['metadata'].endswith('.gz'):
-            print('Metadata file', args_cfg['metadata'], 'is not the gz archive', file=sys.stderr)
-            sys.exit(1)
 
     if not all(os.path.isfile(os.path.join(args_cfg['kernel'], f)) for f in ['Makefile']):
         print(args_cfg['kernel'], "isn't a kernel directory", file=sys.stderr)
@@ -192,7 +173,6 @@ def main(args: list[str] | None = None) -> None:
 
     hound = CVEhound(
         args_cfg['kernel'],
-        args_cfg['metadata'],
         args_cfg['kernel_config'],
         args_cfg['check_strict'],
         config_info.get('arch', 'x86'),
@@ -256,20 +236,10 @@ def main(args: list[str] | None = None) -> None:
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
-    filter_cwes = frozenset(args_cfg['cwe'])
     cves: list[str] = []
     for cve in cve_set:
         if cve in args_cfg['exclude']:
             continue
-        if args_cfg['exploit'] and not hound.get_cve_exploit(cve):
-            continue
-        if args_cfg['cwe']:
-            rule_cwe_desc = hound.get_cve_cwe(cve)
-            if not rule_cwe_desc:
-                continue
-            rule_cwes = frozenset(CWE[rule_cwe_desc])
-            if not (rule_cwes & filter_cwes):
-                continue
         if args_cfg['files']:
             add = False
             for rulefile in hound.get_rule_files(cve):
@@ -294,14 +264,12 @@ def main(args: list[str] | None = None) -> None:
 
     args_cfg['files'].sort()
     args_cfg['ignore_files'].sort()
-    args_cfg['cwe'].sort()
     cves_sorted = sorted(cves)
 
     report: dict[str, Any] = {'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
     report['args']['cve'] = cves_sorted
     report['args']['kernel'] = args_cfg['kernel']
     report['args']['config'] = args_cfg['kernel_config']
-    report['args']['only_cwe'] = args_cfg['cwe']
     report['args']['only_files'] = args_cfg['files']
     report['args']['all_files'] = args_cfg['all_files']
     report['args']['check_strict'] = args_cfg['check_strict']

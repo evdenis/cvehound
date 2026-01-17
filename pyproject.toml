@@ -20,14 +20,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = ["sympy", "lxml"]
+dependencies = ["sympy"]
 
 [project.optional-dependencies]
 tests = ["pytest", "gitpython", "psutil"]
 
 [project.scripts]
 cvehound = "cvehound.__main__:main"
-cvehound_update_metadata = "cvehound.scripts.update_metadata:main"
 cvehound_update_rules = "cvehound.scripts.update_rules:main"
 
 [project.urls]
@@ -37,7 +36,7 @@ Homepage = "http://github.com/evdenis/cvehound"
 include = ["cvehound", "cvehound.*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.cocci", "*.grep", "*.gz"]
+"*" = ["*.cocci", "*.grep"]
 
 [tool.ruff]
 target-version = "py311"
