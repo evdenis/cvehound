@@ -46,7 +46,6 @@ code patterns of known CVEs and missing fixes for them.
 ## Prerequisites
 
 - Python 3 (>=3.11)
-- pip (Python package manager)
 - grep with pcre support (-P flag)
 - coccinelle (>= 1.0.7)
 
@@ -55,10 +54,10 @@ Install prerequisites:
 # Ubuntu, coccinelle uses libpython2.7 internally
 # Seems like some ppas mark libpython dependency as optional
 $ sudo add-apt-repository ppa:npalix/coccinelle
-$ sudo apt install python3-pip coccinelle libpython2.7
+$ sudo apt install coccinelle libpython2.7
 
 # Fedora
-$ sudo dnf install python3-pip coccinelle
+$ sudo dnf install coccinelle
 
 # macOS
 $ brew install coccinelle
@@ -141,23 +140,32 @@ Other args:
 
 ### Development Setup
 
+The project uses [uv](https://docs.astral.sh/uv/) for dependency and
+environment management.
+
 ``` shell
-# Clone and install in editable mode
+# Install uv (once, globally)
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and create the dev environment
 $ git clone https://github.com/evdenis/cvehound.git
 $ cd cvehound
-$ pip install -e '.[tests]'
+$ uv sync                         # creates .venv and installs dev deps
 
 # Install pre-commit hooks
-$ pip install pre-commit
-$ pre-commit install
+$ uv run pre-commit install
 
-# Run linting and type checking
-$ pre-commit run --all-files
+# Run all linters, formatters, and type checks
+$ uv run pre-commit run --all-files
+
+# Run the test suite
+$ uv run pytest
 ```
 
 The project uses:
+- **uv** for dependency and environment management
 - **ruff** for linting and formatting
-- **mypy** for static type checking (strict mode)
+- **ty** (beta) for static type checking — replaces mypy; version is pinned via `uv.lock`
 - **pre-commit** for automated code quality checks
 
 ### Writing CVE Detection Rules

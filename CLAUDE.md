@@ -109,8 +109,9 @@ cvehound/
   - `pytest`: Testing framework
   - `gitpython`: Git repository interaction (tests)
 - **Development Tools**:
-  - `ruff`: Fast Python linter and formatter
-  - `mypy`: Static type checker (strict mode)
+  - `uv`: Dependency and environment management (Astral)
+  - `ruff`: Fast Python linter and formatter (Astral)
+  - `ty`: Static type checker (Astral, beta — replaces mypy; pinned via `uv.lock`)
   - `pre-commit`: Git hooks for code quality
 
 ### 3. Grep with PCRE
@@ -125,20 +126,22 @@ cvehound/
 ### Setting Up Development Environment
 
 ```bash
+# Install uv (once, globally)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Clone the repository
 git clone https://github.com/evdenis/cvehound.git
 cd cvehound
 
-# Install in editable mode with test dependencies
-pip install -e '.[tests]'
+# Create the venv and install all dev deps
+uv sync
 
 # Install pre-commit hooks
-pip install pre-commit
-pre-commit install
+uv run pre-commit install
 
 # Verify installation
-cvehound --version
-cvehound --help
+uv run cvehound --version
+uv run cvehound --help
 
 # Install Coccinelle (Ubuntu)
 sudo add-apt-repository ppa:npalix/coccinelle
@@ -159,17 +162,18 @@ The project uses pre-commit hooks to ensure code quality. Hooks run automaticall
 - **end-of-file-fixer**: Ensure files end with newline
 - **check-yaml**: Validate YAML files
 - **check-added-large-files**: Prevent large files from being committed
-- **ruff**: Python linter (auto-fixes issues)
+- **ruff-check**: Python linter (auto-fixes issues)
 - **ruff-format**: Python code formatter
-- **mypy**: Static type checker (strict mode)
+- **uv-lock**: Ensures `uv.lock` is in sync with `pyproject.toml`
+- **ty**: Static type checker (run via `uv run ty check`, local hook)
 
 ```bash
 # Run hooks manually on all files
-pre-commit run --all-files
+uv run pre-commit run --all-files
 
 # Run specific hook
-pre-commit run ruff --all-files
-pre-commit run mypy --all-files
+uv run pre-commit run ruff-check --all-files
+uv run ty check
 ```
 
 ### Branch Strategy
