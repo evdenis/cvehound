@@ -57,7 +57,7 @@ class Precondition(list[str]):
         if keep_duplicates or condition not in self:
             self.append(condition)
 
-    def __hash__(self) -> int:  # type: ignore[override]
+    def __hash__(self) -> int:
         """Hashing is deferred to superclass."""
         return hash(tuple(self))
 

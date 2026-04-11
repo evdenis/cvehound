@@ -108,6 +108,9 @@ ENV/
 # mypy
 .mypy_cache/
 
+# ty
+.ty_cache/
+
 # macOS
 .DS_STORE
 

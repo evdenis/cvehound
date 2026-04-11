@@ -12,7 +12,7 @@ from io import BytesIO
 from urllib.request import Request, urlopen
 from zipfile import ZipFile
 
-import lxml.etree as etree
+import lxml.etree as etree  # ty: ignore[unresolved-import]
 
 
 def get_exploit_status_from_fstec() -> tuple[set[str], set[str]]:
@@ -32,15 +32,15 @@ def get_exploit_status_from_fstec() -> tuple[set[str], set[str]]:
 
     public: set[str] = set()
     private: set[str] = set()
-    for item in tree.xpath('//vul'):  # type: ignore[union-attr]
-        item.xpath('identifier/text()')[0]  # type: ignore[union-attr, index]
+    for item in tree.xpath('//vul'):
+        item.xpath('identifier/text()')[0]
         cve_id: str | None = None
-        for vuln_id in item.xpath('identifiers/identifier'):  # type: ignore[union-attr]
-            if vuln_id.get('type') == 'CVE':  # type: ignore[union-attr]
-                cve_id = vuln_id.text  # type: ignore[union-attr]
+        for vuln_id in item.xpath('identifiers/identifier'):
+            if vuln_id.get('type') == 'CVE':
+                cve_id = vuln_id.text
                 break
         is_linux = False
-        for name in item.xpath('vulnerable_software/soft/name/text()'):  # type: ignore[union-attr]
+        for name in item.xpath('vulnerable_software/soft/name/text()'):
             if name == 'Linux' or name == 'linux':
                 is_linux = True
         if not is_linux:
@@ -48,10 +48,10 @@ def get_exploit_status_from_fstec() -> tuple[set[str], set[str]]:
         if not cve_id:
             continue
 
-        exploit_status = item.xpath('exploit_status/text()')[0]  # type: ignore[union-attr, index]
-        if 'открыт' in exploit_status:  # type: ignore[operator]  # 'открытом' == 'public'
+        exploit_status = item.xpath('exploit_status/text()')[0]
+        if 'открыт' in exploit_status:  # 'открытом' == 'public'
             public.add(cve_id)
-        elif 'уществует' in exploit_status:  # type: ignore[operator]  # == exists
+        elif 'уществует' in exploit_status:  # == exists
             private.add(cve_id)
 
     return public, private

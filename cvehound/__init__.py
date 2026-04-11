@@ -62,15 +62,15 @@ class CVEhound:
         self.config: Config | None = None
 
         if config:
-            kbuild_parser = KbuildParser(None, arch)  # type: ignore[no-untyped-call]
+            kbuild_parser = KbuildParser(None, arch)
             dirs_to_process: dict[str, Any] = collections.OrderedDict()
             kbuild_parser.init_class.process(kbuild_parser, dirs_to_process, kernel)
 
             for item in dirs_to_process:
                 descend = kbuild_parser.init_class.get_file_for_subdirectory(item)
-                kbuild_parser.process_kbuild_or_makefile(descend, dirs_to_process[item])  # type: ignore[no-untyped-call]
+                kbuild_parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
 
-            self.config_map = kbuild_parser.get_config()  # type: ignore[no-untyped-call]
+            self.config_map = kbuild_parser.get_config()
             if config != '-':
                 self.config_file = config
                 self.config = Config(config)

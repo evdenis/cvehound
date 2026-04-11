@@ -22,9 +22,6 @@ classifiers = [
 ]
 dependencies = ["sympy", "lxml"]
 
-[project.optional-dependencies]
-tests = ["pytest", "gitpython", "psutil"]
-
 [project.scripts]
 cvehound = "cvehound.__main__:main"
 cvehound_update_metadata = "cvehound.scripts.update_metadata:main"
@@ -32,6 +29,18 @@ cvehound_update_rules = "cvehound.scripts.update_rules:main"
 
 [project.urls]
 Homepage = "http://github.com/evdenis/cvehound"
+
+[dependency-groups]
+dev = [
+    {include-group = "test"},
+    {include-group = "lint"},
+]
+test = ["pytest", "gitpython", "psutil"]
+lint = [
+    "ruff>=0.15.10",
+    "ty>=0.0.29",
+    "pre-commit>=4.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["cvehound", "cvehound.*"]
@@ -44,23 +53,31 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "ANN"]
+ignore = [
+    "E501",
+    "ANN401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+"cvehound/kbuild.py" = ["ANN"]
+"cvehound/kbuildparse/**" = ["ANN"]
 
 [tool.ruff.format]
 quote-style = "single"
 
-[tool.mypy]
-python_version = "3.11"
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-ignore_missing_imports = true
+[tool.ty.environment]
+python-version = "3.11"
+python-platform = "linux"
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = ["cvehound.kbuild", "cvehound.kbuildparse.*"]
-ignore_errors = true
+[tool.ty.src]
+include = ["cvehound"]
+exclude = [
+    "tests",
+    "build",
+    "dist",
+    "cvehound.egg-info",
+    "cvehound/kbuild.py",
+    "cvehound/kbuildparse",
+]
