@@ -174,11 +174,15 @@ If you'd like to contribute new CVE detection rules, please see our comprehensiv
 
 - **[Writing Coccinelle Detection Rules for CVE Patterns](docs/WRITING_RULES.md)** - Complete guide with step-by-step instructions, patterns, and examples
 - **[Coccinelle CVE Detection Cheat Sheet](docs/COCCINELLE_CHEATSHEET.md)** - Quick reference for common patterns
-- **[AI Agent Guide](docs/AI_AGENT_GUIDE.md)** - Systematic approach for AI agents writing CVE rules
 
 Templates:
 - `contrib/template.cocci` - Enhanced template with examples and comments
 - `contrib/blank.cocci` - Minimal template for new rules
+
+If you use a coding agent, the repository ships a `write-cve-rule` skill in
+`.agents/skills/` (picked up by OpenAI Codex, and by Claude Code via `.claude/skills/`).
+It drives the workflow above and runs `.agents/skills/write-cve-rule/scripts/validate-rule.sh`,
+which you can also call by hand — see [AGENTS.md](AGENTS.md).
 
 ## License
 

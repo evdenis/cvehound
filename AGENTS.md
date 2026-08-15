@@ -11,13 +11,17 @@ This file covers only what you can't infer from reading the code or the other do
 
 | Task | Read |
 | --- | --- |
-| Write a detection rule | `docs/WRITING_RULES.md` (complete guide) |
-| Write a rule, step-by-step | `docs/AI_AGENT_GUIDE.md` (decision tree, checklists) |
+| Write a detection rule | the `write-cve-rule` skill (`.agents/skills/write-cve-rule/`) |
+| Rule-writing reference | `docs/WRITING_RULES.md` (complete guide) |
 | Look up Coccinelle syntax | `docs/COCCINELLE_CHEATSHEET.md` |
 | Start a new rule | `contrib/blank.cocci`, `contrib/template.cocci` |
 | Install / CLI usage / dev setup | `README.md` |
 
 Don't restate those docs here. If something belongs in one of them, put it there.
+
+The skill is the workflow, `docs/WRITING_RULES.md` is the reference behind it. Codex loads
+skills from `.agents/skills/`; `.claude/skills/write-cve-rule` is a symlink to the same
+directory so Claude Code finds it too. Edit the real files under `.agents/`.
 
 ## Adding a CVE rule
 
@@ -32,17 +36,13 @@ that drives the `all` / `assigned` / `disputed` groups for `--cve` (default:
 
 ### Metadata headers are test inputs, not documentation
 
-Parsed at `cvehound/__init__.py:289-298`:
+The leading `///` block (`Files:`, `Fix:`, `Fixes:`/`Detect-To:`, `Version:`) is parsed at
+`cvehound/__init__.py:289-298` and documented in
+`docs/WRITING_RULES.md` → "Metadata Fields Explained".
 
-- `Files:` — space-separated paths from the kernel root.
-- `Fix:` — commit that fixed the bug.
-- `Fixes:` **or** `Detect-To:` — both populate the same field. Use `Fixes:` for the
-  commit that introduced the bug, `Detect-To:` when you can only guess it.
-- `Version:` — minimum spatch version; below it, `check_cve` raises `UnsupportedVersion`
-  and tests skip.
-
-The whole slow test suite is generated from these two hashes, so a wrong hash is a
-failing test, not a typo:
+What that reference can't convey is why it matters here: the whole slow test suite is
+generated from `Fix:` and `Fixes:`/`Detect-To:`, so a wrong hash is a failing test, not a
+typo:
 
 | Test | Asserts |
 | --- | --- |

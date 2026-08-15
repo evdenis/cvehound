@@ -1,6 +1,14 @@
 # Writing Coccinelle Detection Rules for CVE Patterns
 
-This guide provides comprehensive documentation on how to write Coccinelle detection rules for CVE patterns in CVEhound. Whether you're contributing a new CVE detection rule or understanding existing ones, this document will help you master the process.
+This is the complete guide to writing CVEhound detection rules, for humans and coding
+agents alike. It covers how to go from a kernel fix commit to a working `.cocci` rule.
+
+Two companion documents:
+
+- [COCCINELLE_CHEATSHEET.md](COCCINELLE_CHEATSHEET.md) — the syntax reference and the
+  catalog of vulnerability patterns. This guide assumes it; read it first.
+- `AGENTS.md` in the repository root — the repository's own conventions (tests, style,
+  architecture).
 
 ## Table of Contents
 
@@ -8,21 +16,29 @@ This guide provides comprehensive documentation on how to write Coccinelle detec
 2. [Prerequisites](#prerequisites)
 3. [Rule Structure and Metadata](#rule-structure-and-metadata)
 4. [Coccinelle Basics](#coccinelle-basics)
-5. [Pattern Matching Techniques](#pattern-matching-techniques)
-6. [Common Vulnerability Patterns](#common-vulnerability-patterns)
-7. [Step-by-Step Guide](#step-by-step-guide)
-8. [Best Practices](#best-practices)
-9. [Testing Your Rules](#testing-your-rules)
-10. [Advanced Techniques](#advanced-techniques)
-11. [Examples Walkthrough](#examples-walkthrough)
-12. [Troubleshooting](#troubleshooting)
-13. [Additional Resources](#additional-resources)
-14. [Contributing](#contributing)
-15. [License](#license)
+5. [Choosing a Detection Strategy](#choosing-a-detection-strategy)
+6. [Pattern Construction Rules](#pattern-construction-rules)
+7. [Pattern Matching Techniques](#pattern-matching-techniques)
+8. [Common Vulnerability Patterns](#common-vulnerability-patterns)
+9. [Step-by-Step Guide](#step-by-step-guide)
+10. [Best Practices](#best-practices)
+11. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
+12. [Testing Your Rules](#testing-your-rules)
+13. [Advanced Techniques](#advanced-techniques)
+14. [Execution Model](#execution-model)
+15. [Learning from Existing Rules](#learning-from-existing-rules)
+16. [Examples Walkthrough](#examples-walkthrough)
+17. [Troubleshooting](#troubleshooting)
+18. [Additional Resources](#additional-resources)
+19. [Contributing](#contributing)
+20. [License](#license)
 
 ## Overview
 
-CVEhound uses [Coccinelle](https://coccinelle.gitlabpages.inria.fr/website/), a powerful program matching and transformation tool, to detect vulnerable code patterns in Linux kernel sources. Each CVE is represented by a `.cocci` file that describes the vulnerable code pattern or the absence of a fix.
+CVEhound uses [Coccinelle](https://coccinelle.gitlabpages.inria.fr/website/), a program
+matching and transformation tool, to detect vulnerable code patterns in Linux kernel
+sources. Each CVE is represented by a `.cocci` file that describes the vulnerable code
+pattern or the absence of a fix.
 
 ### Two Detection Approaches
 
@@ -36,15 +52,25 @@ CVEhound rules can detect vulnerabilities using two complementary approaches:
    - Example: Detecting missing validation checks or initialization
    - Use when the fix adds new code that wasn't present before
 
+[Choosing a Detection Strategy](#choosing-a-detection-strategy) turns this into a
+decision you can make mechanically from the fix diff.
+
 ## Prerequisites
 
 Before writing CVE detection rules, you should:
 
 - Understand basic C programming (kernel-level C knowledge is helpful)
-- Familiarity with Linux kernel source code structure
-- Basic understanding of the CVE you're writing a rule for
-- Read the CVE fix commit and understand what changed
+- Be familiar with Linux kernel source code structure
 - Have Coccinelle installed (version >= 1.0.7)
+
+Gather this information before you write a line of the rule:
+
+- [ ] CVE ID (format: `CVE-YYYY-NNNNN`)
+- [ ] Fix commit hash from the Linux kernel git repository
+- [ ] The commit that introduced the bug, if it is known
+- [ ] The complete diff of the fix (`git show <hash>`)
+- [ ] Affected file paths, relative to the kernel root
+- [ ] An understanding of what actually makes the code vulnerable
 
 ### Recommended Reading
 
@@ -124,7 +150,7 @@ Both populate the same field — use exactly one:
 `test_04_on_fixes` asserts the rule fires at this commit and not at its parent, and
 `test_05_between_fixes_fix` checks every commit in `Fixes..Fix~`. The value may also be
 the tag `v2.6.12-rc2`, which is special-cased to mean "present since the start of git
-history" (47 rules use it).
+history" (around fifty rules use it).
 
 #### `Version:` (optional)
 Minimum spatch version, used when the rule needs newer syntax. The value is parsed by
@@ -142,7 +168,9 @@ nothing else — trailing prose makes rule parsing raise `ValueError`. Below thi
 virtual detect
 ```
 
-This line declares a virtual mode that CVEhound uses to activate detection patterns. Always include this line after the metadata.
+This line declares a virtual mode that CVEhound uses to activate detection patterns.
+Always include this line after the metadata. Every report script is written as
+`depends on detect`, so a rule without this declaration parses but never reports.
 
 ## Coccinelle Basics
 
@@ -153,6 +181,192 @@ assumes it.
 
 The rest of this document covers what the cheatsheet deliberately leaves out: how to go
 from a fix commit to a working rule, and worked examples from real CVEs.
+
+## Choosing a Detection Strategy
+
+Read the fix diff and answer these questions in order. The first "yes" decides the
+approach.
+
+```
+START: Analyze the fix commit diff
+│
+├─ Does the fix ADD new code?
+│  │
+│  ├─ YES → Missing Fix Detection
+│  │        Pattern: check for the ABSENCE of the new code
+│  │        Example: missing validation check, missing initialization
+│  │
+│  └─ NO → next question
+│
+├─ Does the fix CHANGE a value (constant, flag, permission)?
+│  │
+│  ├─ YES → Unfixed Code Detection
+│  │        Pattern: match the OLD (vulnerable) value
+│  │        Example: return 0444 → return 0400
+│  │
+│  └─ NO → next question
+│
+├─ Does the fix REMOVE code?
+│  │
+│  ├─ YES → Unfixed Code Detection
+│  │        Pattern: detect the presence of the removed code
+│  │        Example: a whole vulnerable driver deleted
+│  │
+│  └─ NO → next question
+│
+└─ Does the fix REFACTOR or change logic?
+   │
+   └─ YES → Unfixed Code Detection, or a hybrid
+            Pattern: match the distinctive vulnerable shape
+            May require multiple rules with dependencies
+```
+
+Missing Fix Detection is the trickier of the two: "the check isn't there" is expressed
+with `when !=` inside an ellipsis, and it fires on any code that never had the bug in the
+first place unless you anchor it to the enclosing function. See
+[Example 3](#example-3-missing-initialization---cve-2020-12352).
+
+## Pattern Construction Rules
+
+### Rule 1: Always declare and bind a position
+
+```cocci
+@err@
+position p;        // REQUIRED: declare the position variable
+@@
+
+* vulnerable_code@p(...);  // REQUIRED: bind it with @p
+```
+
+Without a bound position there is nothing for the Python script rule to report.
+
+### Rule 2: Mark vulnerable lines with `*`
+
+```cocci
+* return 0444;@p         // context marker: the line to report
+```
+
+`*` is the context marker, not a wildcard (`...` is). It is not cosmetic: it switches the
+whole patch into match mode, which flips the default quantification of un-annotated `...`
+from `forall` to `exists`, so adding or removing it can change what matches. It also
+cannot be combined with `-`/`+`. Nearly every rule in the repository uses it.
+
+### Rule 3: Use appropriate metavariables
+
+```cocci
+identifier func;     // For function/variable names (unknown)
+symbol kfree;        // Match this exact name literally, not as a metavariable
+expression E;        // For any expression
+statement S;         // For any statement
+type T;              // For any type
+position p;          // For location tracking (required)
+```
+
+Full selection table:
+
+| Need to match | Use | Example |
+|---------------|-----|---------|
+| Unknown function or variable name | `identifier` | `identifier func;` |
+| A specific name, matched literally | `symbol` | `symbol kfree;` |
+| Any expression | `expression` | `expression E;` |
+| Any statement | `statement` | `statement S;` |
+| Any type | `type` | `type T;` |
+| Location for reporting | `position` | `position p;` |
+| A specific constant | write it literally | `0444`, `-EINVAL` |
+| Any constant | `constant` | `constant C;` |
+
+`symbol` is the one people miss: it declares a name to be matched literally rather than
+bound as a metavariable, which matters when the name you want to match could otherwise be
+read as a fresh identifier (`symbol current;`). Around fifty rules use it.
+
+### Rule 4: Scope the pattern with context
+
+Always provide enough context to avoid false positives:
+
+```cocci
+// BAD: too generic, matches across the whole tree
+@err@
+position p;
+@@
+
+* return -1;@p
+
+// GOOD: anchored in the function that has the bug
+@err@
+position p;
+@@
+
+vulnerable_function(...)
+{
+    ...
+*   return -1;@p
+}
+```
+
+### Rule 5: Use ellipsis correctly
+
+```cocci
+func(...)              // Match any function arguments
+{
+    ...                // Match 0 or more statements
+    code();
+    ...                // More statements
+}
+```
+
+### Rule 6: Apply constraints with `when`
+
+```cocci
+@err@
+identifier var;
+position p;
+@@
+
+func(...)
+{
+    struct foo var;
+    ... when != memset(&var, 0, sizeof(var));    // Must NOT have init
+        when != var = ...;                        // Must NOT be assigned
+*   use_var(&var)@p;
+}
+```
+
+### Pattern complexity: prefer the simplest thing that works
+
+**Simple — one rule, direct match, minimal context.** This is the target. It is fast and
+it is what most rules in `cvehound/cve/` look like:
+
+```cocci
+@err@
+position p;
+@@
+
+function(...)
+{
+*   return 0444;@p
+}
+```
+
+**Medium — two or three rules with a dependency**, for "the fix introduced X, so only
+look for the bug where X exists":
+
+```cocci
+@has_feature@
+@@
+
+init_function(...)
+
+@err depends on has_feature@
+position p;
+@@
+
+* usage@p(...);
+```
+
+**Complex — many rules, alternatives, several detection points.** Only reach for this
+when the vulnerability genuinely requires checking multiple conditions, when simpler
+patterns produce too many false positives, or when the CVE affects many similar functions
+(as in CVE-2020-12352).
 
 ## Pattern Matching Techniques
 
@@ -243,7 +457,8 @@ return E;
 
 ### Alternative Patterns
 
-Use `\( ... \| ... \)` for alternatives:
+Use `\( ... \| ... \)` for alternatives — most often when the same bug lives in several
+related functions:
 
 ```cocci
 // Match any of these function calls
@@ -252,17 +467,18 @@ Use `\( ... \| ... \)` for alternatives:
 
 \(function1\|function2\|function3\)(...);
 
-// Match different operations
-@rule@
-expression E1, E2;
+// The same bug across renamed variants of one function
+@err@
+position p;
 @@
 
-(
-E1 = E2 % 0x1000;
-|
-E1 = E2 & 0xFFF;
-)
+\(follow_page_pte\|follow_page_mask\|follow_page\)(...)
+{
+*   vulnerable_pattern@p;
+}
 ```
+
+This is how a single rule keeps working across kernel versions that renamed the function.
 
 ### Disjunction
 
@@ -288,9 +504,9 @@ uninitialized variable, missing NULL/bounds check, use-after-free, information l
 incorrect permission, missing lock, integer overflow. Each entry there names real rules
 in `cvehound/cve/` to read alongside it.
 
-Which pattern you reach for follows from what the fix commit did — see
-[Two Detection Approaches](#two-detection-approaches) above and the decision tree in
-[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md#decision-tree-detection-strategy).
+Pick the entry matching what the fix did (per
+[Choosing a Detection Strategy](#choosing-a-detection-strategy)), then open the real
+rules it cites and follow those rather than the sketch.
 
 ## Step-by-Step Guide
 
@@ -298,26 +514,22 @@ Which pattern you reach for follows from what the fix commit did — see
 
 1. Read the CVE description
 2. Find the fix commit in the kernel git repository
-3. Use `git show <commit_hash>` to see the changes
+3. Use `git show <commit_hash>` to see the changes — lines with `-` are the vulnerable
+   code, lines with `+` are the fix
 4. Identify what makes the code vulnerable
 
-Example:
 ```bash
 git show bcf85fcedfdd17911982a3e3564fcfec7b01eebd
 ```
 
 ### Step 2: Choose Detection Strategy
 
-Ask yourself:
-
-- **Does the vulnerable code have a unique pattern?** → Use unfixed code detection
-- **Does the fix add new code?** → Use missing fix detection
-- **Is the change a simple value modification?** → Use unfixed code detection
-- **Is the change complex with multiple locations?** → May need multiple rules
+Walk the decision tree in
+[Choosing a Detection Strategy](#choosing-a-detection-strategy).
 
 ### Step 3: Identify the Code Pattern
 
-Extract the key pattern from the CVE. For example, if the fix changed:
+Extract the minimal distinguishing pattern. For example, if the fix changed:
 
 ```c
 // BEFORE (vulnerable):
@@ -327,13 +539,12 @@ return 0444;
 return 0400;
 ```
 
-The vulnerable pattern is: `return 0444;`
+The vulnerable pattern is `return 0444;` — but only inside the function the fix touched.
 
 ### Step 4: Create the Rule File
 
-Create a file named `CVE-YYYY-NNNNN.cocci` in the `cvehound/cve/` directory.
-
-Start with the template:
+Create a file named `CVE-YYYY-NNNNN.cocci` in the `cvehound/cve/` directory, starting
+from `contrib/blank.cocci` or the template:
 
 ```cocci
 /// Files: path/to/affected/file.c
@@ -371,9 +582,9 @@ some_visibility_func(...)
 ```
 
 Key points:
-- Use `position p;` to capture the location
-- Optionally mark lines with `*` for debugging
-- Add `@p` to associate the position with that location
+- Declare `position p;` and bind it with `@p`
+- Mark the line to report with `*`
+- Anchor the pattern in the enclosing function
 
 ### Step 6: Add Context (if needed)
 
@@ -396,45 +607,27 @@ driver_sysfs_ops(...)
 
 ### Step 7: Test the Rule
 
-Test on the vulnerable code:
-
-```bash
-spatch --no-includes --include-headers -D detect \
-    --cocci-file CVE-YYYY-NNNNN.cocci \
-    /path/to/kernel/source/file.c
-```
-
-Test on the fixed code (should produce no output):
-
-```bash
-# Checkout the fixed version
-git checkout <fix_commit>
-spatch --no-includes --include-headers -D detect \
-    --cocci-file CVE-YYYY-NNNNN.cocci \
-    /path/to/kernel/source/file.c
-```
+Check it parses, then run it against the vulnerable and the fixed tree — see
+[Testing Your Rules](#testing-your-rules) for the full protocol.
 
 ### Step 8: Refine the Pattern
 
 If you get false positives:
-- Add more context
-- Use `when` constraints
+- Add more context (function name, surrounding code)
+- Use `when !=` constraints
 - Add dependencies on other rules
 
 If you miss the vulnerability:
 - Simplify the pattern
-- Use `exists` constraint
-- Consider using alternatives `\( ... \| ... \)`
+- Use the `exists` constraint
+- Consider alternatives `\( ... \| ... \)`
 
 ### Step 9: Document and Submit
 
 1. Ensure metadata is complete and accurate
 2. Add comments explaining complex patterns
-3. Test with CVEhound:
-   ```bash
-   cvehound --kernel /path/to/kernel --cve CVE-YYYY-NNNNN
-   ```
-4. Submit your contribution
+3. Run `uv run pytest --runslow --cve=CVE-YYYY-NNNNN`
+4. Submit a pull request referencing the CVE and the fix commit
 
 ## Best Practices
 
@@ -450,14 +643,128 @@ Two rules matter more than any checklist here:
 For the mechanical checks (does it parse, does it fire at `Fix~`, is it silent at `Fix`),
 don't rely on judgement — run the suite, see [Testing Your Rules](#testing-your-rules).
 
-`symbol` is worth knowing: it declares a name to be matched literally rather than as a
-metavariable (49 rules use it, e.g. `symbol current;`).
+When a rule is a judgement call, prefer a false positive: a missed CVE is worse than a
+noisy one.
+
+## Common Mistakes to Avoid
+
+### Mistake 1: No position to report
+
+```cocci
+// WRONG: nothing for the script rule to bind
+@err@
+@@
+
+vulnerable_code();
+
+// CORRECT
+@err@
+position p;
+@@
+
+* vulnerable_code@p();
+```
+
+### Mistake 2: Pattern too generic
+
+```cocci
+// WRONG: will match across the whole tree
+@err@
+position p;
+@@
+
+* return -1;@p
+
+// CORRECT: specific function context
+@err@
+position p;
+@@
+
+specific_function(...)
+{
+    ...
+*   return -1;@p
+}
+```
+
+### Mistake 3: Wrong position syntax
+
+```cocci
+// WRONG: two positions bound on one expression
+* vulnerable_code@p1()@p2;
+
+// CORRECT: one position per statement
+* vulnerable_code@p();
+```
+
+### Mistake 4: Script rule references the wrong rule name
+
+```cocci
+@err@
+position p;
+@@
+
+* code@p;
+
+@script:python depends on detect@
+p << err.p;    // must match the @err@ rule name, not something else
+@@
+
+coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+```
+
+### Mistake 5: Forgetting `virtual detect`
+
+```cocci
+// WRONG: rule parses, matches, and silently reports nothing,
+// because every script rule is "depends on detect"
+/// Files: foo.c
+/// Fix: abc123
+
+@err@
+
+// CORRECT
+/// Files: foo.c
+/// Fix: abc123
+
+virtual detect
+
+@err@
+```
+
+### Mistake 6: One script rule bound to several rules
+
+A script rule fires only if **all** the rules it binds matched. Binding two independent
+detection sites to one script rule turns an OR into an AND:
+
+```cocci
+// WRONG if err_a and err_b are independent sites:
+@script:python depends on detect@
+p << err_a.p;
+q << err_b.p;
+@@
+
+// CORRECT: one script rule per independent site
+@script:python depends on detect@
+p << err_a.p;
+@@
+coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+
+@script:python depends on detect@
+p << err_b.p;
+@@
+coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+```
+
+### Mistake 7: A typo in `Files:`
+
+Nothing validates the paths. If none of them exist in the tree, `check_cve` scans the
+whole kernel instead of erroring — a very slow run and possible false positives rather
+than a clear failure. Verify each path exists at the `Fix` commit.
 
 ## Testing Your Rules
 
 ### Manual Testing with Spatch
-
-Test directly with Coccinelle:
 
 ```bash
 # Check the rule parses before anything else
@@ -471,7 +778,26 @@ spatch --no-includes --include-headers -D detect \
     file.c
 ```
 
-A hit is reported as `file:line:col-col: ERROR: CVE-YYYY-NNNNN`.
+A hit is reported as `file:line:col-col: ERROR: CVE-YYYY-NNNNN`, for example:
+
+```
+net/nfc/rawsock.c:123:4-13: ERROR: CVE-2020-12345
+```
+
+The three checks that matter, run against a kernel checkout:
+
+```bash
+# 1. MUST detect on the vulnerable tree
+git checkout <fix_commit>~
+spatch ... --cocci-file CVE-YYYY-NNNNN.cocci <affected_file>   # expect a hit
+
+# 2. MUST NOT detect on the fixed tree
+git checkout <fix_commit>
+spatch ... --cocci-file CVE-YYYY-NNNNN.cocci <affected_file>   # expect silence
+
+# 3. MUST NOT fire on unrelated code
+spatch ... --cocci-file CVE-YYYY-NNNNN.cocci <unrelated_file>  # expect silence
+```
 
 ### Testing with CVEhound
 
@@ -508,15 +834,20 @@ test function.
 
 ### Validation Checklist
 
-- [ ] Rule detects vulnerability in unfixed code
-- [ ] Rule does NOT trigger on fixed code
-- [ ] Metadata is complete and accurate
-- [ ] File paths are correct
+Before submitting:
+
+- [ ] File named `CVE-YYYY-NNNNN.cocci` exactly — uppercase `CVE`, no prefix or suffix
+- [ ] Placed in `cvehound/cve/` (or `cvehound/cve/disputed/` for disputed CVEs)
+- [ ] `virtual detect` present
+- [ ] `Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:` present and correct
+- [ ] Every path in `Files:` exists in the tree at the `Fix` commit
+- [ ] `position p;` declared and bound with `@p`
+- [ ] Each script rule binds exactly the rules that should report together
+- [ ] CVE ID in the report message matches the filename
+- [ ] Parses: `spatch --parse-cocci CVE-YYYY-NNNNN.cocci`
+- [ ] Detects at `Fix~`, silent at `Fix`
 - [ ] No false positives on unrelated code
-- [ ] Works with different kernel versions
-- [ ] Follows naming convention (CVE-YYYY-NNNNN.cocci)
-- [ ] Tested with spatch and cvehound
-- [ ] Documentation is clear
+- [ ] `uv run pytest --runslow --cve=CVE-YYYY-NNNNN` passes
 
 ## Advanced Techniques
 
@@ -549,7 +880,8 @@ position p;
 * another_vulnerable_pattern@p();
 ```
 
-**Example**: CVE-2016-5195 (Dirty COW) - checks for function existence before detecting vulnerability
+**Example**: CVE-2016-5195 (Dirty COW) — checks for function existence before detecting
+the vulnerability.
 
 ### Matching Macros
 
@@ -570,7 +902,7 @@ position p;
 ### Capturing Multiple Positions
 
 When a CVE has several vulnerable sites, the house style is one rule per site — each with
-its own `position p;` — and a single script rule that binds them all:
+its own `position p;` — and a separate script rule per site:
 
 ```cocci
 @err_a exists@
@@ -587,17 +919,26 @@ position p;
 
 @script:python depends on detect@
 p << err_a.p;
-q << err_b.p;
 @@
 
 coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
-coccilib.report.print_report(q[0], 'ERROR: CVE-YYYY-NNNNN')
+
+@script:python depends on detect@
+p << err_b.p;
+@@
+
+coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 ```
 
-Note each script rule fires only if **all** its bound rules matched. To report sites
-independently, give each its own script rule — see `cvehound/cve/CVE-2016-5195.cocci`
-(two independent sites) and `cvehound/cve/CVE-2021-3347.cocci` (three rules bound at
-once). Declaring `position p1, p2;` inside a single rule is not the idiom used here.
+A script rule fires only if **all** its bound rules matched, so binding independent sites
+to one script rule silently turns an OR into an AND. See
+`cvehound/cve/CVE-2016-5195.cocci` (two independent sites, two script rules) and
+`cvehound/cve/CVE-2021-3347.cocci` (three rules deliberately bound at once). Declaring
+`position p1, p2;` inside a single rule is not the idiom used here.
+
+This is also the shape to use when the same bug repeats across many functions — one
+`@err_funcN exists@` rule per function, each with its own script rule. `CVE-2020-12352`
+does this ten times.
 
 ### Complex Python Scripts
 
@@ -639,6 +980,58 @@ position p;
     ...
 };
 ```
+
+## Execution Model
+
+For `.cocci` rules, CVEhound builds this command (`cvehound/__init__.py`):
+
+```bash
+spatch \
+    --no-includes \             # do not resolve #include directives at all
+    --include-headers \         # process .h files as inputs in their own right
+    -D detect \                 # enable the "detect" virtual mode
+    --chunksize 1 -j 1 \        # one job here; CVEhound parallelizes across CVEs
+    --no-show-diff --very-quiet \
+    --cocci-file <rule> \
+    [--python <sys.executable>] \   # only when spatch > 1.0.4
+    -I <kernel>/arch/<arch>/include ... -I <kernel>/include/uapi ... \
+    --include <kernel>/include/linux/kconfig.h \
+    <every path from the rule's Files: header>
+```
+
+`.grep` rules take a different path entirely: `grep -rPzle <pattern> <files>`.
+
+Output goes to stdout as `file:line:col-col: ERROR: CVE-…` and is parsed by CVEhound.
+Note the two-level parallelism: `spatch` is pinned to `-j 1` and `__main__.py` fans out
+across CVEs with a `ProcessPoolExecutor`, so don't add another layer.
+
+Because `--no-includes` is in effect, your rule never sees the contents of headers it
+`#include`s. Match what is written in the `.c` file, not what a macro expands to after
+preprocessing.
+
+## Learning from Existing Rules
+
+The 500+ rules in `cvehound/cve/` are the real specification. Find ones like yours:
+
+```bash
+cd cvehound/cve
+
+# By vulnerability type
+grep -l "memset" *.cocci          # initialization bugs
+grep -l "copy_to_user" *.cocci    # information leaks
+grep -l "when != if" *.cocci      # missing checks
+
+# By technique
+grep -lP 'depends on (?!detect)' *.cocci   # real inter-rule dependencies
+grep -l '\\(' *.cocci                      # function alternatives
+grep -lw 'exists' *.cocci                  # the exists constraint
+
+# The most involved rules, worth reading once
+wc -l *.cocci | sort -n | tail -5
+```
+
+Note the `-P 'depends on (?!detect)'`: a plain `grep -l "depends on"` matches every rule
+in the directory, because each one ends with `@script:python depends on detect@`.
 
 ## Examples Walkthrough
 
@@ -755,7 +1148,8 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2020-12352')
 - Declares `identifier req` to match the variable name
 - `when != memset(...)` ensures the struct is NOT initialized
 - Detects when uninitialized struct is passed to `a2mp_send`
-- This pattern repeats 10 times for different functions in actual rule
+- This is the canonical Missing Fix Detection shape
+- The real rule repeats this block ten times, once per affected function
 
 ### Example 4: Complex Dependencies - CVE-2016-5195 (Dirty COW)
 
@@ -826,7 +1220,7 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2016-5195')
 - Only checks for unfixed patterns if this function exists
 - Uses function alternatives with `\(func1\|func2\|func3\)`
 - Detects two different unfixed code patterns
-- Complex CVE requires checking multiple conditions
+- Two separate script rules, so either site reports independently
 
 ### Example 5: ASLR Weakness - CVE-2015-1593
 
@@ -894,6 +1288,14 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 - Test with `--debug` flag: `spatch --debug file.c`
 - Use `...` to skip over irrelevant code
 
+### Problem: Rule parses and matches but prints nothing
+
+**Solutions**:
+- Add `virtual detect` — without it every `depends on detect` script rule is inert
+- Pass `-D detect` on the spatch command line
+- Check the script rule binds the rule name that actually matched
+- Check you are not binding several independent rules to one script rule (that ANDs them)
+
 ### Problem: Too many false positives
 
 **Solutions**:
@@ -925,15 +1327,15 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 **Solutions**:
 - Check if affected code exists in that version
 - Account for backported changes
-- Use alternative patterns with `\( ... \| ... \)`
+- Use alternative patterns with `\( ... \| ... \)` for renamed functions
 - Consider using version-specific metadata
 
 ### Problem: Macro expansion issues
 
 **Solutions**:
 - Match both macro and expanded forms
-- Use `--macro-file` option with spatch
-- Include kernel headers properly
+- Remember CVEhound runs with `--no-includes`, so headers are not resolved
+- Use `--macro-file` option with spatch when testing manually
 - Test with actual kernel build system
 
 ### Getting Help
@@ -958,15 +1360,17 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 
 ### CVEhound Resources
 - [CVEhound Repository](https://github.com/evdenis/cvehound)
-- [CVEhound Presentations](../docs/)
 - [Existing Rules](../cvehound/cve/)
 - [Rule Template](../contrib/template.cocci)
+- [Blank Template](../contrib/blank.cocci)
 
 ## Contributing
 
 When contributing new CVE detection rules:
 
-1. Follow the naming convention: `CVE-YYYY-NNNNN.cocci`
+1. Follow the naming convention: `CVE-YYYY-NNNNN.cocci` — uppercase `CVE`, four-digit
+   year, no prefix or suffix. `cve-2020-12912.cocci`, `CVE-2020-12912.patch`, and
+   `rule_CVE-2020-12912.cocci` are all wrong.
 2. Place the file in `cvehound/cve/` (or `cvehound/cve/disputed/` for disputed CVEs —
    note those are skipped by the default `--cve assigned`)
 3. Include complete metadata (`Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:`)
