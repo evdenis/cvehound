@@ -1,0 +1,131 @@
+# AGENTS.md
+
+Notes for coding agents working in this repository.
+
+CVEhound checks Linux kernel sources for known CVEs using Coccinelle semantic patches
+and grep patterns. See `README.md` for what it does, how to install it, and the CLI.
+
+This file covers only what you can't infer from reading the code or the other docs.
+
+## Where to look
+
+| Task | Read |
+| --- | --- |
+| Write a detection rule | `docs/WRITING_RULES.md` (complete guide) |
+| Write a rule, step-by-step | `docs/AI_AGENT_GUIDE.md` (decision tree, checklists) |
+| Look up Coccinelle syntax | `docs/COCCINELLE_CHEATSHEET.md` |
+| Start a new rule | `contrib/blank.cocci`, `contrib/template.cocci` |
+| Install / CLI usage / dev setup | `README.md` |
+
+Don't restate those docs here. If something belongs in one of them, put it there.
+
+## Adding a CVE rule
+
+Drop a file in `cvehound/cve/CVE-YYYY-NNNNN.cocci` (or `.grep`). That is the whole
+change — **do not add test cases**. Rules are auto-discovered by `get_rule_cves()`
+(`cvehound/util.py:75`) and every test is auto-parametrized over them by
+`pytest_generate_tests` (`tests/conftest.py:222`).
+
+Put disputed CVEs in `cvehound/cve/disputed/`. Directory placement is the only thing
+that drives the `all` / `assigned` / `disputed` groups for `--cve` (default:
+`assigned`); the split keys off `'disputed' in root` in `get_rule_cves()`.
+
+### Metadata headers are test inputs, not documentation
+
+Parsed at `cvehound/__init__.py:289-298`:
+
+- `Files:` — space-separated paths from the kernel root.
+- `Fix:` — commit that fixed the bug.
+- `Fixes:` **or** `Detect-To:` — both populate the same field. Use `Fixes:` for the
+  commit that introduced the bug, `Detect-To:` when you can only guess it.
+- `Version:` — minimum spatch version; below it, `check_cve` raises `UnsupportedVersion`
+  and tests skip.
+
+The whole slow test suite is generated from these two hashes, so a wrong hash is a
+failing test, not a typo:
+
+| Test | Asserts |
+| --- | --- |
+| `test_01_on_branch` (fast) | not detected on the supported stable branches |
+| `test_02_on_init` | at `v2.6.12-rc2`, detected only if `Fixes:` is the initial commit |
+| `test_03_on_fix` | detected at `Fix~`, not at `Fix` |
+| `test_04_on_fixes` | detected at `Fixes`, not at `Fixes~` |
+| `test_05_between_fixes_fix` | detected at every commit in `Fixes..Fix~` touching `Files:` |
+| `test_06_on_branch_all_files` | same as `test_01` but with `all_files=True` |
+
+Register legitimate failures as data, never as `xfail` in a test file:
+
+- `missing_backports` — `tests/conftest.py:13`, a list of `(cve, branch)` pairs consumed
+  by `@pytest.mark.notbackported` in `test_01` and `test_06`.
+- `ownfixes` — `tests/test_00_metadata.py:48`, `(cve, reason)` pairs for CVEs whose
+  upstream `Fixes:` tag is wrong.
+
+### Gotcha: a typo'd `Files:` path is silent
+
+If none of a rule's `Files:` paths exist in the tree, `check_cve` falls back to scanning
+the entire kernel (`cvehound/__init__.py:150-152`). You get a very slow run and possible
+false positives instead of an error.
+
+## Tests
+
+```bash
+uv run pytest                       # fast tests only
+uv run pytest --runslow             # the real suite (needs a kernel checkout)
+uv run pytest --cve=CVE-2020-12912  # one CVE
+```
+
+Custom options (`tests/conftest.py:77-95`): `--runslow`, `--runlkc`, `--cve`, `--branch`,
+`--dir`. Markers (`pytest.ini`): `slow`, `fast`, `notbackported`, `ownfixes`, `lkc`.
+`--strict-markers` is on, so a misspelled marker is a hard error.
+
+Note that *no* test run is dependency-free: `pytest_configure` always clones or fetches
+the kernel into `tests/linux` and constructs a `CVEhound` instance, so `spatch` and
+network access are needed even for the fast tests. That checkout is not yours — the
+fixture runs `head.reset()` and `git clean -f -x -d` on it. It also needs full history
+plus `stable` and `next` remotes, so never shallow-clone it. Slow tests additionally try
+to mount a 2 GB tmpfs + overlayfs via `sudo --non-interactive`, falling back to the bare
+repo if that fails.
+
+## Conventions
+
+Style is mechanically enforced — run `uv run pre-commit run --all-files` instead of
+hand-applying rules. Ruff lints with `E,F,W,I,UP,B,C4,SIM,ANN` and formats the code, so
+things like bare `except`, dead imports, and deprecated APIs are already caught.
+
+Two rules ruff enforces that you will otherwise get wrong by default:
+
+- **Single quotes** (`quote-style = "single"`), line length 100.
+- **Type annotations are mandatory** in `cvehound/` (`ANN`), with per-file exemptions for
+  `tests/**`, `cvehound/kbuild.py`, and `cvehound/kbuildparse/**`. `ty` type-checks
+  `cvehound/` and excludes those same kbuild paths — the kbuild fork is intentionally
+  untyped, so don't "fix" it.
+
+`uv-lock` is a pre-commit hook: any `pyproject.toml` dependency edit needs a regenerated
+`uv.lock` in the same commit.
+
+Commit prefixes follow conventional commits, plus two local ones: `rules:` for CVE rule
+changes and `contrib:` for templates.
+
+## Architecture notes
+
+`check_cve(cve, all_files=False) -> dict | bool` (`cvehound/__init__.py:136`) is the only
+detection entry point; it returns a result dict on a hit and `False` otherwise. There is
+no `check_kernel()` and no `get_report()` — iteration over CVEs and JSON report assembly
+live in `cvehound/__main__.py:300-332`.
+
+Parallelism is already two-level: `__main__.py` fans out with
+`ProcessPoolExecutor(max_workers=os.cpu_count())` and each `spatch` is invoked with `-j`.
+Don't add another layer.
+
+Metadata comes from `cvehound/data/kernel_cves.json.gz`, overridable via the
+`CVEHOUND_METADATA` env var (`cvehound/util.py:94`) or `--metadata`, and regenerated by
+`cvehound_update_metadata`. CLI defaults can also come from `/etc/cvehound.ini` or
+`~/.config/cvehound.ini` (`--config`).
+
+**Do not run `cvehound_update_rules` in a dev checkout.** It rewrites
+`files('cvehound')/cve` (`cvehound/scripts/update_rules.py:15`), which in an editable
+install is this repo's own `cvehound/cve/` — it will clobber uncommitted rule work with
+whatever is on GitHub master.
+
+When a rule is a judgement call, prefer a false positive: a missed CVE is worse than a
+noisy one.
