@@ -16,6 +16,9 @@ This guide provides comprehensive documentation on how to write Coccinelle detec
 10. [Advanced Techniques](#advanced-techniques)
 11. [Examples Walkthrough](#examples-walkthrough)
 12. [Troubleshooting](#troubleshooting)
+13. [Additional Resources](#additional-resources)
+14. [Contributing](#contributing)
+15. [License](#license)
 
 ## Overview
 
@@ -77,33 +80,57 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 
 ### Metadata Fields Explained
 
-#### `Files:` (Required)
-Specifies which kernel source files are affected by this CVE. Use relative paths from the kernel root.
+The header must be the **first contiguous block of `///` lines** in the file — the parser
+stops at the first line that doesn't start with `///`. Each field is assigned by simple
+overwrite, so a repeated field keeps only the last occurrence; put all paths on one
+`Files:` line rather than on several.
+
+These headers are test inputs, not commentary. The whole slow test suite is generated
+from them, so a wrong hash is a failing test.
+
+#### `Files:` (should always be set)
+Kernel source paths affected by this CVE, space-separated, relative to the kernel root.
 
 ```cocci
-/// Files: drivers/net/wireless/ath/ath9k/htc_drv_main.c
 /// Files: net/bluetooth/a2mp.c net/bluetooth/mgmt.c
-/// Files: fs/btrfs/inode.c fs/btrfs/send.c
 ```
 
-#### `Fix:` (Optional but Recommended)
-The git commit hash that fixed the vulnerability in the mainline kernel. This helps with tracking and validation.
+Nothing enforces this field, which makes a typo dangerous rather than loud: if none of
+the listed paths exist, `check_cve` silently falls back to scanning the **entire** kernel
+tree, so you get a very slow run and possible false positives instead of an error.
+
+#### `Fix:` (required in practice)
+The mainline commit that fixed the vulnerability.
 
 ```cocci
-/// Fix: 1b5e2ed9cf6d86a4a0c563bf5c31f48e6d7e53fc
+/// Fix: 26896f01467a28651f7a536143fe5ac8449d4041
 ```
 
-#### `Fixes:` or `Detect-To:` (Optional)
-- **Fixes**: The commit hash that introduced the vulnerability (if explicitly known)
-- **Detect-To**: Used when the vulnerable commit is not marked explicitly in the commit message, or when we can only guess which commit is vulnerable. Indicates the rule should detect the vulnerability up to this commit.
+`test_03_on_fix` checks out this commit (the rule must **not** fire) and its parent (the
+rule **must** fire). Omit it and the test crashes rather than skipping. All rules set it.
+
+#### `Fixes:` or `Detect-To:` (one of them required in practice)
+Both populate the same field — use exactly one:
+
+- **`Fixes:`** — the commit that introduced the bug, when it's known.
+- **`Detect-To:`** — the earliest commit at which the rule must fire, when the introducing
+  commit isn't explicitly marked or can only be guessed.
 
 ```cocci
-/// Fixes: 4e7c22d447bb6d7e37bfe39ff658486ae78e8d77
-/// Detect-To: 6b44d9b8d96b37f72ccd7335b32f386a67b7f1f4
+/// Fixes: da4458bda237aa0cb1688f6c359477f203788f6a
+/// Detect-To: 8abee9566b7e8eecf566c4daf6be062a27369890
 ```
 
-#### `Version:` (Optional)
-Specifies the minimum required Coccinelle version if the rule uses specific features.
+`test_04_on_fixes` asserts the rule fires at this commit and not at its parent, and
+`test_05_between_fixes_fix` checks every commit in `Fixes..Fix~`. The value may also be
+the tag `v2.6.12-rc2`, which is special-cased to mean "present since the start of git
+history" (47 rules use it).
+
+#### `Version:` (optional)
+Minimum spatch version, used when the rule needs newer syntax. The value is parsed by
+stripping the dots (`1.0.8` → `108`), so the line must contain the bare version and
+nothing else — trailing prose makes rule parsing raise `ValueError`. Below this version
+`check_cve` raises `UnsupportedVersion` and the tests skip.
 
 ```cocci
 /// Version: 1.0.8
@@ -119,104 +146,13 @@ This line declares a virtual mode that CVEhound uses to activate detection patte
 
 ## Coccinelle Basics
 
-Coccinelle uses a declarative pattern-matching language. Here are the fundamental concepts:
+The syntax reference — metavariable types, ellipsis, the `*` context marker,
+alternatives and disjunction, `when` constraints, rule dependencies and `exists` — lives
+in [COCCINELLE_CHEATSHEET.md](COCCINELLE_CHEATSHEET.md). Read it first; this guide
+assumes it.
 
-### Metavariables
-
-Metavariables are used to match and capture code elements:
-
-```cocci
-@rule_name@
-identifier func;          // Match any function/variable name
-identifier var;           // Match any identifier
-type T;                   // Match any type
-expression E;             // Match any expression
-statement S;              // Match any statement
-position p;               // Capture source position (line/column)
-symbol specific_func;     // Match a specific symbol name
-@@
-```
-
-### Ellipsis (`...`)
-
-The ellipsis matches zero or more statements or expressions:
-
-```cocci
-@rule@
-identifier func, var;
-@@
-
-func(...)
-{
-    ...                  // Match any statements
-    var = 0;            // Then this specific assignment
-    ...                 // Then any more statements
-}
-```
-
-### Wildcards (`*`)
-
-The asterisk marks lines for debugging purposes (optional):
-
-```cocci
-@err@
-position p;
-@@
-
-* dangerous_function@p(...)    // Asterisk is optional, aids in debugging
-  dangerous_function@p(...)    // Also works without asterisk
-```
-
-Note: Asterisks are optional and only serve debugging purposes for pattern visualization.
-
-### When Constraints
-
-Control what can appear in matched regions:
-
-```cocci
-@rule@
-identifier var;
-@@
-
-func(...)
-{
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));    // Must NOT have memset
-    use_var(&var);
-}
-```
-
-Common constraints:
-- `when !=`: Must not match
-- `when ==`: Must match
-- `when any`: Match anything
-- `when strict`: Strict matching (no other statements)
-
-### Rule Dependencies
-
-Rules can depend on other rules:
-
-```cocci
-@has_feature@
-@@
-
-feature_function(...)
-{
-    ...
-}
-
-@err depends on has_feature@    // Only check if has_feature matched
-position p;
-@@
-
-* buggy_code@p();
-```
-
-Dependency keywords:
-- `depends on rule_name`: Execute only if `rule_name` matched
-- `depends on !rule_name`: Execute only if `rule_name` did NOT match
-- `exists`: Relax matching constraints (more permissive)
-- `ever exists`: Even more permissive matching
+The rest of this document covers what the cheatsheet deliberately leaves out: how to go
+from a fix commit to a working rule, and worked examples from real CVEs.
 
 ## Pattern Matching Techniques
 
@@ -346,165 +282,15 @@ expression E;
 
 ## Common Vulnerability Patterns
 
-### Pattern 1: Uninitialized Variables
+The pattern catalog lives in
+[COCCINELLE_CHEATSHEET.md](COCCINELLE_CHEATSHEET.md#common-vulnerability-patterns) —
+uninitialized variable, missing NULL/bounds check, use-after-free, information leak,
+incorrect permission, missing lock, integer overflow. Each entry there names real rules
+in `cvehound/cve/` to read alongside it.
 
-Detects when a variable is used without proper initialization:
-
-```cocci
-@err@
-identifier var;
-position p;
-@@
-
-func(...)
-{
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));
-        when != var = ...;
-*   use_variable(&var)@p;
-}
-```
-
-**CVE Examples**: CVE-2020-12352, CVE-2020-29371
-
-### Pattern 2: Missing Bounds Checking
-
-Detects operations without proper validation:
-
-```cocci
-@err@
-identifier arr, idx;
-position p;
-@@
-
-func(...)
-{
-    ... when != if (idx >= ARRAY_SIZE(arr)) ...
-        when != if (idx < 0 || idx >= MAX) ...
-*   arr[idx]@p = ...;
-}
-```
-
-**CVE Examples**: CVE-2014-0049, CVE-2021-3564
-
-### Pattern 3: Incorrect Permission Values
-
-Detects insecure permission settings:
-
-```cocci
-@err@
-position p;
-@@
-
-some_visibility_func(...)
-{
-*   return 0777;@p    // Too permissive
-}
-```
-
-**CVE Examples**: CVE-2020-12912
-
-### Pattern 4: Missing NULL Checks
-
-Detects pointer dereference without NULL validation:
-
-```cocci
-@err@
-identifier ptr;
-position p;
-@@
-
-func(...)
-{
-    ... when != if (ptr == NULL) ...
-        when != if (!ptr) ...
-        when != BUG_ON(!ptr);
-*   ptr->field@p = ...;
-}
-```
-
-**CVE Examples**: Various NULL pointer dereference CVEs
-
-### Pattern 5: Use-After-Free
-
-Detects variable usage after it has been freed:
-
-```cocci
-@err@
-identifier x;
-position p1, p2;
-@@
-
-* kfree@p1(x);
-  ... when != x = ...
-* use(x)@p2;
-```
-
-**CVE Examples**: Many UAF vulnerabilities
-
-### Pattern 6: Missing Lock Protection
-
-Detects access to shared data without proper locking:
-
-```cocci
-@locked@
-identifier func;
-@@
-
-func(...)
-{
-    spin_lock(...);
-    ...
-    spin_unlock(...);
-}
-
-@err depends on !locked@
-identifier shared_var;
-position p;
-@@
-
-func(...)
-{
-*   shared_var@p = ...;
-}
-```
-
-### Pattern 7: Integer Overflow
-
-Detects potential integer overflow conditions:
-
-```cocci
-@err@
-expression E1, E2;
-identifier var;
-position p;
-@@
-
-* var =@p E1 + E2;
-  ... when != if (var < E1) ...
-      when != if (var < E2) ...
-  use(var);
-```
-
-### Pattern 8: Information Leak
-
-Detects uninitialized data being copied to userspace:
-
-```cocci
-@err@
-identifier var;
-position p;
-@@
-
-func(...)
-{
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));
-*   copy_to_user(..., &var, sizeof(var))@p;
-}
-```
-
-**CVE Examples**: CVE-2020-29371, CVE-2020-12352
+Which pattern you reach for follows from what the fix commit did — see
+[Two Detection Approaches](#two-detection-approaches) above and the decision tree in
+[AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md#decision-tree-detection-strategy).
 
 ## Step-by-Step Guide
 
@@ -517,7 +303,7 @@ func(...)
 
 Example:
 ```bash
-git show 1b5e2ed9cf6d86a4a0c563bf5c31f48e6d7e53fc
+git show bcf85fcedfdd17911982a3e3564fcfec7b01eebd
 ```
 
 ### Step 2: Choose Detection Strategy
@@ -652,41 +438,20 @@ If you miss the vulnerability:
 
 ## Best Practices
 
-### Do's
+Two rules matter more than any checklist here:
 
-1. **Keep patterns specific**: Avoid overly generic patterns that cause false positives
-2. **Use meaningful rule names**: `@err@`, `@missing_check@`, `@vuln_pattern@`
-3. **Add comments**: Explain complex patterns
-4. **Test thoroughly**: Test on both vulnerable and fixed versions
-5. **Use position markers**: Always use `position p;` and `@p` for error reporting
-6. **Match function context**: Include function name when possible
-7. **Use constraints**: Leverage `when !=` to avoid false positives
-8. **Consider variations**: Use alternatives for different code styles
+1. **Anchor the pattern in a named function.** A bare `return -1;` or `kfree(x);` with no
+   enclosing context is the most common source of false positives. Nearly every real rule
+   in `cvehound/cve/` names the function it matches.
+2. **Read three similar rules before writing yours.** They are the ground truth for house
+   style, and they encode workarounds this prose cannot:
+   `grep -l copy_to_user cvehound/cve/*.cocci`.
 
-### Don'ts
+For the mechanical checks (does it parse, does it fire at `Fix~`, is it silent at `Fix`),
+don't rely on judgement — run the suite, see [Testing Your Rules](#testing-your-rules).
 
-1. **Don't be too generic**: Avoid patterns like `return -1;` without context
-2. **Don't assume formatting**: Code may have different spacing/indentation
-3. **Don't forget edge cases**: Consider macro expansions, conditional compilation
-4. **Don't over-constrain**: Too many constraints may miss valid matches
-5. **Don't hardcode constants**: Unless they're part of the vulnerability
-6. **Don't ignore context**: Always consider surrounding code
-
-### Performance Tips
-
-1. **Use `symbol` when possible**: Faster than `identifier` for known names
-2. **Limit `...` scope**: Use constraints to reduce search space
-3. **Use `depends on`**: Skip unnecessary checks
-4. **Avoid nested `...`**: Can be slow on large files
-5. **Specify file patterns**: Help CVEhound skip irrelevant files
-
-### Accuracy Tips
-
-1. **Validate against fix commit**: Ensure pattern matches the actual vulnerability
-2. **Check false positives**: Test on unrelated code
-3. **Consider backports**: Pattern should work on different kernel versions
-4. **Handle macros**: Understand how macros expand
-5. **Review similar CVEs**: Learn from existing rules
+`symbol` is worth knowing: it declares a name to be matched literally rather than as a
+metavariable (49 rules use it, e.g. `symbol current;`).
 
 ## Testing Your Rules
 
@@ -695,15 +460,18 @@ If you miss the vulnerability:
 Test directly with Coccinelle:
 
 ```bash
-# Basic test
-spatch --sp-file CVE-2020-12345.cocci file.c
+# Check the rule parses before anything else
+spatch --parse-cocci CVE-2020-12345.cocci
 
-# With CVEhound options
+# Run it. -D detect is required: every report script is "depends on detect",
+# so without it the rule matches but prints nothing.
 spatch --no-includes --include-headers -D detect \
     --very-quiet --no-show-diff \
     --cocci-file CVE-2020-12345.cocci \
     file.c
 ```
+
+A hit is reported as `file:line:col-col: ERROR: CVE-YYYY-NNNNN`.
 
 ### Testing with CVEhound
 
@@ -720,17 +488,23 @@ cvehound --kernel /path/to/kernel --cve CVE-2020-12345 --report report.json
 
 ### Using CVEhound Test Suite
 
-Add test cases to `tests/test_03_on_fix.py`:
+You don't add test cases. `tests/conftest.py` discovers every rule in `cvehound/cve/`
+and parametrizes the whole suite over them, so a new `.cocci` file is picked up
+automatically:
 
-```python
-@pytest.mark.parametrize("cve,kernel,commit", [
-    # ... existing tests ...
-    ("CVE-2020-12345", "torvalds", "1b5e2ed9cf6d"),  # Your new test
-])
-def test_cve_on_fix(cve, kernel, commit):
-    # Test will verify CVE is NOT detected on fixed commit
-    pass
+```shell
+uv run pytest --runslow --cve=CVE-2020-12345
 ```
+
+The tests are driven by your metadata headers — `test_03_on_fix` checks out `Fix:` (must
+not detect) and `Fix~` (must detect), `test_04_on_fixes` does the same around
+`Fixes:`/`Detect-To:`, and `test_05_between_fixes_fix` checks every commit in between.
+An incorrect hash shows up as a test failure.
+
+If a CVE legitimately fails — e.g. the fix was never backported to some stable branch —
+add it to the `missing_backports` list in `tests/conftest.py` (or `ownfixes` in
+`tests/test_00_metadata.py` if the upstream `Fixes:` tag is wrong) instead of editing a
+test function.
 
 ### Validation Checklist
 
@@ -795,27 +569,35 @@ position p;
 
 ### Capturing Multiple Positions
 
-Report multiple vulnerable locations:
+When a CVE has several vulnerable sites, the house style is one rule per site — each with
+its own `position p;` — and a single script rule that binds them all:
 
 ```cocci
-@err@
-position p1, p2;
+@err_a exists@
+position p;
 @@
 
-* vulnerable_call1@p1(...);
-  ...
-* vulnerable_call2@p2(...);
+* vulnerable_call1@p(...);
+
+@err_b exists@
+position p;
+@@
+
+* vulnerable_call2@p(...);
 
 @script:python depends on detect@
-p1 << err.p1;
-p2 << err.p2;
+p << err_a.p;
+q << err_b.p;
 @@
 
-coccilib.report.print_report(p1[0], 'ERROR: CVE-YYYY-NNNNN (location 1)')
-coccilib.report.print_report(p2[0], 'ERROR: CVE-YYYY-NNNNN (location 2)')
+coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+coccilib.report.print_report(q[0], 'ERROR: CVE-YYYY-NNNNN')
 ```
 
-**Example**: CVE-2020-12352 - reports 10 different vulnerable function calls
+Note each script rule fires only if **all** its bound rules matched. To report sites
+independently, give each its own script rule — see `cvehound/cve/CVE-2016-5195.cocci`
+(two independent sites) and `cvehound/cve/CVE-2021-3347.cocci` (three rules bound at
+once). Declaring `position p1, p2;` inside a single rule is not the idiom used here.
 
 ### Complex Python Scripts
 
@@ -856,59 +638,6 @@ position p;
     unsigned int field;  // Should be unsigned long
     ...
 };
-```
-
-### Context-Sensitive Matching
-
-Match code only in specific contexts:
-
-```cocci
-@in_atomic@
-@@
-
-(
-spin_lock(...);
-|
-rcu_read_lock(...);
-)
-
-@err depends on in_atomic@
-position p;
-@@
-
-* might_sleep_function@p(...);  // Bug: sleeping in atomic context
-```
-
-### Handling Function Pointers
-
-Match function pointer assignments:
-
-```cocci
-@err@
-identifier ops, unsafe_func;
-position p;
-@@
-
-struct file_operations ops = {
-    ...
-*   .open = unsafe_func,@p
-    ...
-};
-```
-
-### Variable Value Tracking
-
-Track variable assignments and usage:
-
-```cocci
-@err@
-identifier var, bad_value;
-position p1, p2;
-@@
-
-* var =@p1 bad_value;
-  ... when != var = ...
-* use_var(var)@p2;  // Using bad value
 ```
 
 ## Examples Walkthrough
@@ -1238,19 +967,14 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 When contributing new CVE detection rules:
 
 1. Follow the naming convention: `CVE-YYYY-NNNNN.cocci`
-2. Place file in `cvehound/cve/` directory
-3. Include complete metadata (Files, Fix, Fixes)
-4. Test thoroughly on vulnerable and fixed code
-5. Add test cases to the test suite
-6. Submit pull request with clear description
-7. Reference CVE sources and fix commits
+2. Place the file in `cvehound/cve/` (or `cvehound/cve/disputed/` for disputed CVEs —
+   note those are skipped by the default `--cve assigned`)
+3. Include complete metadata (`Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:`)
+4. Run `uv run pytest --runslow --cve=CVE-YYYY-NNNNN` — the suite picks the rule up
+   automatically; don't add test functions
+5. Submit a pull request with a clear description
+6. Reference CVE sources and fix commits
 
 ## License
 
 All CVE detection rules in CVEhound are licensed under GPLv2, following the Linux kernel license.
-
----
-
-**Document Version**: 1.0
-**Last Updated**: November 2024
-**Maintained By**: CVEhound Contributors

@@ -47,13 +47,15 @@ func(...)              // Match any arguments
 }
 ```
 
-### Wildcard (*)
+### Context marker (*)
 ```cocci
-* dangerous_func@p();  // Asterisk is optional, aids in debugging
-  dangerous_func@p();  // Also works without asterisk
+* dangerous_func@p();  // Marks the line to report
 ```
 
-**Note**: Asterisks are optional and only serve debugging purposes.
+**Note**: `*` is the context marker, not a wildcard (that's `...`). It puts the whole
+patch into match mode, which flips the default quantification of un-annotated `...` from
+`forall` to `exists` — so adding or removing it can change what matches. It cannot be
+mixed with `-`/`+`.
 
 ### Alternatives
 ```cocci
@@ -72,12 +74,15 @@ func(...)              // Match any arguments
 ## When Constraints
 
 ```cocci
-... when != memset(...)           // Must NOT have memset
-... when != var = ...             // Must NOT have assignment
-... when == if (check) ...        // Must have this check
-... when any                      // Match anything
-... when strict                   // Strict matching
+... when != memset(...)                       // region must NOT contain memset
+... when != if (!ptr) return -EINVAL;         // ... nor this complete statement
+... when != if (!ptr) S                        // S = a declared "statement S;"
+... when any                                   // drop the shortest-path restriction
 ```
+
+The constraint must be a **complete statement**. `when != if (cond) ...` — with a bare
+trailing `...` — is a parse error, as is `when ==`. To require that something *is*
+present, write a separate rule and gate on it with `depends on`.
 
 ## Rule Dependencies
 
@@ -105,7 +110,11 @@ pattern5
 
 ## Common Vulnerability Patterns
 
+The canonical catalog. Each entry names real rules in `cvehound/cve/` — read those
+before copying a template; they are ground truth, these are sketches.
+
 ### Uninitialized Variable
+Real rules: `CVE-2020-12352`, `CVE-2018-11508`
 ```cocci
 @err@
 identifier var;
@@ -122,36 +131,41 @@ func(...)
 ```
 
 ### Missing NULL Check
+Real rules: `CVE-2019-15924`
 ```cocci
-@err@
+@err exists@
 identifier ptr;
+statement S;
 position p;
 @@
 
-func(...)
+target_func(...)
 {
-    ... when != if (!ptr) ...
-        when != if (ptr == NULL) ...
+    ... when != if (!ptr) S
+        when != if (ptr == NULL) S
 *   ptr->field@p;
 }
 ```
 
 ### Missing Bounds Check
+Real rules: `CVE-2014-0049`, `CVE-2020-29371`
 ```cocci
-@err@
+@err exists@
 identifier arr, idx;
+statement S;
 position p;
 @@
 
-func(...)
+target_func(...)
 {
-    ... when != if (idx >= SIZE) ...
-        when != if (idx < 0 || idx >= MAX) ...
+    ... when != if (idx >= SIZE) S
+        when != if (idx < 0 || idx >= MAX) S
 *   arr[idx]@p;
 }
 ```
 
 ### Use-After-Free
+Real rules: `CVE-2021-3347`
 ```cocci
 @err@
 identifier var;
@@ -164,6 +178,7 @@ position p1, p2;
 ```
 
 ### Information Leak
+Real rules: `CVE-2014-1738`, `CVE-2016-6156`
 ```cocci
 @err@
 identifier var;
@@ -179,6 +194,7 @@ func(...)
 ```
 
 ### Incorrect Permission
+Real rules: `CVE-2020-12912`
 ```cocci
 @err@
 position p;
@@ -186,11 +202,12 @@ position p;
 
 sysfs_func(...)
 {
-*   return 0777;@p  // Too permissive
+*   return 0444;@p  // Too permissive (CVE-2020-12912: 0444 -> 0400)
 }
 ```
 
 ### Missing Lock
+Real rules: `CVE-2021-3564`
 ```cocci
 @locked@
 @@
@@ -213,15 +230,17 @@ func(...)
 ```
 
 ### Integer Overflow
+Real rules: `CVE-2015-8746`
 ```cocci
-@err@
+@err exists@
 expression E1, E2;
-identifier var;
+identifier var, use;
+statement S;
 position p;
 @@
 
 * var =@p E1 + E2;
-  ... when != if (var < E1) ...
+  ... when != if (var < E1) S
   use(var);
 ```
 
@@ -262,8 +281,9 @@ s.field = value;
 ### Struct Initialization
 ```cocci
 struct my_struct s = {
-    .field1 = val1,
-    .field2 = val2,
+    ...,
+    .field1 = val1,       // note the "...," - a bare "..." here is a parse error
+    ...,
 };
 ```
 
@@ -363,21 +383,25 @@ coccilib.report.print_report(p[0], 'ERROR: ...')
 
 ## Testing Commands
 
-### Basic Test
+### Check syntax
 ```bash
-spatch --sp-file CVE.cocci file.c
+spatch --parse-cocci CVE.cocci
 ```
 
-### CVEhound Options
+### Run the rule
+`-D detect` is required — report scripts are `depends on detect`, so without it the rule
+matches but prints nothing.
 ```bash
 spatch --no-includes --include-headers -D detect \
     --very-quiet --no-show-diff \
     --cocci-file CVE.cocci file.c
 ```
+Output on a hit: `file:line:col-col: ERROR: CVE-YYYY-NNNNN`
 
 ### Test with CVEhound
 ```bash
 cvehound --kernel /path/to/kernel --cve CVE-YYYY-NNNNN
+uv run pytest --runslow --cve=CVE-YYYY-NNNNN   # the real validation
 ```
 
 ## Common Spatch Options
@@ -391,8 +415,8 @@ cvehound --kernel /path/to/kernel --cve CVE-YYYY-NNNNN
 | `--include-headers` | Process headers |
 | `--very-quiet` | Minimal output |
 | `--no-show-diff` | Don't show diffs |
-| `--debug` | Debug output |
-| `-j N` | Use N parallel jobs |
+| `--parse-cocci` | Parse the rule only — first thing to run |
+| `-j N` | N parallel jobs (CVEhound pins `-j 1` and parallelizes across CVEs instead) |
 
 ## Metadata Fields
 
