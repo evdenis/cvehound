@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from functools import cache
 from importlib.resources import files
 from typing import Any
 from urllib.request import Request, urlopen
@@ -86,11 +87,14 @@ def get_commit_id(value: Any) -> str:
     return ''
 
 
+@cache
 def resolve_commit(repo: str, value: Any) -> str:
     """Resolve a source commit id to a full hash, or return an empty string."""
     commit = get_commit_id(value)
     if not commit:
         return ''
+    if len(commit) == 40:
+        return commit
     try:
         return subprocess.check_output(
             ['git', 'rev-parse', '--verify', f'{commit}^{{commit}}'],
@@ -102,6 +106,7 @@ def resolve_commit(repo: str, value: Any) -> str:
         return ''
 
 
+@cache
 def is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
     """Tell whether ancestor is reachable from descendant."""
     return (
@@ -114,6 +119,18 @@ def is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
         ).returncode
         == 0
     )
+
+
+@cache
+def get_mainline_commits(repo: str, mainline: str) -> frozenset[str]:
+    """Return all commits reachable from the selected mainline tip."""
+    commits = subprocess.check_output(
+        ['git', 'rev-list', mainline],
+        cwd=repo,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return frozenset(commits.splitlines())
 
 
 def get_mainline_commit(repo: str) -> str:
@@ -143,7 +160,8 @@ def select_topological_commit(
     commits = {
         commit
         for value in values
-        if (commit := resolve_commit(repo, value)) and is_ancestor(repo, commit, mainline)
+        if (commit := resolve_commit(repo, value))
+        and commit in get_mainline_commits(repo, mainline)
     }
     if not commits:
         return ''
