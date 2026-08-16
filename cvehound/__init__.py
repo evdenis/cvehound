@@ -104,7 +104,7 @@ class CVEhound:
                     'FIX DATE: '
                     + datetime.fromtimestamp(info['fix_date'], tz=UTC).strftime('%Y-%m-%d')
                 )
-        logging.info('https://www.linuxkernelcves.com/cves/' + cve)
+        logging.info('https://www.cve.org/CVERecord?id=' + cve)
 
     def _print_affected_files(self, config: dict[str, Any]) -> None:
         if 'files' in config and config['files']:

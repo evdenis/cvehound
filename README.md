@@ -106,7 +106,7 @@ Checking: CVE-2020-27194
 Found: CVE-2020-27194
 MSG: bpf: Fix scalar32_min_max_or bounds tracking
 FIX DATE: 2020-10-08 09:02:53
-https://www.linuxkernelcves.com/cves/CVE-2020-27194
+https://www.cve.org/CVERecord?id=CVE-2020-27194
 Affected Files:
  - linux/kernel/bpf/verifier.c: CONFIG_BPF & CONFIG_BPF_SYSCALL
    linux/.config: affected
@@ -116,7 +116,7 @@ Checking: CVE-2020-29371
 Found: CVE-2020-29371
 MSG: romfs: fix uninitialized memory leak in romfs_dev_read()
 FIX DATE: 2020-08-21 16:52:53
-https://www.linuxkernelcves.com/cves/CVE-2020-29371
+https://www.cve.org/CVERecord?id=CVE-2020-29371
 Affected Files:
  - linux/fs/romfs/storage.c: CONFIG_ROMFS_FS
    linux/.config: not affected
@@ -125,7 +125,8 @@ Config: ./linux/.config not affected
 
 Other args:
  - `--report` - will produce json file with found CVEs
-   Most of the metainformation in the generated report is taken from linuxkernelcves.com
+   Most of the metainformation in the generated report is taken from kernel.org
+   vulns.git and CIP kernel-sec
  - `--kernel-config` or `--kernel-config <file>` - will infer the kernel configuration required to
    build the affected code (based on Kbuild/Makefiles, ifdefs are not checked) and
    check kernel .config file if there is one
@@ -189,6 +190,8 @@ Python code is licensed under GPLv3. All rules in cvehound/cve folder are licens
 
 I would like to thank the following projects and people behind them:
  - [coccinelle](https://coccinelle.gitlabpages.inria.fr/website/) for the program matching engine
- - [linuxkernelcves.com](https://linuxkernelcves.com/) for information about Linux CVEs
+ - [kernel.org vulns.git](https://git.kernel.org/pub/scm/linux/security/vulns.git/) and
+   [CIP kernel-sec](https://gitlab.com/cip-project/cip-kernel/cip-kernel-sec) for information
+   about Linux CVEs
  - [undertaker](https://vamos.informatik.uni-erlangen.de/trac/undertaker) for mapping kernel configs to .c files
  - [sympy](https://www.sympy.org/) for the symbolic logic solver

@@ -1354,7 +1354,8 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 - [Coccinelle Examples](https://github.com/coccinelle/coccinelle/tree/master/demos)
 
 ### Linux Kernel Resources
-- [Linux Kernel CVEs](https://www.linuxkernelcves.com/)
+- [kernel.org vulns.git](https://git.kernel.org/pub/scm/linux/security/vulns.git/)
+- [CIP kernel-sec](https://gitlab.com/cip-project/cip-kernel/cip-kernel-sec)
 - [Kernel Git Repository](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git)
 - [LWN Kernel Coverage](https://lwn.net/Kernel/)
 
