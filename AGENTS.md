@@ -80,11 +80,24 @@ Custom options (`tests/conftest.py:77-95`): `--runslow`, `--runlkc`, `--cve`, `-
 
 Note that *no* test run is dependency-free: `pytest_configure` always clones or fetches
 the kernel into `tests/linux` and constructs a `CVEhound` instance, so `spatch` and
-network access are needed even for the fast tests. That checkout is not yours — the
-fixture runs `head.reset()` and `git clean -f -x -d` on it. It also needs full history
-plus `stable` and `next` remotes, so never shallow-clone it. Slow tests additionally try
-to mount a 2 GB tmpfs + overlayfs via `sudo --non-interactive`, falling back to the bare
-repo if that fails.
+network access are needed even for the fast tests.
+
+Agent command runners often use non-interactive shells, so they may not load OPAM's PATH
+setup from shell startup files or prompt hooks. If OPAM installed `spatch` but pytest
+cannot find it, initialize OPAM in the same command before running tests:
+
+```bash
+eval "$(opam env --shell=bash)"
+command -v spatch
+uv run pytest --cve=CVE-2020-12912
+```
+
+If no switch is selected, add `--switch=<switch> --set-switch` to `opam env`.
+
+The kernel checkout is not yours — the fixture runs `head.reset()` and
+`git clean -f -x -d` on it. It also needs full history plus `stable` and `next` remotes,
+so never shallow-clone it. Slow tests additionally try to mount a 2 GB tmpfs + overlayfs
+via `sudo --non-interactive`, falling back to the bare repo if that fails.
 
 ## Conventions
 
