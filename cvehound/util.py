@@ -119,7 +119,7 @@ def parse_config(file: str) -> dict[str, Any]:
         parser.read_string('[cvehound]\n' + fh.read())
     config: dict[str, Any] = dict(parser['cvehound'])
 
-    for key in ['cve', 'exclude', 'cwe', 'files', 'ignore_files']:
+    for key in ['cve', 'exclude', 'files', 'ignore_files']:
         if key not in config:
             continue
         config[key] = config[key].split()

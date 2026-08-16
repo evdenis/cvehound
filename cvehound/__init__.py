@@ -99,12 +99,6 @@ class CVEhound:
             info = self.metadata[cve]
             if 'cmt_msg' in info:
                 logging.info('MSG: ' + info['cmt_msg'])
-            if 'cwe' in info:
-                logging.info('CWE: ' + info['cwe'])
-            if 'cvss2' in info and 'score' in info['cvss2']:
-                logging.info('CVSS2: ' + str(info['cvss2']['score']))
-            if 'cvss3' in info and 'score' in info['cvss3']:
-                logging.info('CVSS3: ' + str(info['cvss3']['score']))
             if 'fix_date' in info:
                 logging.info(
                     'FIX DATE: '
@@ -305,10 +299,6 @@ class CVEhound:
     def get_cve_metadata(self, cve: str) -> dict[str, Any]:
         result: dict[str, Any] = self.metadata.get(cve, {})
         return result
-
-    def get_cve_cwe(self, cve: str) -> str | None:
-        cwe: str | None = self.get_cve_metadata(cve).get('cwe', None)
-        return cwe
 
     def get_cve_exploit(self, cve: str) -> bool:
         exploit: bool = self.get_cve_metadata(cve).get('exploit', False)

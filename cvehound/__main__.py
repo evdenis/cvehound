@@ -12,7 +12,6 @@ import sys
 from typing import Any
 
 from cvehound import CVEhound
-from cvehound.cwe import CWE
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import (
     get_config_data,
@@ -31,7 +30,6 @@ def check_config(config: dict[str, Any]) -> None:
         'exclude',
         'exploit',
         'verbose',
-        'cwe',
         'files',
         'ignore_files',
         'kernel_config',
@@ -82,7 +80,6 @@ def main(args: list[str] | None = None) -> None:
     parser.add_argument(
         '--exploit', '-e', action='store_true', help='check only for CVEs with exploits'
     )
-    parser.add_argument('--cwe', nargs='+', default=[], type=int, help='check only for CWE-ids')
     parser.add_argument(
         '--files',
         nargs='+',
@@ -256,20 +253,12 @@ def main(args: list[str] | None = None) -> None:
             print('Wrong file filter:', f, file=sys.stderr)
             sys.exit(1)
 
-    filter_cwes = frozenset(args_cfg['cwe'])
     cves: list[str] = []
     for cve in cve_set:
         if cve in args_cfg['exclude']:
             continue
         if args_cfg['exploit'] and not hound.get_cve_exploit(cve):
             continue
-        if args_cfg['cwe']:
-            rule_cwe_desc = hound.get_cve_cwe(cve)
-            if not rule_cwe_desc:
-                continue
-            rule_cwes = frozenset(CWE[rule_cwe_desc])
-            if not (rule_cwes & filter_cwes):
-                continue
         if args_cfg['files']:
             add = False
             for rulefile in hound.get_rule_files(cve):
@@ -294,14 +283,12 @@ def main(args: list[str] | None = None) -> None:
 
     args_cfg['files'].sort()
     args_cfg['ignore_files'].sort()
-    args_cfg['cwe'].sort()
     cves_sorted = sorted(cves)
 
     report: dict[str, Any] = {'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
     report['args']['cve'] = cves_sorted
     report['args']['kernel'] = args_cfg['kernel']
     report['args']['config'] = args_cfg['kernel_config']
-    report['args']['only_cwe'] = args_cfg['cwe']
     report['args']['only_files'] = args_cfg['files']
     report['args']['all_files'] = args_cfg['all_files']
     report['args']['check_strict'] = args_cfg['check_strict']
