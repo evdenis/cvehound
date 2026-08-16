@@ -25,15 +25,63 @@ no_metadata = [
 
 metadata_fix_exceptions = [
     (
+        'CVE-2017-7308',
+        'the rule targets the private-area overflow, not the later tp_reserve overflow',
+    ),
+    (
+        'CVE-2018-10878',
+        'the rule targets block-group bounds, not the later metadata-overlap check',
+    ),
+    (
+        'CVE-2019-19769',
+        'the rule targets the UAF fix, not the later optimization reinstatement',
+    ),
+    (
         'CVE-2020-27067',
         'the CVE bundles several L2TP fixes and the rule targets an earlier fix in the series',
+    ),
+    (
+        'CVE-2021-0935',
+        'the record combines independent IPv6 datagram and L2TP fixes',
+    ),
+    (
+        'CVE-2021-20194',
+        'the rule targets the negative optlen race, not the later upper-bound check',
+    ),
+    (
+        'CVE-2021-29155',
+        'the rule targets one detector-specific fix in a larger BPF hardening series',
+    ),
+    (
+        'CVE-2021-3347',
+        'the rule targets one futex flaw from a multi-fix CVE record',
+    ),
+    (
+        'CVE-2021-45402',
+        'the rule targets missing mov32 bounds updates, not the later helper hardening',
+    ),
+    (
+        'CVE-2023-1989',
+        'the rule targets the first UAF fix; the later commit corrects its placement',
+    ),
+    (
+        'CVE-2023-21102',
+        'the rule targets the security fix; the later commit adds its missing include',
     ),
 ]
 
 metadata_break_exceptions = [
     (
+        'CVE-2020-24490',
+        'the source duplicates one bundle across three CVEs; the rule targets extended reports',
+    ),
+    (
         'CVE-2020-14331',
         'CIP records a Linux release commit while the fix trailer identifies the introduction',
+    ),
+    (
+        'CVE-2021-0935',
+        'the record combines independent IPv6 datagram and L2TP introductions',
     ),
 ]
 
