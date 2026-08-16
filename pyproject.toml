@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = ["sympy", "lxml", "pyyaml"]
+dependencies = ["sympy", "pyyaml"]
 
 [project.scripts]
 cvehound = "cvehound.__main__:main"

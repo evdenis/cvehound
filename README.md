@@ -134,7 +134,7 @@ Other args:
  - `--files`, `--cwe` - will limit the scope of checked cves to the kernel files of
    interest or specific CWE classes
  - `--exploit` - check only for CVEs that are known to be exploitable (according to
-   the FSTEC BDU database)
+   the CISA Known Exploited Vulnerabilities catalog)
 
 ## Contributing
 

@@ -5,20 +5,22 @@ import gzip
 import json
 import os
 import re
-import ssl
 import subprocess
 import sys
 from importlib.resources import files
-from io import BytesIO
 from typing import Any
 from urllib.request import Request, urlopen
-from zipfile import ZipFile
 
-import lxml.etree as etree  # ty: ignore[unresolved-import]
 import yaml
 
 KERNEL_VULNS_REPO = 'https://git.kernel.org/pub/scm/linux/security/vulns.git'
 CIP_KERNEL_SEC_REPO = 'https://gitlab.com/cip-project/cip-kernel/cip-kernel-sec.git'
+CISA_KEV_URLS = (
+    'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json',
+    # GitHub mirror of the same catalog, in case the feed above is unreachable
+    'https://raw.githubusercontent.com/cisagov/kev-data/develop/'
+    'known_exploited_vulnerabilities.json',
+)
 COMMIT_ID = re.compile(r'[0-9a-f]{7,40}')
 
 # CIP kernel-sec has no rejected state. It records why an issue is not tracked in
@@ -45,47 +47,27 @@ CIP_REJECTED_MARKERS = (
 )
 
 
-def get_exploit_status_from_fstec() -> tuple[set[str], set[str]]:
-    """Fetch exploit status from the FSTEC database."""
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    req = Request(
-        'https://bdu.fstec.ru/files/documents/vulxml.zip', headers={'User-Agent': 'Mozilla/5.0'}
-    )
-    with (
-        urlopen(req, context=ctx) as uh,
-        ZipFile(BytesIO(uh.read())) as zh,
-        zh.open('export/export.xml') as fh,
-    ):
-        parser = etree.XMLParser(recover=True)
-        tree = etree.parse(fh, parser)
+def get_exploit_status_from_cisa_kev() -> set[str]:
+    """Fetch exploit status from the CISA Known Exploited Vulnerabilities catalog."""
+    exploited_cves: set[str] = set()
 
-    public: set[str] = set()
-    private: set[str] = set()
-    for item in tree.xpath('//vul'):
-        item.xpath('identifier/text()')[0]
-        cve_id: str | None = None
-        for vuln_id in item.xpath('identifiers/identifier'):
-            if vuln_id.get('type') == 'CVE':
-                cve_id = vuln_id.text
-                break
-        is_linux = False
-        for name in item.xpath('vulnerable_software/soft/name/text()'):
-            if name == 'Linux' or name == 'linux':
-                is_linux = True
-        if not is_linux:
-            continue
-        if not cve_id:
+    for url in CISA_KEV_URLS:
+        try:
+            req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            print(f'Warning: Failed to fetch CISA KEV data from {url}: {e}', file=sys.stderr)
             continue
 
-        exploit_status = item.xpath('exploit_status/text()')[0]
-        if 'открыт' in exploit_status:  # 'открытом' == 'public'
-            public.add(cve_id)
-        elif 'уществует' in exploit_status:  # == exists
-            private.add(cve_id)
+        # CISA KEV format has vulnerabilities in a list
+        for vuln in data.get('vulnerabilities', []):
+            cve_id = vuln.get('cveID')
+            if cve_id:
+                exploited_cves.add(cve_id)
+        break
 
-    return public, private
+    return exploited_cves
 
 
 def dropempty(info: dict[str, Any]) -> dict[str, Any]:
@@ -322,12 +304,9 @@ def main(args: list[str] | None = None) -> None:
         with gzip.open(filename, 'rt', encoding='utf-8') as fh:
             previous = json.load(fh)
 
-    print('Fetching exploit status from FSTEC...')
-    try:
-        public, private = get_exploit_status_from_fstec()
-    except Exception as e:
-        print(f'Warning: Failed to fetch FSTEC data: {e}', file=sys.stderr)
-        public, private = set(), set()
+    print('Fetching exploit status from CISA KEV...')
+    exploited_cves = get_exploit_status_from_cisa_kev()
+    print(f'Found {len(exploited_cves)} known exploited CVEs from CISA KEV')
 
     print('Fetching CVE data from kernel.org vulns.git...')
     kernel_vulns_cves = fetch_kernel_vulns_data(cache_dir)
@@ -355,7 +334,7 @@ def main(args: list[str] | None = None) -> None:
                 info['fix_date'] = commit[0]
                 # CIP does not record the commit subject, so take it from the tree
                 info.setdefault('cmt_msg', commit[1])
-        info['exploit'] = cve in public or cve in private
+        info['exploit'] = cve in exploited_cves
     js = {cve: dropempty(info) for cve, info in js.items()}
 
     print(f'Writing metadata to {filename}...')
