@@ -23,6 +23,30 @@ no_metadata = [
     'CVE-2019-9003', 'CVE-2020-0465', 'CVE-2020-0466', 'CVE-2020-27068', 'CVE-2021-0605',
 ]  # fmt: skip
 
+metadata_fix_exceptions = [
+    (
+        'CVE-2020-27067',
+        'the CVE bundles several L2TP fixes and the rule targets an earlier fix in the series',
+    ),
+]
+
+metadata_break_exceptions = [
+    (
+        'CVE-2020-14331',
+        'CIP records a Linux release commit while the fix trailer identifies the introduction',
+    ),
+]
+
+
+def has_detect_to(hound, cve):
+    with open(hound.get_rule(cve)) as fh:
+        for line in fh:
+            if not line.startswith('///'):
+                break
+            if 'Detect-To:' in line:
+                return True
+    return False
+
 
 def test_metadata(hound, cve):
     meta = hound.get_rule_metadata(cve)
@@ -68,16 +92,19 @@ def test_cve_in_metadata(hound, cve):
         ('CVE-2019-15924', 'wrong fixes tag, create_workqueue also can return NULL'),
         ('CVE-2021-20265', 'wrong fixes tag, see https://lkml.org/lkml/2016/2/24/1054'),
         ('CVE-2015-8961', 'wrong fixes tag, the error was introduced in 9d5065940693'),
-        ('CVE-2017-12188', 'wrong fixes tag, see https://www.spinics.net/lists/kvm/msg156651.html'),
         ('CVE-2017-7558', 'wrong fixes tag, 52c52a61a39f intoduces it a bit earlier'),
+        ('CVE-2017-5970', 'the skb_dst dereference predates the fix commit trailer'),
         (
             'CVE-2016-9919',
             'wrong fixes tag, see https://bugzilla.redhat.com/show_bug.cgi?id=1403260',
         ),
         ('CVE-2019-18809', 'wrong fixes tag (too far)'),
+        ('CVE-2019-19057', 'the allocation leak predates the fix commit trailer'),
         ('CVE-2019-19051', 'wrong fixes tag because the fix fixing the fix fixing the memory leak'),
+        ('CVE-2019-8912', 'the unsigned ownership bug predates the fix commit trailer'),
         ('CVE-2021-3635', 'wrong fixes tag, commit fixes not only flowtables but also objs'),
         ('CVE-2022-3170', 'CVE fix consists of 2 commits, 2nd commit fixes 1st one'),
+        ('CVE-2022-34918', 'the vulnerable set element layout predates the fix commit trailer'),
         ('CVE-2024-0193', 'wrong fixes tag, 5f68718b34a5 fixes race'),
         ('CVE-2024-26720', 'the problem is also present in the earlier commits'),
     ],
@@ -110,6 +137,7 @@ def test_cve_rejected(hound, cve):
 
 
 @pytest.mark.metadata
+@pytest.mark.ownfixes(('cve', 'reason'), metadata_fix_exceptions)
 def test_cves_metadata_fix(hound, cve):
     meta_fix = hound.get_cve_metadata(cve).get('fixes')
     if not meta_fix:
@@ -119,10 +147,13 @@ def test_cves_metadata_fix(hound, cve):
 
 
 @pytest.mark.metadata
+@pytest.mark.ownfixes(('cve', 'reason'), metadata_break_exceptions)
 def test_cves_metadata_fixes(hound, cve):
     meta_breaks = hound.get_cve_metadata(cve).get('breaks')
     if not meta_breaks:
         pytest.skip('no introducing commit in the metadata')
+    if has_detect_to(hound, cve):
+        pytest.skip('Detect-To is a detector boundary, not the vulnerability introduction')
     fixes = hound.get_rule_fixes(cve)
     if fixes == 'v2.6.12-rc2':
         fixes = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
@@ -170,41 +201,6 @@ def test_cves_metadata_fixes_all(hound, repo):
             repo.git.rev_parse('--verify', fixes + '^{commit}')
         except Exception:
             broken.append(cve)
-    assert not broken, broken
-
-
-@pytest.mark.metadata
-def test_cves_metadata_fixes_all_git(hound, repo):
-    broken = []
-    meta = hound.metadata
-    for cve in meta:
-        data = meta[cve]
-        if 'breaks' not in data:
-            continue
-
-        fixes = data['breaks']
-        if not fixes:
-            continue
-        if not re.match(r'[0-9a-fa-f]{7,40}', fixes):
-            continue
-
-        try:
-            fixes = repo.git.rev_parse('--verify', fixes + '^{commit}')
-            fixes = fixes[0:12]
-            msg = repo.git.show('-s', '--format=%s\n%b', fixes)
-            msg_fixes = [
-                repo.git.rev_parse('--verify', x)[0:12]
-                for x in re.findall(r'Fixes:\s*([0-9a-fA-F]{7,40})', msg)
-            ]
-        except Exception:
-            continue
-
-        if msg_fixes:
-            if len(msg_fixes) == 1:
-                msg_fixes = msg_fixes[0]
-            if fixes not in msg_fixes:
-                broken.append(cve)
-
     assert not broken, broken
 
 

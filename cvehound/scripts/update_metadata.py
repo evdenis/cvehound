@@ -86,6 +86,92 @@ def get_commit_id(value: Any) -> str:
     return ''
 
 
+def resolve_commit(repo: str, value: Any) -> str:
+    """Resolve a source commit id to a full hash, or return an empty string."""
+    commit = get_commit_id(value)
+    if not commit:
+        return ''
+    try:
+        return subprocess.check_output(
+            ['git', 'rev-parse', '--verify', f'{commit}^{{commit}}'],
+            cwd=repo,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return ''
+
+
+def is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
+    """Tell whether ancestor is reachable from descendant."""
+    return (
+        subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', ancestor, descendant],
+            cwd=repo,
+            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def get_mainline_commit(repo: str) -> str:
+    """Return the tip used to distinguish mainline commits from backports."""
+    for ref in ('refs/remotes/origin/master', 'refs/heads/master', 'HEAD'):
+        try:
+            return subprocess.check_output(
+                ['git', 'rev-parse', '--verify', f'{ref}^{{commit}}'],
+                cwd=repo,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except subprocess.CalledProcessError:
+            continue
+    raise RuntimeError(f'No usable mainline commit in {repo}')
+
+
+def select_topological_commit(
+    repo: str,
+    values: list[Any],
+    mainline: str,
+    *,
+    latest: bool,
+    source: str,
+) -> str:
+    """Select the unique earliest or latest source commit in mainline history."""
+    commits = {
+        commit
+        for value in values
+        if (commit := resolve_commit(repo, value)) and is_ancestor(repo, commit, mainline)
+    }
+    if not commits:
+        return ''
+
+    if latest:
+        extremes = [
+            commit
+            for commit in commits
+            if all(is_ancestor(repo, other, commit) for other in commits)
+        ]
+    else:
+        extremes = [
+            commit
+            for commit in commits
+            if all(is_ancestor(repo, commit, other) for other in commits)
+        ]
+
+    if len(extremes) == 1:
+        return extremes[0]
+
+    direction = 'latest' if latest else 'earliest'
+    print(
+        f'Warning: {source} has no unique {direction} mainline commit: {sorted(commits)}',
+        file=sys.stderr,
+    )
+    return ''
+
+
 def is_cip_rejected(data: dict[str, Any]) -> bool:
     """Tell whether a CIP kernel-sec issue says the CVE itself is not valid.
 
@@ -153,7 +239,9 @@ def clone_or_update_repo(url: str, path: str, depth: int = 1) -> bool:
     return True
 
 
-def parse_kernel_vulns_cve(cve_file: str) -> tuple[str | None, dict[str, Any] | None]:
+def parse_kernel_vulns_cve(
+    cve_file: str, repo: str, mainline: str
+) -> tuple[str | None, dict[str, Any] | None]:
     """Parse a CVE from the kernel.org vulns.git JSON format."""
     with open(cve_file) as fh:
         data = json.load(fh)
@@ -167,11 +255,10 @@ def parse_kernel_vulns_cve(cve_file: str) -> tuple[str | None, dict[str, Any] | 
 
     cna = data.get('containers', {}).get('cna', {})
 
-    # Every branch that carries the fix is listed as its own git range, with the
-    # mainline one last; all the earlier entries are stable backports that do not
-    # exist in mainline history. The 'version' of a range is the commit that
-    # introduced the bug, the 'lessThan' is the commit that fixed it. Ranges
-    # without a 'lessThan' are branches that are still unfixed.
+    # Every branch that carries the fix is listed as its own git range. The
+    # 'version' of a range is the commit that introduced the bug, the 'lessThan'
+    # is the commit that fixed it. Select by topology because source order is not
+    # an API and stable backports may also exist in the local object database.
     ranges = [
         version
         for item in cna.get('affected', [])
@@ -181,16 +268,33 @@ def parse_kernel_vulns_cve(cve_file: str) -> tuple[str | None, dict[str, Any] | 
         and version.get('lessThan')
     ]
 
-    # cna.title is the subject line of the fixing commit
-    info: dict[str, Any] = {'cmt_msg': cna.get('title', '')}
-    if ranges:
-        info['fixes'] = get_commit_id(ranges[-1]['lessThan'])
-        info['breaks'] = get_commit_id(ranges[-1].get('version'))
+    info: dict[str, Any] = {}
+    fix = select_topological_commit(
+        repo,
+        [item['lessThan'] for item in ranges],
+        mainline,
+        latest=True,
+        source=cve_id,
+    )
+    if fix:
+        info['fixes'] = fix
+        paired_breaks = [
+            item.get('version') for item in ranges if resolve_commit(repo, item['lessThan']) == fix
+        ]
+        info['breaks'] = select_topological_commit(
+            repo,
+            paired_breaks,
+            mainline,
+            latest=False,
+            source=cve_id,
+        )
 
     return cve_id, dropempty(info)
 
 
-def parse_cip_kernel_sec_cve(cve_file: str) -> tuple[str | None, dict[str, Any] | None]:
+def parse_cip_kernel_sec_cve(
+    cve_file: str, repo: str, mainline: str
+) -> tuple[str | None, dict[str, Any] | None]:
     """Parse a CVE from the CIP kernel-sec YAML format."""
     with open(cve_file) as fh:
         data = yaml.safe_load(fh)
@@ -206,12 +310,21 @@ def parse_cip_kernel_sec_cve(cve_file: str) -> tuple[str | None, dict[str, Any] 
     # The 'description' is hand written here and is not the commit subject, so it
     # is deliberately not used as cmt_msg.
     info: dict[str, Any] = {}
-    for key, field in (('fixed-by', 'fixes'), ('introduced-by', 'breaks')):
+    for key, field, latest in (
+        ('fixed-by', 'fixes', True),
+        ('introduced-by', 'breaks', False),
+    ):
         commits = (data.get(key) or {}).get('mainline')
         if isinstance(commits, str):
             commits = [commits]
         if commits:
-            info[field] = get_commit_id(commits[0])
+            info[field] = select_topological_commit(
+                repo,
+                commits,
+                mainline,
+                latest=latest,
+                source=cve_id,
+            )
 
     if is_cip_rejected(data):
         info['rejected'] = True
@@ -219,7 +332,7 @@ def parse_cip_kernel_sec_cve(cve_file: str) -> tuple[str | None, dict[str, Any] 
     return cve_id, dropempty(info)
 
 
-def fetch_kernel_vulns_data(temp_dir: str) -> dict[str, dict[str, Any]]:
+def fetch_kernel_vulns_data(temp_dir: str, repo: str, mainline: str) -> dict[str, dict[str, Any]]:
     """Fetch CVE data from the kernel.org vulns.git repository."""
     vulns_dir = os.path.join(temp_dir, 'kernel-vulns')
     cves: dict[str, dict[str, Any]] = {}
@@ -233,7 +346,7 @@ def fetch_kernel_vulns_data(temp_dir: str) -> dict[str, dict[str, Any]]:
         cve_pattern = os.path.join(vulns_dir, 'cve', state, '**', 'CVE-*.json')
         for cve_file in glob.glob(cve_pattern, recursive=True):
             try:
-                cve_id, info = parse_kernel_vulns_cve(cve_file)
+                cve_id, info = parse_kernel_vulns_cve(cve_file, repo, mainline)
                 if cve_id and info:
                     if state == 'rejected':
                         info['rejected'] = True
@@ -244,7 +357,7 @@ def fetch_kernel_vulns_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     return cves
 
 
-def fetch_cip_kernel_sec_data(temp_dir: str) -> dict[str, dict[str, Any]]:
+def fetch_cip_kernel_sec_data(temp_dir: str, repo: str, mainline: str) -> dict[str, dict[str, Any]]:
     """Fetch CVE data from the CIP kernel-sec GitLab repository."""
     cip_dir = os.path.join(temp_dir, 'cip-kernel-sec')
     cves: dict[str, dict[str, Any]] = {}
@@ -253,7 +366,7 @@ def fetch_cip_kernel_sec_data(temp_dir: str) -> dict[str, dict[str, Any]]:
         cve_pattern = os.path.join(cip_dir, 'issues', 'CVE-*.yml')
         for cve_file in glob.glob(cve_pattern):
             try:
-                cve_id, info = parse_cip_kernel_sec_cve(cve_file)
+                cve_id, info = parse_cip_kernel_sec_cve(cve_file, repo, mainline)
                 if cve_id and info:
                     cves[cve_id] = info
             except Exception as e:
@@ -285,6 +398,7 @@ def main(args: list[str] | None = None) -> None:
         print(f'Usage: {args[0]} <kernel_repo_dir> [metadata_file]', file=sys.stderr)
         sys.exit(1)
     repo = args[1]
+    mainline = get_mainline_commit(repo)
 
     filename = None
     if len(args) == 3:
@@ -299,21 +413,16 @@ def main(args: list[str] | None = None) -> None:
     cache_dir = get_cache_dir()
     os.makedirs(cache_dir, exist_ok=True)
 
-    previous: dict[str, dict[str, Any]] = {}
-    if os.path.isfile(filename):
-        with gzip.open(filename, 'rt', encoding='utf-8') as fh:
-            previous = json.load(fh)
-
     print('Fetching exploit status from CISA KEV...')
     exploited_cves = get_exploit_status_from_cisa_kev()
     print(f'Found {len(exploited_cves)} known exploited CVEs from CISA KEV')
 
     print('Fetching CVE data from kernel.org vulns.git...')
-    kernel_vulns_cves = fetch_kernel_vulns_data(cache_dir)
+    kernel_vulns_cves = fetch_kernel_vulns_data(cache_dir, repo, mainline)
     print(f'Found {len(kernel_vulns_cves)} CVEs from kernel.org vulns.git')
 
     print('Fetching CVE data from CIP kernel-sec...')
-    cip_cves = fetch_cip_kernel_sec_data(cache_dir)
+    cip_cves = fetch_cip_kernel_sec_data(cache_dir, repo, mainline)
     print(f'Found {len(cip_cves)} CVEs from CIP kernel-sec')
 
     print('Merging CVE data...')
@@ -323,17 +432,14 @@ def main(args: list[str] | None = None) -> None:
     print('Enriching CVE data with fix dates and exploit status...')
     for cve, info in js.items():
         fix = info.get('fixes', '')
-        old = previous.get(cve, {})
-        if fix and old.get('fixes') == fix and 'fix_date' in old:
-            # Nothing about the fix moved, so there is no need to ask git again
-            info['fix_date'] = old['fix_date']
-            info.setdefault('cmt_msg', old.get('cmt_msg', ''))
-        elif fix:
+        if fix:
             commit = get_commit_info(repo, fix)
             if commit:
                 info['fix_date'] = commit[0]
-                # CIP does not record the commit subject, so take it from the tree
-                info.setdefault('cmt_msg', commit[1])
+                # Always derive the subject from the commit selected above. CNA
+                # titles and cached metadata can describe a different fix in a
+                # multi-fix record.
+                info['cmt_msg'] = commit[1]
         info['exploit'] = cve in exploited_cves
     js = {cve: dropempty(info) for cve, info in js.items()}
 
