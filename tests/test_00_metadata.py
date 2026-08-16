@@ -4,6 +4,25 @@ import re
 
 import pytest
 
+# CVEs that neither kernel.org vulns.git nor CIP kernel-sec covers. They are all
+# still PUBLISHED at cve.org - mostly 2013-2018 entries and Android/Qualcomm
+# bulletins that were never tracked upstream - so there is nothing to look up.
+no_metadata = [
+    'CVE-2013-2930', 'CVE-2013-6383', 'CVE-2014-0049', 'CVE-2014-0100', 'CVE-2014-0101',
+    'CVE-2014-0155', 'CVE-2014-1737', 'CVE-2014-1738', 'CVE-2014-1874', 'CVE-2014-5077',
+    'CVE-2014-7841', 'CVE-2014-7975', 'CVE-2014-8480', 'CVE-2014-8481', 'CVE-2014-8709',
+    'CVE-2014-9715', 'CVE-2014-9903', 'CVE-2014-9904', 'CVE-2015-1339', 'CVE-2015-1421',
+    'CVE-2015-1593', 'CVE-2015-3636', 'CVE-2015-4004', 'CVE-2015-4700', 'CVE-2015-7566',
+    'CVE-2015-8746', 'CVE-2015-8785', 'CVE-2015-8787', 'CVE-2015-8961', 'CVE-2016-10764',
+    'CVE-2016-10907', 'CVE-2016-2070', 'CVE-2016-2117', 'CVE-2016-2383', 'CVE-2016-3713',
+    'CVE-2016-4568', 'CVE-2016-5828', 'CVE-2016-6156', 'CVE-2016-6162', 'CVE-2016-6516',
+    'CVE-2016-8399', 'CVE-2016-9919', 'CVE-2017-11089', 'CVE-2017-18360', 'CVE-2017-18549',
+    'CVE-2017-18550', 'CVE-2017-18595', 'CVE-2017-8240', 'CVE-2018-10074', 'CVE-2018-1091',
+    'CVE-2018-11232', 'CVE-2018-14619', 'CVE-2018-16658', 'CVE-2018-19406', 'CVE-2018-25015',
+    'CVE-2018-5873', 'CVE-2018-8043', 'CVE-2018-9363', 'CVE-2018-9385', 'CVE-2019-18680',
+    'CVE-2019-9003', 'CVE-2020-0465', 'CVE-2020-0466', 'CVE-2020-27068', 'CVE-2021-0605',
+]  # fmt: skip
+
 
 def test_metadata(hound, cve):
     meta = hound.get_rule_metadata(cve)
@@ -26,6 +45,14 @@ def test_metadata(hound, cve):
                 found = True
 
     assert found, 'no CVE-id in the rule'
+
+
+@pytest.mark.nometadata(
+    ('cve',), no_metadata, reason='not covered by kernel.org vulns.git or CIP kernel-sec'
+)
+def test_cve_in_metadata(hound, cve):
+    if hound.get_rule(cve).endswith('.grep'):
+        pytest.skip('grep rules are not required to be in the metadata')
     assert hound.get_cve_metadata(cve), 'no metadata in kernel_cves.json'
 
 
@@ -71,30 +98,32 @@ def test_fixes(hound, repo, cve):
         assert cve_fixes in msg_fixes, f'{cve_fixes[0:12]} vs {msg_fixes}'
 
 
-def test_cve_disputed(hound, cve):
-    meta = hound.get_cve_metadata(cve)
-    rule = hound.cve_all_rules[cve]
-    if 'nvd_text' in meta and 'disputed' not in rule:
-        assert ' DIS' not in meta['nvd_text'], f'{cve} DISPUTED'
-
-
+# DISPUTED has no source any more. kernel.org does not record it and CIP says so
+# for only two CVEs, so disputed rules are tracked purely by living in
+# cvehound/cve/disputed/. REJECTED comes from vulns.git's cve/rejected/ directory
+# and from CIP's 'ignore: all:' note.
 def test_cve_rejected(hound, cve):
     meta = hound.get_cve_metadata(cve)
-    if 'nvd_text' in meta:
-        assert ' REJ' not in meta['nvd_text'], f'{cve} REJECTED'
+    if 'disputed' in hound.cve_all_rules[cve]:
+        pytest.skip('disputed rules are allowed to be rejected upstream')
+    assert not meta.get('rejected'), f'{cve} REJECTED'
 
 
 @pytest.mark.lkc
 def test_cves_metadata_fix(hound, cve):
+    lkc_fix = hound.get_cve_metadata(cve).get('fixes')
+    if not lkc_fix:
+        pytest.skip('no fix commit in the metadata')
     fix = hound.get_rule_fix(cve)
-    lkc_fix = hound.get_cve_metadata(cve)['fixes']
     assert fix == lkc_fix, f'{fix[0:12]} vs. {lkc_fix[0:12]}'
 
 
 @pytest.mark.lkc
 def test_cves_metadata_fixes(hound, cve):
+    lkc_fixes = hound.get_cve_metadata(cve).get('breaks')
+    if not lkc_fixes:
+        pytest.skip('no introducing commit in the metadata')
     fixes = hound.get_rule_fixes(cve)
-    lkc_fixes = hound.get_cve_metadata(cve)['breaks']
     if fixes == 'v2.6.12-rc2':
         fixes = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
     assert fixes == lkc_fixes, f'{fixes[0:12]} vs. {lkc_fixes[0:12]}'
@@ -107,8 +136,6 @@ def test_cves_metadata_fix_all(hound, repo):
     for cve in meta:
         data = meta[cve]
         if 'fixes' not in data:
-            continue
-        if 'vendor_specific' in data and data['vendor_specific']:
             continue
 
         fix = data['fixes']
@@ -192,7 +219,7 @@ def test_cves_metadata_title(hound, repo):
             continue
         data_msg = data['cmt_msg']
 
-        fix = data['fixes']
+        fix = data.get('fixes')
         if not fix:
             continue
         if not re.match(r'[0-9a-fa-f]{7,40}', fix):
