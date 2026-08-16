@@ -87,7 +87,12 @@ def pytest_addoption(parser):
         help='list of linux-stable branches to run tests on',
     )
     parser.addoption('--runslow', action='store_true', default=False, help='run slow tests')
-    parser.addoption('--runlkc', action='store_true', default=False, help='run lkc metadata tests')
+    parser.addoption(
+        '--runmetadata',
+        action='store_true',
+        default=False,
+        help='run tests that check kernel_cves.json against the kernel git tree',
+    )
     parser.addoption(
         '--dir',
         action='store',
@@ -229,18 +234,18 @@ def pytest_generate_tests(metafunc):
 
 def pytest_collection_modifyitems(config, items):
     runslow = config.getoption('--runslow')
-    runlkc = config.getoption('--runlkc')
+    runmetadata = config.getoption('--runmetadata')
     skip_slow = pytest.mark.skip(reason='need --runslow option to run')
     skip_fast = pytest.mark.skip(reason='slow tests cover these testcases')
-    skip_lkc = pytest.mark.skip(reason='need --runlkc option to run')
+    skip_metadata = pytest.mark.skip(reason='need --runmetadata option to run')
     fail_notbackported = pytest.mark.xfail(reason='CVE not backported yet')
     for item in items:
         if not runslow and 'slow' in item.keywords:
             item.add_marker(skip_slow)
         if runslow and 'fast' in item.keywords:
             item.add_marker(skip_fast)
-        if not runlkc and 'lkc' in item.keywords:
-            item.add_marker(skip_lkc)
+        if not runmetadata and 'metadata' in item.keywords:
+            item.add_marker(skip_metadata)
         if 'notbackported' in item.keywords:
             params = item.callspec.params
             mark = None

@@ -74,8 +74,8 @@ uv run pytest --runslow             # the real suite (needs a kernel checkout)
 uv run pytest --cve=CVE-2020-12912  # one CVE
 ```
 
-Custom options (`tests/conftest.py:77-95`): `--runslow`, `--runlkc`, `--cve`, `--branch`,
-`--dir`. Markers (`pytest.ini`): `slow`, `fast`, `notbackported`, `ownfixes`, `lkc`.
+Custom options (`tests/conftest.py:77-95`): `--runslow`, `--runmetadata`, `--cve`, `--branch`,
+`--dir`. Markers (`pytest.ini`): `slow`, `fast`, `notbackported`, `ownfixes`, `nometadata`, `metadata`.
 `--strict-markers` is on, so a misspelled marker is a hard error.
 
 Note that *no* test run is dependency-free: `pytest_configure` always clones or fetches

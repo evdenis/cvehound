@@ -109,27 +109,27 @@ def test_cve_rejected(hound, cve):
     assert not meta.get('rejected'), f'{cve} REJECTED'
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_fix(hound, cve):
-    lkc_fix = hound.get_cve_metadata(cve).get('fixes')
-    if not lkc_fix:
+    meta_fix = hound.get_cve_metadata(cve).get('fixes')
+    if not meta_fix:
         pytest.skip('no fix commit in the metadata')
     fix = hound.get_rule_fix(cve)
-    assert fix == lkc_fix, f'{fix[0:12]} vs. {lkc_fix[0:12]}'
+    assert fix == meta_fix, f'{fix[0:12]} vs. {meta_fix[0:12]}'
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_fixes(hound, cve):
-    lkc_fixes = hound.get_cve_metadata(cve).get('breaks')
-    if not lkc_fixes:
+    meta_breaks = hound.get_cve_metadata(cve).get('breaks')
+    if not meta_breaks:
         pytest.skip('no introducing commit in the metadata')
     fixes = hound.get_rule_fixes(cve)
     if fixes == 'v2.6.12-rc2':
         fixes = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
-    assert fixes == lkc_fixes, f'{fixes[0:12]} vs. {lkc_fixes[0:12]}'
+    assert fixes == meta_breaks, f'{fixes[0:12]} vs. {meta_breaks[0:12]}'
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_fix_all(hound, repo):
     broken = []
     meta = hound.metadata
@@ -151,7 +151,7 @@ def test_cves_metadata_fix_all(hound, repo):
     assert not broken, broken
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_fixes_all(hound, repo):
     broken = []
     meta = hound.metadata
@@ -173,7 +173,7 @@ def test_cves_metadata_fixes_all(hound, repo):
     assert not broken, broken
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_fixes_all_git(hound, repo):
     broken = []
     meta = hound.metadata
@@ -208,7 +208,7 @@ def test_cves_metadata_fixes_all_git(hound, repo):
     assert not broken, broken
 
 
-@pytest.mark.lkc
+@pytest.mark.metadata
 def test_cves_metadata_title(hound, repo):
     broken = []
     meta = hound.metadata
