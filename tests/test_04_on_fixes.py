@@ -2,20 +2,22 @@
 
 
 import pytest
+from conftest import INITIAL_COMMITS
 
 from cvehound.exception import UnsupportedVersion
 
 
 @pytest.mark.slow
-def test_on_fixes(hound, repo, cve):
+@pytest.mark.kernel_history('fixes', 'fixes~')
+def test_on_fixes(hound, kernel_checkout, cve):
     fixes = hound.get_rule_fixes(cve)
 
-    repo.git.checkout('--force', fixes)
+    kernel_checkout.checkout(fixes)
     try:
         assert hound.check_cve(cve), 'fails to detect on fixes tag'
 
-        if fixes != 'v2.6.12-rc2' and fixes != '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2':
-            repo.git.checkout('HEAD~')
+        if fixes not in INITIAL_COMMITS:
+            kernel_checkout.checkout(fixes + '~')
             assert not hound.check_cve(cve), 'detects on fixes~ tag'
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')

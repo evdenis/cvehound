@@ -2,13 +2,17 @@
 
 import os
 import tempfile
-from subprocess import run
+from subprocess import PIPE, Popen, run
 
 import psutil
 import pytest
 from git import Repo
 
 from cvehound import CVEhound, get_rule_cves
+
+INITIAL_COMMIT = 'v2.6.12-rc2'
+INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
+INITIAL_COMMITS = {INITIAL_COMMIT, INITIAL_COMMIT_HASH}
 
 missing_backports = [
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
@@ -105,8 +109,33 @@ overlaydir = None
 linux_mount = None
 linux_repo = None
 _cvehound = None
+_kernel_checkout = None
 branches = []
 cves = []
+
+
+class KernelCheckout:
+    def __init__(self, repo):
+        self.repo = repo
+        self.current = None
+        self.commits = {}
+
+    def add_commits(self, commits):
+        self.commits.update(commits)
+
+    def checkout(self, commit, paths=None):
+        if paths is not None:
+            self.current = None
+            self.repo.git.checkout('--force', commit, '--', paths)
+            return
+
+        identity = self.commits.get(commit, commit)
+        if self.current == identity:
+            return
+
+        self.current = None
+        self.repo.git.checkout('--force', commit)
+        self.current = identity
 
 
 def pytest_configure(config):
@@ -114,6 +143,7 @@ def pytest_configure(config):
     global linux_mount
     global linux_repo
     global _cvehound
+    global _kernel_checkout
     global branches
     global cves
 
@@ -122,6 +152,9 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'notbackported: mark test as failed')
     config.addinivalue_line('markers', 'ownfixes: mark test as failed')
     config.addinivalue_line('markers', 'nometadata: mark test as failed')
+    config.addinivalue_line(
+        'markers', 'kernel_history(*route): declare the full-tree checkout route for a test'
+    )
 
     try:
         p = psutil.Process()
@@ -173,6 +206,7 @@ def pytest_configure(config):
         linux_repo = repo
 
     _cvehound = CVEhound(linux_repo.working_tree_dir)
+    _kernel_checkout = KernelCheckout(linux_repo)
 
     branches = config.getoption('branch')
     if not branches:
@@ -212,15 +246,14 @@ def hound():
     return _cvehound
 
 
-prev_branch = None
+@pytest.fixture
+def kernel_checkout():
+    return _kernel_checkout
 
 
 @pytest.fixture
-def branch(request):
-    global prev_branch
-    if prev_branch != request.param:
-        linux_repo.git.checkout('--force', request.param)
-        prev_branch = request.param
+def branch(request, kernel_checkout):
+    kernel_checkout.checkout(request.param)
     return request.param
 
 
@@ -230,6 +263,133 @@ def pytest_generate_tests(metafunc):
 
     if 'cve' in metafunc.fixturenames:
         metafunc.parametrize('cve', cves)
+
+
+def _get_kernel_route(item):
+    marker = item.get_closest_marker('kernel_history')
+    if marker is None:
+        return ()
+
+    params = item.callspec.params
+    cve = params.get('cve')
+    route = []
+    for step in marker.args:
+        parent = step.endswith('~')
+        name = step.removesuffix('~')
+        if name == 'branch':
+            commit = params['branch']
+        elif name == 'initial':
+            commit = INITIAL_COMMIT
+        elif name == 'fix':
+            commit = _cvehound.get_rule_fix(cve)
+        elif name == 'fixes':
+            commit = _cvehound.get_rule_fixes(cve)
+        else:
+            raise pytest.UsageError(f'unknown kernel_history step {step!r} on {item.nodeid}')
+
+        if parent:
+            if commit in INITIAL_COMMITS:
+                continue
+            commit += '~'
+        route.append(commit)
+
+    return tuple(route)
+
+
+def _resolve_kernel_commits(refs):
+    refs = list(dict.fromkeys(refs))
+    result = run(
+        ['git', 'cat-file', '--batch-check=%(objectname) %(objecttype)'],
+        cwd=linux_repo.working_tree_dir,
+        input=''.join(f'{ref}^{{commit}}\n' for ref in refs),
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+
+    resolved = {}
+    missing = []
+    for ref, line in zip(refs, result.stdout.splitlines(), strict=True):
+        fields = line.split()
+        if len(fields) != 2 or fields[1] != 'commit':
+            missing.append(ref)
+            continue
+        resolved[ref] = fields[0]
+
+    if missing:
+        raise pytest.UsageError('kernel commits not found: ' + ', '.join(missing))
+    return resolved
+
+
+def _rank_kernel_commits(commits):
+    commits = set(commits)
+    process = Popen(
+        ['git', 'rev-list', '--topo-order', *sorted(commits)],
+        cwd=linux_repo.working_tree_dir,
+        stdout=PIPE,
+        stderr=PIPE,
+        text=True,
+    )
+    ranks = {}
+    assert process.stdout is not None
+    for rank, line in enumerate(process.stdout):
+        commit = line.rstrip()
+        if commit not in commits:
+            continue
+        ranks[commit] = rank
+        if len(ranks) == len(commits):
+            process.terminate()
+            break
+
+    process.stdout.close()
+    assert process.stderr is not None
+    stderr = process.stderr.read()
+    returncode = process.wait()
+    if len(ranks) != len(commits):
+        missing = sorted(commits - ranks.keys())
+        message = 'kernel commits not reachable: ' + ', '.join(missing)
+        if returncode:
+            message += '\n' + stderr.strip()
+        raise pytest.UsageError(message)
+    return ranks
+
+
+def _apply_kernel_order(items, records, ranks):
+    slots = [record[0] for record in records]
+    ordered = sorted(
+        records,
+        key=lambda record: (
+            ranks[record[2][0]],
+            ranks[record[2][-1]],
+            record[0],
+        ),
+    )
+    for slot, record in zip(slots, ordered, strict=True):
+        items[slot] = record[1]
+
+
+def _reorder_kernel_tests(items):
+    records = []
+    refs = []
+    for index, item in enumerate(items):
+        if item.get_closest_marker('skip') is not None:
+            continue
+        route = _get_kernel_route(item)
+        if not route:
+            continue
+        records.append((index, item, route))
+        refs.extend(route)
+
+    if len(records) < 2:
+        return
+
+    resolved = _resolve_kernel_commits(refs)
+    _kernel_checkout.add_commits(resolved)
+    records = [
+        (index, item, tuple(resolved[ref] for ref in route)) for index, item, route in records
+    ]
+    ranks = _rank_kernel_commits(resolved.values())
+    _apply_kernel_order(items, records, ranks)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -271,3 +431,5 @@ def pytest_collection_modifyitems(config, items):
                     rec = (rec, mark.kwargs.get('reason', name))
                 if params['cve'] == rec[0]:
                     item.add_marker(pytest.mark.xfail(reason=rec[1]))
+
+    _reorder_kernel_tests(items)

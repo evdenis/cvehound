@@ -6,13 +6,14 @@ import pytest
 from cvehound.exception import UnsupportedVersion
 
 
-def test_on_fix(hound, repo, cve):
+@pytest.mark.kernel_history('fix', 'fix~')
+def test_on_fix(hound, kernel_checkout, cve):
     fix = hound.get_rule_fix(cve)
 
-    repo.git.checkout('--force', fix)
+    kernel_checkout.checkout(fix)
     try:
         assert not hound.check_cve(cve), cve + ' fails on fix commit'
-        repo.git.checkout(fix + '~')
+        kernel_checkout.checkout(fix + '~')
         assert hound.check_cve(cve), cve + ' fails to detect fix~ commit'
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')
