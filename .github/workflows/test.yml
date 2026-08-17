@@ -102,29 +102,53 @@ jobs:
     - name: Install CVEhound
       run: uv sync --locked
 
-    - name: Cache Kernel Bundle
-      uses: actions/cache@v6
+    - name: Restore Linux Repository
+      id: linux-cache
+      uses: actions/cache/restore@v6
       with:
-        path: clone.bundle
-        key: linux-${{ steps.date.outputs.date }}
+        path: tests/linux/.git
+        key: linux-git-v1-${{ steps.date.outputs.date }}
 
     - name: Download Linux Tree
       run: |
-        if [[ ! -f clone.bundle ]]; then
-          sudo apt-get install -y axel
-          axel -q https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
+        if [[ ! -d tests/linux/.git ]]; then
+          curl --fail --location --silent --show-error \
+            --retry 5 --retry-all-errors --retry-delay 5 --continue-at - \
+            --output clone.bundle \
+            https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
+          git clone --no-checkout clone.bundle tests/linux
+          rm -f clone.bundle
         fi
-        git clone clone.bundle tests/linux
         cd tests/linux
-        git remote set-url origin git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+        git config gc.auto 0
+        git remote set-url origin https://github.com/torvalds/linux.git
         git remote set-branches origin master
-        git remote add next --no-tags git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+        if git remote get-url next >/dev/null 2>&1; then
+          git remote set-url next https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+        else
+          git remote add --no-tags next https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+        fi
         git remote set-branches next master
         stable=${{env.STABLE_BRANCHES}}
-        git remote add stable --no-tags git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+        if git remote get-url stable >/dev/null 2>&1; then
+          git remote set-url stable https://github.com/gregkh/linux.git
+        else
+          git remote add --no-tags stable https://github.com/gregkh/linux.git
+        fi
         git remote set-branches stable ${stable[@]}
-        git fetch --all
+        git fetch --no-tags origin
+        git fetch --no-tags next
+        git fetch --no-tags stable
+        git fetch --no-tags origin tag v2.6.12-rc2
+        git reset --hard origin/master
         cd -
+
+    - name: Save Linux Repository
+      if: steps.linux-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: tests/linux/.git
+        key: linux-git-v1-${{ steps.date.outputs.date }}
 
     - name: Test with pytest
       run: |
