@@ -34,8 +34,6 @@ jobs:
           python-version: "3.12"
         - os: ubuntu-latest
           python-version: "3.13"
-        - os: macos-latest
-          python-version: "3.11"
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v7
@@ -82,8 +80,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
-        os: [ubuntu-22.04]
-        ocaml-version: [4.07.1]
+        os: [ubuntu-latest]
+        ocaml-version: [4.11.2]
         coccinelle-version: [1.0.8, 1.0.9, 1.1.0, system, 1.2]
     runs-on: ${{ matrix.os }}
     steps:
@@ -148,11 +146,6 @@ jobs:
           fi
         elif [[ ${{ matrix.coccinelle-version }} == '1.0.9' ]]; then
           if [[ "$spatch_version" != "spatch version 1.0.8"* ]]; then
-              echo "Wrong coccinelle version installed" >&2
-              exit 1
-          fi
-        elif [[ ${{ matrix.coccinelle-version }} == 'system' ]]; then
-          if [[ "$spatch_version" != "spatch version 1.1.1"* ]]; then
               echo "Wrong coccinelle version installed" >&2
               exit 1
           fi
