@@ -122,8 +122,8 @@ Kernel source paths affected by this CVE, space-separated, relative to the kerne
 ```
 
 Nothing enforces this field, which makes a typo dangerous rather than loud: if none of
-the listed paths exist, `check_cve` silently falls back to scanning the **entire** kernel
-tree, so you get a very slow run and possible false positives instead of an error.
+the listed paths exist, `check_cve` silently skips the rule unless the caller explicitly
+requests `all_files=True`. A typo can therefore cause a false negative.
 
 #### `Fix:` (required in practice)
 The mainline commit that fixed the vulnerability.
@@ -758,9 +758,9 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 
 ### Mistake 7: A typo in `Files:`
 
-Nothing validates the paths. If none of them exist in the tree, `check_cve` scans the
-whole kernel instead of erroring — a very slow run and possible false positives rather
-than a clear failure. Verify each path exists at the `Fix` commit.
+If none of the paths exist in the tree, `check_cve` skips the rule instead of erroring
+unless the caller explicitly requests `all_files=True`. This can hide a vulnerable kernel,
+so verify each path exists at the `Fix` commit.
 
 ## Testing Your Rules
 
@@ -992,10 +992,10 @@ spatch \
     -D detect \                 # enable the "detect" virtual mode
     --chunksize 1 -j 1 \        # one job here; CVEhound parallelizes across CVEs
     --no-show-diff --very-quiet \
-    --cocci-file <rule> \
-    [--python <sys.executable>] \   # only when spatch > 1.0.4
     -I <kernel>/arch/<arch>/include ... -I <kernel>/include/uapi ... \
     --include <kernel>/include/linux/kconfig.h \
+    --python <sys.executable> \
+    --cocci-file <rule> \
     <every path from the rule's Files: header>
 ```
 

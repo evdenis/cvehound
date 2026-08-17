@@ -62,9 +62,9 @@ Register legitimate failures as data, never as `xfail` in a test file:
 
 ### Gotcha: a typo'd `Files:` path is silent
 
-If none of a rule's `Files:` paths exist in the tree, `check_cve` falls back to scanning
-the entire kernel (`cvehound/__init__.py:150-152`). You get a very slow run and possible
-false positives instead of an error.
+If none of a rule's `Files:` paths exist in the tree, `check_cve` skips the rule unless
+`all_files=True`. A typo therefore causes a false negative instead of an error; the validator
+checks that the paths exist at the fix commit.
 
 ## Tests
 
