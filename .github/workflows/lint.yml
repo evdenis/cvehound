@@ -1,0 +1,40 @@
+name: lint
+
+on:
+  push:
+    paths:
+    - '**/*.py'
+    - 'pyproject.toml'
+    - 'uv.lock'
+    - '.github/workflows/lint.yml'
+  pull_request:
+    paths:
+    - '**/*.py'
+    - 'pyproject.toml'
+    - 'uv.lock'
+    - '.github/workflows/lint.yml'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv with Python 3.11
+      uses: astral-sh/setup-uv@v8.0.0
+      with:
+        python-version: "3.11"
+        enable-cache: true
+
+    - name: Install dev dependencies
+      run: uv sync --locked
+
+    - name: ruff check
+      run: uv run ruff check .
+
+    - name: ruff format
+      run: uv run ruff format --check .
+
+    - name: ty
+      run: uv run ty check

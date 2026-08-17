@@ -1,0 +1,50 @@
+name: install
+
+on:
+  push:
+    paths:
+    - 'cvehound/**/*.py'
+    - 'pyproject.toml'
+    - 'uv.lock'
+    - 'MANIFEST.in'
+    - 'README.md'
+    - '.github/workflows/install.yml'
+  pull_request:
+    paths:
+    - 'cvehound/**/*.py'
+    - 'pyproject.toml'
+    - 'uv.lock'
+    - 'MANIFEST.in'
+    - 'README.md'
+    - '.github/workflows/install.yml'
+  workflow_dispatch:
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: ubuntu-latest
+          python-version: "3.11"
+        - os: ubuntu-latest
+          python-version: "3.12"
+        - os: ubuntu-latest
+          python-version: "3.13"
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv with Python ${{ matrix.python-version }}
+      uses: astral-sh/setup-uv@v8.0.0
+      with:
+        python-version: ${{ matrix.python-version }}
+        enable-cache: true
+
+    - name: Install CVEhound (locked, runtime deps only)
+      run: uv sync --locked --no-dev
+
+    - name: Smoke test
+      run: |
+        uv run cvehound --help
+        uv run cvehound --version
