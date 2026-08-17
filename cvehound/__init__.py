@@ -134,16 +134,18 @@ class CVEhound:
         if rule.endswith('.grep'):
             is_grep = True
 
-        files: list[str] = []
-        if not all_files:
+        if all_files:
+            files = [self.kernel]
+        else:
             rule_files = self.get_rule_files(cve)
             files = [
                 os.path.join(self.kernel, f)
                 for f in rule_files
                 if os.path.exists(os.path.join(self.kernel, f))
             ]
-        if not files:
-            files = [self.kernel]
+            if not files:
+                logging.debug('Skipping %s: none of the hinted files exist', cve)
+                return False
 
         includes = self.includes.copy()
         kconfig = os.path.join(self.kernel, 'include/linux/kconfig.h')
@@ -159,34 +161,30 @@ class CVEhound:
             rule_ver = self.get_rule_version(cve)
             if rule_ver and rule_ver > self.spatch_version:
                 raise UnsupportedVersion(self.spatch_version, cve, rule_ver)
-            try:
-                cocci_cmd = [
-                    'spatch',
-                    '--no-includes',
-                    '--include-headers',
-                    '-D',
-                    'detect',
-                    '--chunksize',
-                    '1',
-                    '-j',
-                    '1',
-                    '--no-show-diff',
-                    '--very-quiet',
-                    *includes,
-                ]
-                if self.spatch_version > 104:  # Not supported on coccinelle 1.0.4
-                    cocci_cmd.extend(['--python', os.path.realpath(sys.executable)])
-                cocci_cmd.extend(['--cocci-file', rule, *files])
+            cocci_cmd = [
+                'spatch',
+                '--no-includes',
+                '--include-headers',
+                '-D',
+                'detect',
+                '--chunksize',
+                '1',
+                '-j',
+                '1',
+                '--no-show-diff',
+                '--very-quiet',
+                *includes,
+                '--python',
+                os.path.realpath(sys.executable),
+                '--cocci-file',
+                rule,
+                *files,
+            ]
 
-                logging.debug(' '.join(cocci_cmd))
+            logging.debug(' '.join(cocci_cmd))
 
-                run = subprocess.run(cocci_cmd, capture_output=True, check=True, text=True)
-                output = run.stdout.strip()
-            except subprocess.CalledProcessError as e:
-                err = e.stderr.split('\n')[-2]
-                # Coccinelle 1.0.4 bug workaround
-                if ('Sys_error("' + cve + ': No such file or directory")') not in err:
-                    raise e
+            run = subprocess.run(cocci_cmd, capture_output=True, check=True, text=True)
+            output = run.stdout.strip()
         else:
             for pattern in self.get_grep_pattern(rule):
                 args = ['grep', '-rPzle', pattern, *files]
