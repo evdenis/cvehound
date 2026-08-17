@@ -2,17 +2,20 @@
 
 import os
 import tempfile
-from subprocess import PIPE, Popen, run
+from subprocess import PIPE, CalledProcessError, Popen, run
 
 import psutil
 import pytest
 from git import Repo
+from git.exc import GitCommandError
 
 from cvehound import CVEhound, get_rule_cves
 
 INITIAL_COMMIT = 'v2.6.12-rc2'
 INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
 INITIAL_COMMITS = {INITIAL_COMMIT, INITIAL_COMMIT_HASH}
+TMPFS_CVE_THRESHOLD = 5
+TMPFS_SIZE_GB = 3
 
 missing_backports = [
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
@@ -53,28 +56,60 @@ def mount_tmpfs(target, req_mem_gb):
         return False
 
 
-def mount_overlayfs(lower, upper, workdir, target):
-    if os.path.ismount(target):
-        return True
-    ret = run(
-        [
-            'sudo',
-            '--non-interactive',
-            'mount',
-            '-t',
-            'overlay',
-            '-o',
-            'rw,lowerdir=' + lower + ',upperdir=' + upper + ',workdir=' + workdir,
-            'overlay',
-            target,
-        ]
-    )
-    return ret.returncode == 0
-
-
 def umount(target):
     if os.path.ismount(target):
         run(['sudo', '--non-interactive', 'umount', target])
+
+
+def should_use_tmpfs(selected_cves):
+    return os.environ.get('GITHUB_ACTIONS') != 'true' and len(selected_cves) >= TMPFS_CVE_THRESHOLD
+
+
+def clone_shared_repo(source, target):
+    run(
+        [
+            'git',
+            'clone',
+            '--shared',
+            '--no-checkout',
+            '--quiet',
+            '--',
+            source.working_tree_dir,
+            target,
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+
+    refs = source.git.for_each_ref('--format=update %(refname) %(objectname)')
+    if refs:
+        run(
+            ['git', 'update-ref', '--stdin'],
+            cwd=target,
+            input=refs + '\n',
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+
+    repo = Repo(target)
+    repo.git.checkout('--force', 'origin/master')
+    return repo
+
+
+def create_tmpfs_repo(repo):
+    target = tempfile.mkdtemp()
+    if not mount_tmpfs(target, TMPFS_SIZE_GB):
+        os.rmdir(target)
+        return repo, None
+
+    try:
+        return clone_shared_repo(repo, target), target
+    except (CalledProcessError, GitCommandError, OSError):
+        umount(target)
+        os.rmdir(target)
+        return repo, None
 
 
 def pytest_addoption(parser):
@@ -105,7 +140,6 @@ def pytest_addoption(parser):
     )
 
 
-overlaydir = None
 linux_mount = None
 linux_repo = None
 _cvehound = None
@@ -139,7 +173,6 @@ class KernelCheckout:
 
 
 def pytest_configure(config):
-    global overlaydir
     global linux_mount
     global linux_repo
     global _cvehound
@@ -162,6 +195,11 @@ def pytest_configure(config):
         p.ionice(psutil.IOPRIO_CLASS_RT, value=0)
     except Exception:
         pass
+
+    cves = config.getoption('cve')
+    if not cves:
+        (cves, _, _) = get_rule_cves()
+        cves = cves.keys()
 
     linux = config.getoption('dir')
     repo = None
@@ -193,17 +231,11 @@ def pytest_configure(config):
         repo.remotes.next.fetch()
         os.chdir(cwd)
 
-    overlaydir = tempfile.mkdtemp()
-    linux_mount = tempfile.mkdtemp()
-    if mount_tmpfs(overlaydir, 2):
-        upperdir = os.path.join(overlaydir, 'upper')
-        workdir = os.path.join(overlaydir, 'work')
-        os.mkdir(upperdir)
-        os.mkdir(workdir)
-        mount_overlayfs(linux, upperdir, workdir, linux_mount)
-        linux_repo = Repo(linux_mount)
+    if should_use_tmpfs(cves):
+        linux_repo, linux_mount = create_tmpfs_repo(repo)
     else:
         linux_repo = repo
+        linux_mount = None
 
     _cvehound = CVEhound(linux_repo.working_tree_dir)
     _kernel_checkout = KernelCheckout(linux_repo)
@@ -221,19 +253,11 @@ def pytest_configure(config):
             'stable/linux-5.10.y',
         ]
 
-    cves = config.getoption('cve')
-    if not cves:
-        (cves, _, _) = get_rule_cves()
-        cves = cves.keys()
-
 
 def pytest_unconfigure(config):
     if linux_mount:
         umount(linux_mount)
         os.rmdir(linux_mount)
-    if overlaydir:
-        umount(overlaydir)
-        os.rmdir(overlaydir)
 
 
 @pytest.fixture

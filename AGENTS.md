@@ -28,7 +28,7 @@ directory so Claude Code finds it too. Edit the real files under `.agents/`.
 Drop a file in `cvehound/cve/CVE-YYYY-NNNNN.cocci` (or `.grep`). That is the whole
 change — **do not add test cases**. Rules are auto-discovered by `get_rule_cves()`
 (`cvehound/util.py:75`) and every test is auto-parametrized over them by
-`pytest_generate_tests` (`tests/conftest.py:222`).
+`pytest_generate_tests` (`tests/conftest.py:284`).
 
 Put disputed CVEs in `cvehound/cve/disputed/`. Directory placement is the only thing
 that drives the `all` / `assigned` / `disputed` groups for `--cve` (default:
@@ -55,7 +55,7 @@ typo:
 
 Register legitimate failures as data, never as `xfail` in a test file:
 
-- `missing_backports` — `tests/conftest.py:13`, a list of `(cve, branch)` pairs consumed
+- `missing_backports` — `tests/conftest.py:20`, a list of `(cve, branch)` pairs consumed
   by `@pytest.mark.notbackported` in `test_01` and `test_06`.
 - `ownfixes` — `tests/test_00_metadata.py:48`, `(cve, reason)` pairs for CVEs whose
   upstream `Fixes:` tag is wrong.
@@ -74,7 +74,7 @@ uv run pytest --runslow             # the real suite (needs a kernel checkout)
 uv run pytest --cve=CVE-2020-12912  # one CVE
 ```
 
-Custom options (`tests/conftest.py:77-95`): `--runslow`, `--runmetadata`, `--cve`, `--branch`,
+Custom options (`tests/conftest.py:115-140`): `--runslow`, `--runmetadata`, `--cve`, `--branch`,
 `--dir`. Markers (`pytest.ini`): `slow`, `fast`, `notbackported`, `ownfixes`, `nometadata`, `metadata`.
 `--strict-markers` is on, so a misspelled marker is a hard error.
 
@@ -96,8 +96,10 @@ If no switch is selected, add `--switch=<switch> --set-switch` to `opam env`.
 
 The kernel checkout is not yours — the fixture runs `head.reset()` and
 `git clean -f -x -d` on it. It also needs full history plus `stable` and `next` remotes,
-so never shallow-clone it. Slow tests additionally try to mount a 2 GB tmpfs + overlayfs
-via `sudo --non-interactive`, falling back to the bare repo if that fails.
+so never shallow-clone it. Outside GitHub Actions, selections of at least five CVEs try
+to create a shared kernel clone on a 3 GiB tmpfs via `sudo --non-interactive`; Git objects
+stay in the lower repo while the working tree and index live in RAM. The fixture falls
+back to the lower repo when memory, mounting, or clone setup is unavailable.
 
 ## Conventions
 
