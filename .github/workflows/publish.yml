@@ -1,18 +1,22 @@
 # Publishes the package to PyPI using uv + Trusted Publishing (OIDC).
 # Requires a one-time PyPI-side setup: add a trusted publisher at
 # https://pypi.org/manage/project/cvehound/settings/publishing/
-# with owner=evdenis, repository=cvehound, workflow=publish.yml.
+# with owner=evdenis, repository=cvehound, workflow=publish.yml,
+# environment=pypi.
 
 name: Upload Python Package
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -23,7 +27,7 @@ jobs:
           python-version: "3.11"
 
       - name: Build sdist and wheel
-        run: uv build
+        run: uv build --no-sources
 
       - name: Publish to PyPI
         run: uv publish

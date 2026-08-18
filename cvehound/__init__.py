@@ -21,7 +21,7 @@ from cvehound.util import (
     parse_coccinelle_output,
 )
 
-__VERSION__ = '1.2.1'
+__VERSION__ = '1.3.0'
 
 RuleMetadata = dict[str, Any]
 
