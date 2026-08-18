@@ -92,7 +92,7 @@ class CVEhound:
         self.config: Config | None = None
 
         if config:
-            kbuild_parser = KbuildParser(None, self.srcarch)
+            kbuild_parser = KbuildParser(None, self.srcarch, kernel)
             dirs_to_process: dict[str, Any] = collections.OrderedDict()
             kbuild_parser.init_class.process(kbuild_parser, dirs_to_process, kernel)
 

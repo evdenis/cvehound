@@ -5,15 +5,18 @@ import re
 import cvehound.kbuildparse.data_structures as DataStructures
 import cvehound.kbuildparse.helper as Helper
 import cvehound.kbuildparse.linux as Linux
+from cvehound.util import get_srcarch
 
 
 class KbuildParser:
     """Main class: parse Kbuild files recursively."""
 
-    def __init__(self, model=None, arch='x86'):
+    def __init__(self, model=None, arch='x86', srctree='.'):
         """Initialize the parser. We need a model for _MODULE options."""
         self.model = model
         self.arch = arch
+        self.srcarch = get_srcarch(arch)
+        self.srctree = os.path.abspath(srctree)
         self.local_vars = DataStructures.VariableStore()
         self.global_vars = DataStructures.VariableStore()
         self.init_class = Linux.LinuxInit(model, arch)
@@ -99,6 +102,11 @@ class KbuildParser:
         return ' '.join(t + suffix for t in targets.split())
 
     def replace_variables(self, content, defs, srcpath):
+        # Variables the build system provides to every Makefile.
+        content = content.replace(r'$(srctree)', self.srctree)
+        content = content.replace(r'$(objtree)', self.srctree)
+        content = content.replace(r'$(SRCARCH)', self.srcarch)
+        content = content.replace(r'$(ARCH)', self.arch)
         used_vars = re.findall(r'\$\((' + self.variable_name_regex + r')\)', content)
         content = re.sub(r'\$\(src\)', srcpath, content)
         for var in used_vars:
@@ -177,10 +185,10 @@ class KbuildParser:
 
         lines = []
 
-        targets = [x.rstrip() for x in line.split()[1:]]
+        targets = [os.path.normpath(x.rstrip()) for x in line.split()[1:]]
         for target in targets:
             if not os.path.isfile(target):
-                target = os.path.join(srcpath, target)
+                target = os.path.normpath(os.path.join(srcpath, target))
                 if not os.path.isfile(target):
                     continue
 
