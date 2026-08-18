@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import collections
+import functools
 import logging
 import os
 import subprocess
@@ -26,6 +27,13 @@ __VERSION__ = '1.2.1'
 RuleMetadata = dict[str, Any]
 
 
+@functools.cache
+def _simplify_condition(logic: str) -> Any:
+    """Cache sympy's (expensive) minimization: the same few hot-file
+    conditions are evaluated for many CVEs in every worker."""
+    return simplify_logic(logic)
+
+
 def evaluate_file_condition(
     logic: str | None, relpath: str, srcarch: str, config: Config | None
 ) -> tuple[str, bool | None]:
@@ -44,7 +52,7 @@ def evaluate_file_condition(
         return ('unknown', True if config is not None else None)
     if logic == '':
         return ('True', True if config is not None else None)
-    simplified = simplify_logic(logic)
+    simplified = _simplify_condition(logic)
     if config is None:
         return (str(simplified), None)
     # Kconfig is closed-world: a symbol absent from the .config is disabled,
