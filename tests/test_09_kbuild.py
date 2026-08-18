@@ -4,32 +4,14 @@ These run on synthetic mini-trees written to tmp_path: no kernel checkout,
 no spatch, no network.
 """
 
-import collections
 import os
-import textwrap
+
+import pytest
+from conftest import build_map, write_tree
 
 from cvehound import evaluate_file_condition
 from cvehound.config import Config
-from cvehound.kbuild import KbuildParser
 from cvehound.util import get_srcarch
-
-
-def write_tree(root, files):
-    for rel, content in files.items():
-        path = root / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(textwrap.dedent(content))
-
-
-def build_map(root, arch='x86'):
-    kernel = str(root)
-    parser = KbuildParser(None, arch, kernel)
-    dirs_to_process = collections.OrderedDict()
-    parser.init_class.process(parser, dirs_to_process, kernel)
-    for item in dirs_to_process:
-        descend = parser.init_class.get_file_for_subdirectory(item)
-        parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
-    return {os.path.relpath(k, kernel): v for k, v in parser.get_config().items()}
 
 
 def test_get_srcarch():
@@ -188,45 +170,33 @@ def make_config(tmp_path, content):
     return Config(str(dot_config))
 
 
-def test_evaluate_unknown_file_is_affected(tmp_path):
-    config = make_config(tmp_path, 'CONFIG_A=y\n')
-    assert evaluate_file_condition(None, 'drivers/foo/bar.c', 'x86', config) == ('unknown', True)
-    assert evaluate_file_condition(None, 'drivers/foo/bar.c', 'x86', None) == ('unknown', None)
+DOT_CONFIG = 'CONFIG_A=y\nCONFIG_M=m\n# CONFIG_OFF is not set\n'
+
+# (condition from the Kbuild map, file, srcarch, has .config) -> (logic, affected)
+EVALUATIONS = [
+    # A file the parser knows nothing about is assumed to be built.
+    (None, 'drivers/foo/bar.c', 'x86', True, ('unknown', True)),
+    (None, 'drivers/foo/bar.c', 'x86', False, ('unknown', None)),
+    # No condition at all means unconditionally built.
+    ('', 'kernel/fork.c', 'x86', True, ('True', True)),
+    ('', 'kernel/fork.c', 'x86', False, ('True', None)),
+    # Another architecture's sources are never built into this kernel (#26).
+    ('CONFIG_A', 'arch/x86/events/intel/ds.c', 'arm64', True, ('False', False)),
+    (None, 'arch/x86/kvm/x86.c', 'arm64', True, ('False', False)),
+    ('CONFIG_A', 'arch/x86/kvm/x86.c', 'x86', True, ('CONFIG_A', True)),
+    # =y and =m both count as built, absent and "is not set" as disabled.
+    ('CONFIG_M', 'foo.c', 'x86', True, ('CONFIG_M', True)),
+    ('CONFIG_A & CONFIG_M', 'foo.c', 'x86', True, ('CONFIG_A & CONFIG_M', True)),
+    ('CONFIG_A & CONFIG_ABSENT', 'foo.c', 'x86', True, ('CONFIG_A & CONFIG_ABSENT', False)),
+    ('CONFIG_A & CONFIG_OFF', 'foo.c', 'x86', True, ('CONFIG_A & CONFIG_OFF', False)),
+    ('CONFIG_A | CONFIG_OFF', 'foo.c', 'x86', True, ('CONFIG_A | CONFIG_OFF', True)),
+    ('CONFIG_OFF | CONFIG_ABSENT', 'foo.c', 'x86', True, ('CONFIG_ABSENT | CONFIG_OFF', False)),
+    # Without a .config there is a condition but no verdict.
+    ('CONFIG_A', 'foo.c', 'x86', False, ('CONFIG_A', None)),
+]
 
 
-def test_evaluate_unconditional_file(tmp_path):
-    config = make_config(tmp_path, 'CONFIG_A=y\n')
-    assert evaluate_file_condition('', 'kernel/fork.c', 'x86', config) == ('True', True)
-    assert evaluate_file_condition('', 'kernel/fork.c', 'x86', None) == ('True', None)
-
-
-def test_evaluate_arch_mismatch(tmp_path):
-    config = make_config(tmp_path, 'CONFIG_KVM=y\n')
-    # An x86-only file can never be built into an arm64 kernel (issue #26).
-    assert evaluate_file_condition(
-        'CONFIG_PERF_EVENTS', 'arch/x86/events/intel/ds.c', 'arm64', config
-    ) == ('False', False)
-    assert evaluate_file_condition(None, 'arch/x86/kvm/x86.c', 'arm64', config) == (
-        'False',
-        False,
-    )
-    # Same arch evaluates normally.
-    logic, affected = evaluate_file_condition('CONFIG_KVM', 'arch/x86/kvm/x86.c', 'x86', config)
-    assert affected is True
-
-
-def test_evaluate_absent_symbol_is_disabled(tmp_path):
-    config = make_config(tmp_path, 'CONFIG_A=y\n')
-    logic, affected = evaluate_file_condition('CONFIG_A & CONFIG_B', 'foo.c', 'x86', config)
-    assert affected is False
-    config = make_config(tmp_path, 'CONFIG_A=y\nCONFIG_B=m\n')
-    logic, affected = evaluate_file_condition('CONFIG_A & CONFIG_B', 'foo.c', 'x86', config)
-    assert affected is True
-
-
-def test_evaluate_not_set_symbol(tmp_path):
-    config = make_config(tmp_path, 'CONFIG_A=y\n# CONFIG_B is not set\n')
-    logic, affected = evaluate_file_condition('CONFIG_A & CONFIG_B', 'foo.c', 'x86', config)
-    assert affected is False
-    logic, affected = evaluate_file_condition('CONFIG_A | CONFIG_B', 'foo.c', 'x86', config)
-    assert affected is True
+@pytest.mark.parametrize(('logic', 'relpath', 'srcarch', 'with_config', 'expected'), EVALUATIONS)
+def test_evaluate_file_condition(tmp_path, logic, relpath, srcarch, with_config, expected):
+    config = make_config(tmp_path, DOT_CONFIG) if with_config else None
+    assert evaluate_file_condition(logic, relpath, srcarch, config) == expected

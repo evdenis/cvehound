@@ -35,12 +35,64 @@ def _worker_init(hound: CVEhound, loglevel: int) -> None:
     # Workers do the user-facing logging; under the spawn/forkserver start
     # methods (the default on some platforms) the parent's logging setup is
     # not inherited. basicConfig is a no-op when it was (fork).
-    logging.basicConfig(level=loglevel, format='%(message)s')
+    setup_logging(loglevel)
 
 
 def _worker_check_cve(cve: str, all_files: bool) -> dict[str, Any] | bool:
     assert _hound is not None
     return _hound.check_cve(cve, all_files)
+
+
+def setup_logging(loglevel: int) -> None:
+    logging.basicConfig(level=loglevel, format='%(message)s')
+
+
+def resolve_arch(args_cfg: dict[str, Any], config_info: dict[str, str]) -> str:
+    """Determine the kernel architecture: --arch, else the .config banner,
+    else a warned-about x86 guess."""
+    arch = args_cfg.get('arch')
+    config_arch = config_info.get('arch')
+
+    if arch and config_arch and get_srcarch(arch) != get_srcarch(config_arch):
+        print(
+            '--arch',
+            arch,
+            'conflicts with',
+            args_cfg['kernel_config'],
+            'generated for',
+            config_arch,
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    arch = arch or config_arch
+    if arch:
+        if not os.path.isdir(os.path.join(args_cfg['kernel'], 'arch', get_srcarch(arch))):
+            print('Unknown kernel architecture:', arch, file=sys.stderr)
+            sys.exit(1)
+        return arch
+
+    if args_cfg['check_strict']:
+        # A guessed architecture would silently drop every arch/<real>/ CVE
+        # as "not affected"; refuse to guess when dropping is enabled.
+        print(
+            "--check-strict can't infer the kernel architecture from",
+            args_cfg['kernel_config'],
+            '(no config banner); pass --arch',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args_cfg['kernel_config']:
+        print('Assuming x86 kernel architecture; pass --arch to override', file=sys.stderr)
+    if not os.path.isdir(os.path.join(args_cfg['kernel'], 'arch', 'x86')):
+        # Only a guess: without it the scan still works, it merely loses the
+        # arch-specific include paths.
+        print(
+            'No arch/x86 directory in',
+            args_cfg['kernel'] + '; continuing without arch-specific include paths',
+            file=sys.stderr,
+        )
+    return 'x86'
 
 
 def check_config(config: dict[str, Any]) -> None:
@@ -219,62 +271,20 @@ def main(args: list[str] | None = None) -> None:
         loglevel = logging.DEBUG
     elif args_cfg['verbose'] > 0:
         loglevel = logging.INFO
-    logging.basicConfig(level=loglevel, format='%(message)s')
+    setup_logging(loglevel)
 
     config_info: dict[str, str] = {}
     if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         config_info = get_config_data(args_cfg['kernel_config'])
 
-    arch = args_cfg.get('arch')
-    config_arch = config_info.get('arch')
-    if arch and config_arch and get_srcarch(arch) != get_srcarch(config_arch):
-        print(
-            '--arch',
-            arch,
-            'conflicts with',
-            args_cfg['kernel_config'],
-            'generated for',
-            config_arch,
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    arch_explicit = bool(arch or config_arch)
-    if not arch:
-        arch = config_arch
-    if not arch:
-        arch = 'x86'
-        if args_cfg['check_strict']:
-            # A guessed architecture would silently drop every arch/<real>/
-            # CVE as "not affected"; refuse to guess when dropping is enabled.
-            print(
-                "--check-strict can't infer the kernel architecture from",
-                args_cfg['kernel_config'],
-                '(no config banner); pass --arch',
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        if args_cfg['kernel_config']:
-            print('Assuming x86 kernel architecture; pass --arch to override', file=sys.stderr)
-    if not os.path.isdir(os.path.join(args_cfg['kernel'], 'arch', get_srcarch(arch))):
-        if arch_explicit:
-            print('Unknown kernel architecture:', arch, file=sys.stderr)
-            sys.exit(1)
-        # The arch default is only a guess: without it the scan still works,
-        # it merely loses the arch-specific include paths.
-        print(
-            'No arch/' + get_srcarch(arch),
-            'directory in',
-            args_cfg['kernel'] + '; continuing without arch-specific include paths',
-            file=sys.stderr,
-        )
-    args_cfg['arch'] = arch
+    args_cfg['arch'] = resolve_arch(args_cfg, config_info)
 
     hound = CVEhound(
         args_cfg['kernel'],
         args_cfg['metadata'],
         args_cfg['kernel_config'],
         args_cfg['check_strict'],
-        arch,
+        args_cfg['arch'],
     )
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')

@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import textwrap
 from subprocess import PIPE, CalledProcessError, Popen, run
 
 import psutil
@@ -10,6 +11,7 @@ from git import Repo
 from git.exc import GitCommandError
 
 from cvehound import CVEhound, get_rule_cves
+from cvehound.kbuild import KbuildParser
 
 INITIAL_COMMIT = 'v2.6.12-rc2'
 INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
@@ -258,6 +260,21 @@ def pytest_unconfigure(config):
     if linux_mount:
         umount(linux_mount)
         os.rmdir(linux_mount)
+
+
+def write_tree(root, files):
+    """Materialize a synthetic kernel tree: {relative path: file content}."""
+    for rel, content in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(textwrap.dedent(content))
+
+
+def build_map(root, arch='x86'):
+    """Build the Kbuild config map of a tree, keyed by relative path."""
+    kernel = os.path.abspath(str(root))
+    config = KbuildParser(None, arch, kernel).parse_tree()
+    return {os.path.relpath(k, kernel): v for k, v in config.items()}
 
 
 @pytest.fixture
