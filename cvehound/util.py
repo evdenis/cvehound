@@ -8,6 +8,23 @@ from importlib.metadata import distribution, version
 from importlib.resources import files
 from typing import Any
 
+# The top-level Makefile's ARCH -> SRCARCH mapping: which arch/<dir>
+# the sources for a given ARCH= value actually live in.
+SRCARCH = {
+    'i386': 'x86',
+    'x86_64': 'x86',
+    'sparc32': 'sparc',
+    'sparc64': 'sparc',
+    'parisc64': 'parisc',
+    'sh64': 'sh',
+    'tilepro': 'tile',
+    'tilegx': 'tile',
+}
+
+
+def get_srcarch(arch: str) -> str:
+    return SRCARCH.get(arch, arch)
+
 
 def get_config_data(path: str) -> dict[str, str]:
     with open(path) as fh:

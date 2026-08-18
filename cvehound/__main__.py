@@ -19,6 +19,7 @@ from cvehound.util import (
     get_kernel_version,
     get_rule_cves,
     get_spatch_version,
+    get_srcarch,
     parse_config,
 )
 
@@ -37,6 +38,7 @@ def check_config(config: dict[str, Any]) -> None:
         'report',
         'all_files',
         'metadata',
+        'arch',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -96,6 +98,11 @@ def main(args: list[str] | None = None) -> None:
     )
     parser.add_argument(
         '--kernel-config', nargs='?', const='-', metavar='.config', help='check kernel config'
+    )
+    parser.add_argument(
+        '--arch',
+        metavar='ARCH',
+        help='kernel architecture (default: from the .config banner, else x86)',
     )
     parser.add_argument(
         '--check-strict', action='store_true', help='output only CVEs enabled in .config'
@@ -199,12 +206,56 @@ def main(args: list[str] | None = None) -> None:
     if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         config_info = get_config_data(args_cfg['kernel_config'])
 
+    arch = args_cfg.get('arch')
+    config_arch = config_info.get('arch')
+    if arch and config_arch and get_srcarch(arch) != get_srcarch(config_arch):
+        print(
+            '--arch',
+            arch,
+            'conflicts with',
+            args_cfg['kernel_config'],
+            'generated for',
+            config_arch,
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    arch_explicit = bool(arch or config_arch)
+    if not arch:
+        arch = config_arch
+    if not arch:
+        arch = 'x86'
+        if args_cfg['check_strict']:
+            # A guessed architecture would silently drop every arch/<real>/
+            # CVE as "not affected"; refuse to guess when dropping is enabled.
+            print(
+                "--check-strict can't infer the kernel architecture from",
+                args_cfg['kernel_config'],
+                '(no config banner); pass --arch',
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if args_cfg['kernel_config']:
+            print('Assuming x86 kernel architecture; pass --arch to override', file=sys.stderr)
+    if not os.path.isdir(os.path.join(args_cfg['kernel'], 'arch', get_srcarch(arch))):
+        if arch_explicit:
+            print('Unknown kernel architecture:', arch, file=sys.stderr)
+            sys.exit(1)
+        # The arch default is only a guess: without it the scan still works,
+        # it merely loses the arch-specific include paths.
+        print(
+            'No arch/' + get_srcarch(arch),
+            'directory in',
+            args_cfg['kernel'] + '; continuing without arch-specific include paths',
+            file=sys.stderr,
+        )
+    args_cfg['arch'] = arch
+
     hound = CVEhound(
         args_cfg['kernel'],
         args_cfg['metadata'],
         args_cfg['kernel_config'],
         args_cfg['check_strict'],
-        config_info.get('arch', 'x86'),
+        arch,
     )
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
@@ -304,6 +355,7 @@ def main(args: list[str] | None = None) -> None:
     report['args']['only_files'] = args_cfg['files']
     report['args']['all_files'] = args_cfg['all_files']
     report['args']['check_strict'] = args_cfg['check_strict']
+    report['args']['arch'] = args_cfg['arch']
     report['kernel'] = get_kernel_version(args_cfg['kernel'])
     if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         report['config'] = config_info

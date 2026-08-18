@@ -17,6 +17,7 @@ from cvehound.util import (
     get_cves_metadata,
     get_rule_cves,
     get_spatch_version,
+    get_srcarch,
     parse_coccinelle_output,
 )
 
@@ -39,14 +40,16 @@ class CVEhound:
         self.metadata: dict[str, Any] = get_cves_metadata(metadata)
         self.spatch_version = get_spatch_version()
         self.check_strict = check_strict
+        self.arch = arch
+        self.srcarch = get_srcarch(arch)
         self.rules_metadata: dict[str, RuleMetadata] = {}
         (self.cve_all_rules, self.cve_assigned_rules, self.cve_disputed_rules) = get_rule_cves()
 
         ipaths = [
-            os.path.join('arch', arch, 'include'),
-            os.path.join('arch', arch, 'include/generated'),
-            os.path.join('arch', arch, 'include/uapi'),
-            os.path.join('arch', arch, 'include/generated/uapi'),
+            os.path.join('arch', self.srcarch, 'include'),
+            os.path.join('arch', self.srcarch, 'include/generated'),
+            os.path.join('arch', self.srcarch, 'include/uapi'),
+            os.path.join('arch', self.srcarch, 'include/generated/uapi'),
             'include',
             'include/uapi',
             'include/generated/uapi',
@@ -62,7 +65,7 @@ class CVEhound:
         self.config: Config | None = None
 
         if config:
-            kbuild_parser = KbuildParser(None, arch)
+            kbuild_parser = KbuildParser(None, self.srcarch)
             dirs_to_process: dict[str, Any] = collections.OrderedDict()
             kbuild_parser.init_class.process(kbuild_parser, dirs_to_process, kernel)
 
