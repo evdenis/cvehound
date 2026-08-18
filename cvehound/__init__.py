@@ -26,6 +26,33 @@ __VERSION__ = '1.2.1'
 RuleMetadata = dict[str, Any]
 
 
+def evaluate_file_condition(
+    logic: str | None, relpath: str, srcarch: str, config: Config | None
+) -> tuple[str, bool | None]:
+    """Evaluate one file's Kbuild CONFIG condition against a .config.
+
+    @logic is the raw condition from the Kbuild map: None when the file is
+    unknown to the parser, '' when the file is built unconditionally.
+    Returns the printable condition and the affected verdict; the verdict
+    is None when there is no .config to evaluate against.
+    """
+    if relpath.startswith('arch/') and not relpath.startswith('arch/' + srcarch + '/'):
+        # Sources of another architecture are never built into this kernel.
+        return ('False', False if config is not None else None)
+    if logic is None:
+        # Unknown to the parser: assume built (prefer a false positive).
+        return ('unknown', True if config is not None else None)
+    if logic == '':
+        return ('True', True if config is not None else None)
+    simplified = simplify_logic(logic)
+    if config is None:
+        return (str(simplified), None)
+    # Kconfig is closed-world: a symbol absent from the .config is disabled,
+    # so substitute every free symbol; Config lookups default to False.
+    subs = {sym: config[str(sym)] for sym in simplified.free_symbols}
+    return (str(simplified), bool(simplified.subs(subs)))
+
+
 class CVEhound:
     def __init__(
         self,
@@ -113,9 +140,11 @@ class CVEhound:
         if 'files' in config and config['files']:
             logging.info('Affected Files:')
             for file in config['files']:
-                logic = config['files'][file]['logic']
-                if self.config is not None:
-                    affected = 'affected' if config['files'][file]['config'] else 'not affected'
+                entry = config['files'][file]
+                logic = str(entry.get('logic', 'unknown'))
+                verdict = entry.get('config')
+                if self.config is not None and self.config_file and verdict is not None:
+                    affected = 'affected' if verdict else 'not affected'
                     logging.info(
                         ' - ' + file + ': ' + logic + '\n   ' + self.config_file + ': ' + affected
                     )
@@ -203,8 +232,8 @@ class CVEhound:
             return False
 
         config_result: dict[str, Any] = {}
-        if self.config_map:
-            kernel_files: dict[str, str] = {}
+        if self.config_map is not None:
+            kernel_files: dict[str, str | None] = {}
             for line in output.split('\n'):
                 file_list: list[str] = []
                 if not is_grep:
@@ -219,35 +248,29 @@ class CVEhound:
                         line = line[:rindex]
                 for f in file_list:
                     if os.path.isfile(f):
-                        kernel_files[f] = self.config_map.get(f, '')
+                        kernel_files[f] = self.config_map.get(f)
             if kernel_files:
                 config_affected: bool | None = None
-                if 'files' not in config_result:
-                    config_result['files'] = {}
+                config_result['files'] = {}
                 for kfile, kconfig in kernel_files.items():
                     rel_file = kfile[len(self.kernel) + 1 :]
-                    result_file: dict[str, Any] = {}
-                    if kconfig:
-                        simplified = simplify_logic(kconfig)
-                        result_file['logic'] = str(simplified)
-                        if self.config is not None:
-                            # Kconfig is closed-world: a symbol absent from a
-                            # .config is disabled, so substitute every free
-                            # symbol instead of only the ones the file mentions.
-                            subs = {sym: self.config[str(sym)] for sym in simplified.free_symbols}
-                            affected = bool(simplified.subs(subs))
-                            if affected:
-                                result_file['config'] = True
-                                config_affected = True
-                            else:
-                                result_file['config'] = False
-                                if config_affected is None:
-                                    config_affected = False
-                    else:
-                        # No config constraint for this file
-                        result_file['logic'] = str(True)
-                        result_file['config'] = True
-                        config_affected = True
+                    logic, affected = evaluate_file_condition(
+                        kconfig, rel_file, self.srcarch, self.config
+                    )
+                    result_file: dict[str, Any] = {
+                        'logic': logic,
+                        'mapped': kconfig is not None,
+                    }
+                    if kconfig is None and affected is not False:
+                        logging.warning(
+                            'No Kbuild mapping for ' + rel_file + ': assuming the file is built'
+                        )
+                    if affected is not None:
+                        result_file['config'] = affected
+                        if affected:
+                            config_affected = True
+                        elif config_affected is None:
+                            config_affected = False
                     config_result['files'][rel_file] = result_file
                 if config_affected is not None:
                     config_result['affected'] = config_affected
