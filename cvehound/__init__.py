@@ -111,7 +111,7 @@ class CVEhound:
             logging.info('Affected Files:')
             for file in config['files']:
                 logic = config['files'][file]['logic']
-                if self.config:
+                if self.config is not None:
                     affected = 'affected' if config['files'][file]['config'] else 'not affected'
                     logging.info(
                         ' - ' + file + ': ' + logic + '\n   ' + self.config_file + ': ' + affected
@@ -122,7 +122,7 @@ class CVEhound:
         if 'affected' not in config or config['affected'] is None:
             return
         config_affected = 'affected' if config['affected'] else 'not affected'
-        if self.config and self.config_file:
+        if self.config is not None and self.config_file:
             logging.info('Config: ' + self.config_file + ' ' + config_affected)
         else:
             logging.info('Config: any ' + config_affected)
@@ -227,8 +227,12 @@ class CVEhound:
                     if kconfig:
                         simplified = simplify_logic(kconfig)
                         result_file['logic'] = str(simplified)
-                        if self.config:
-                            affected = simplified.subs(self.config.get_mapping())
+                        if self.config is not None:
+                            # Kconfig is closed-world: a symbol absent from a
+                            # .config is disabled, so substitute every free
+                            # symbol instead of only the ones the file mentions.
+                            subs = {sym: self.config[str(sym)] for sym in simplified.free_symbols}
+                            affected = bool(simplified.subs(subs))
                             if affected:
                                 result_file['config'] = True
                                 config_affected = True
