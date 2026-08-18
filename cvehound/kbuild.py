@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 import re
@@ -19,7 +20,7 @@ class KbuildParser:
         self.srctree = os.path.abspath(srctree)
         self.local_vars = DataStructures.VariableStore()
         self.global_vars = DataStructures.VariableStore()
-        self.init_class = Linux.LinuxInit(model, arch)
+        self.init_class = Linux.LinuxInit(model, arch, self.srctree)
         self.before_pass = [Linux.LinuxBefore(model, arch)]
         self.during_pass = [
             Linux._00_LinuxDefinitions(model, arch),
@@ -81,6 +82,16 @@ class KbuildParser:
 
         # Drop current symbol table
         self.leave_symbolic_level()
+
+    def parse_tree(self):
+        """Crawl the kernel tree from its top-level seeds and return the
+        resulting file -> CONFIG condition map."""
+        dirs_to_process = collections.OrderedDict()
+        self.init_class.process(self, dirs_to_process, self.srctree)
+        for directory in dirs_to_process:
+            descend = self.init_class.get_file_for_subdirectory(directory)
+            self.process_kbuild_or_makefile(descend, dirs_to_process[directory])
+        return self.get_config()
 
     def get_config(self):
         return self.output.config

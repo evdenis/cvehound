@@ -177,9 +177,27 @@ class LinuxInit(BaseClasses.InitClass):
     mips_plat_line = r'platform-\$\(' + CONFIG_FORMAT + r'\)\s*\+=\s*(.*)'
     regex_mips_plat = re.compile(mips_plat_line)
 
-    def __init__(self, model: str, arch: str) -> None:
+    def __init__(self, model: str, arch: str, kernel_dir: str = '.') -> None:
         """Constructor for InitLinux, takes model and arch parameters."""
         super().__init__(model, arch)
+        self.kernel_dir = kernel_dir
+        self.srcarch = get_srcarch(arch)
+
+    def _abspath(self, *parts: str) -> str:
+        """Resolve a Makefile-relative path against the kernel root."""
+        return os.path.normpath(os.path.join(self.kernel_dir, *parts))
+
+    def _expand_make_vars(self, line: str) -> str:
+        """Expand the build-system variables the top-level scanners see.
+
+        These scanners read Makefiles directly instead of going through
+        KbuildParser.read_whole_file(), so they cannot use its variable
+        machinery; $(srctree) stays relative because every path built here
+        is resolved with _abspath().
+        """
+        line = line.replace(r'$(SRCARCH)', self.srcarch)
+        line = line.replace(r'$(ARCH)', self.arch)
+        return line.replace(r'$(srctree)', '.')
 
     def parse_architecture_regular(
         self, line: str, local_arch_dirs: dict[str, list['Precondition']]
@@ -202,9 +220,8 @@ class LinuxInit(BaseClasses.InitClass):
 
         matches = [x for x in re.split('\t| ', rhs) if x]
 
-        kernel_dir = getattr(self, '_kernel_dir', '.')
         for match in matches:
-            full = os.path.normpath(os.path.join(kernel_dir, match))
+            full = self._abspath(match)
             if not os.path.isdir(full):
                 continue
 
@@ -237,10 +254,9 @@ class LinuxInit(BaseClasses.InitClass):
 
         matches = [x for x in re.split('\t| ', rhs) if x]
 
-        kernel_dir = getattr(self, '_kernel_dir', '.')
         for match in matches:
             subdir = 'arch/arm/mach-' + match if lst == 'machine' else 'arch/arm/plat-' + match
-            fullpath = os.path.normpath(os.path.join(kernel_dir, subdir))
+            fullpath = self._abspath(subdir)
             if not os.path.isdir(fullpath):
                 continue
 
@@ -273,13 +289,12 @@ class LinuxInit(BaseClasses.InitClass):
 
         matches = [x for x in re.split('\t| ', rhs) if x]
 
-        kernel_dir = getattr(self, '_kernel_dir', '.')
         for match in matches:
             if lst != 'machine':  # Should never happen in blackfin
                 logging.error('plat- list should not be present in blackfin')
                 continue
 
-            machdir = os.path.normpath(os.path.join(kernel_dir, 'arch/blackfin/mach-' + match))
+            machdir = self._abspath('arch/blackfin/mach-' + match)
             for fullpath in (machdir, os.path.join(machdir, 'boards')):
                 if os.path.isdir(fullpath):
                     local_arch_dirs[fullpath].append(current_precondition[:])
@@ -307,8 +322,7 @@ class LinuxInit(BaseClasses.InitClass):
 
                 config = 'CONFIG_' + regex_match.group(1)
                 rhs = regex_match.group(2)
-                kernel_dir = getattr(self, '_kernel_dir', '.')
-                fulldir = os.path.normpath(os.path.join(kernel_dir, 'arch/mips', rhs))
+                fulldir = self._abspath('arch/mips', rhs)
                 if os.path.isdir(fulldir):
                     current_precondition = DataStructures.Precondition()
                     current_precondition.add_condition(config)
@@ -326,10 +340,9 @@ class LinuxInit(BaseClasses.InitClass):
         if not regex_match:
             return False
 
-        kernel_dir = getattr(self, '_kernel_dir', '.')
         include = regex_match.group(1)
         if not os.path.isabs(include):
-            include = os.path.normpath(os.path.join(kernel_dir, include))
+            include = self._abspath(include)
         if not os.path.isfile(include):
             logging.debug('mips: no such include file: ' + include)
             return True
@@ -338,9 +351,7 @@ class LinuxInit(BaseClasses.InitClass):
             for line in included_file:
                 platform_match = self.regex_mips_platforms.match(line)
                 if platform_match:
-                    subpath = os.path.join(
-                        kernel_dir, 'arch/mips', platform_match.group(1), 'Platform'
-                    )
+                    subpath = self._abspath('arch/mips', platform_match.group(1), 'Platform')
                     self.parse_mips_platform(subpath, local_arch_dirs)
         return True
 
@@ -370,9 +381,7 @@ class LinuxInit(BaseClasses.InitClass):
                 if not good:
                     break
 
-                line = line.replace(r'$(ARCH)', self.arch)
-                line = line.replace(r'$(SRCARCH)', get_srcarch(self.arch))
-                line = line.replace(r'$(srctree)', '.')
+                line = self._expand_make_vars(line)
                 logging.debug('read line: ' + line)
                 if (
                     self.parse_architecture_regular(line, local_arch_dirs)
@@ -404,13 +413,7 @@ class LinuxInit(BaseClasses.InitClass):
     )
     regex_seed = re.compile(seed_line)
 
-    def _scan_toplevel(
-        self,
-        path: str,
-        kernel_dir: str,
-        srcarch: str,
-        seeds: dict[str, list['Precondition']],
-    ) -> None:
+    def _scan_toplevel(self, path: str, seeds: dict[str, list['Precondition']]) -> None:
         """Collect directory seeds from a top-level Makefile/Kbuild."""
         if not os.path.isfile(path):
             return
@@ -419,10 +422,7 @@ class LinuxInit(BaseClasses.InitClass):
                 (good, line) = Helper.get_multiline_from_file(infile)
                 if not good:
                     break
-                line = line.replace(r'$(SRCARCH)', srcarch)
-                line = line.replace(r'$(ARCH)', self.arch)
-                line = line.replace(r'$(srctree)', '.')
-                m = self.regex_seed.match(line)
+                m = self.regex_seed.match(self._expand_make_vars(line))
                 if not m:
                     continue
                 precondition = DataStructures.Precondition()
@@ -430,10 +430,13 @@ class LinuxInit(BaseClasses.InitClass):
                     precondition.add_condition(Helper.get_config_string(m.group(3), self.model))
                 for tok in [x for x in re.split('\t| ', m.group(5)) if x]:
                     if '$(' in tok:
-                        # Not resolvable statically ($(ARCH_CORE), ...); the
-                        # arch Makefile scan recovers the important ones.
+                        # Not resolvable statically: $(ARCH_CORE), $(ARCH_LIB)
+                        # and $(ARCH_DRIVERS) are exports of the arch
+                        # Makefile's core-y/libs-y/drivers-y, which
+                        # parse_architecture_path() reads directly.
+                        logging.debug('unresolved seed token in ' + path + ': ' + tok)
                         continue
-                    full = os.path.normpath(os.path.join(kernel_dir, tok))
+                    full = self._abspath(tok)
                     if not os.path.isdir(full):
                         continue
                     seeds.setdefault(full, []).append(precondition[:])
@@ -447,15 +450,15 @@ class LinuxInit(BaseClasses.InitClass):
 
         parser.global_vars.create_variable('no_config_nesting', 0)
         parser.global_vars.create_variable('visited_dirs', set())
-        srcarch = get_srcarch(self.arch)
-        self._kernel_dir = kernel_dir
+        self.kernel_dir = kernel_dir
 
         seeds: dict[str, list[DataStructures.Precondition]] = {}
 
         # The real top-level seeds so arch/$(SRCARCH)/, io_uring/, rust/,
-        # samples/, ... are found on every kernel layout.
-        for f in ('Kbuild', 'Makefile', os.path.join('arch', srcarch, 'Makefile')):
-            self._scan_toplevel(os.path.join(kernel_dir, f), kernel_dir, srcarch, seeds)
+        # samples/, ... are found on every kernel layout. The arch Makefile's
+        # own list additions come from parse_architecture_path() below.
+        for f in ('Kbuild', 'Makefile'):
+            self._scan_toplevel(self._abspath(f), seeds)
 
         # Floor: the historically hardcoded unconditional directories — only
         # where the scan found nothing, because an empty precondition would
@@ -479,16 +482,18 @@ class LinuxInit(BaseClasses.InitClass):
             'certs/',
             'virt/',
         ]:
-            full = os.path.normpath(os.path.join(kernel_dir, subdir))
+            full = self._abspath(subdir)
             if full not in seeds and os.path.isdir(full):
+                logging.debug('seeding ' + full + ' from the fallback list')
                 seeds[full] = [DataStructures.Precondition()]
 
         for full, preconds in seeds.items():
             dirs_to_process[full] = Helper.build_precondition(preconds)
 
-        # Parse architecture specific lists (arm machine-/plat-, mips Platform)
+        # Architecture lists: core-y/libs-y/drivers-y additions plus the
+        # arm machine-/plat- and mips Platform forms.
         self.parse_architecture_path(
-            os.path.join(kernel_dir, 'arch', srcarch, 'Makefile'), dirs_to_process
+            self._abspath('arch', self.srcarch, 'Makefile'), dirs_to_process
         )
 
 
@@ -519,12 +524,10 @@ class LinuxBefore(BaseClasses.BeforePass):
         # Updated with #if(n)def/#if(n)eq conditions
         parser.local_vars.create_variable('ifdef_condition', DataStructures.Precondition())
 
-        # Local variable definitions, pre-seeded with make variables the
-        # build system provides to every Makefile.
-        parser.local_vars.create_variable(
-            'definitions',
-            {'SRCARCH': get_srcarch(self.arch), 'ARCH': self.arch},
-        )
+        # Local variable definitions. Build-system variables ($(srctree),
+        # $(SRCARCH), ...) are expanded by KbuildParser.replace_variables(),
+        # through which every line already passes.
+        parser.local_vars.create_variable('definitions', {})
 
 
 class _00_LinuxDefinitions(BaseClasses.DuringPass):
@@ -822,7 +825,7 @@ class _01_LinuxExpandMacros(BaseClasses.AfterPass):
 
             matches = [x for x in re.split('\t| ', rhs) if x]
             for item in matches:
-                fullpath = basepath + '/' + item
+                fullpath = os.path.normpath(basepath + '/' + item)
                 passdown_condition = condition[:]
                 if config_in_composite:
                     passdown_condition.append(condition_comp)
@@ -901,12 +904,25 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
     def __init__(self, model: str, arch: str) -> None:
         """Constructor for _03_LinuxOutput."""
         super().__init__(model, arch)
-        self.config: dict[str, str] = {}
         # Per-file alternative conditions, deduplicated, in insertion order.
         self.alternatives: dict[str, list[str]] = {}
 
+    @property
+    def config(self) -> dict[str, str]:
+        """The file -> condition map derived from the collected alternatives."""
+        return {item: self._join(alts) for item, alts in self.alternatives.items()}
+
+    @staticmethod
+    def _join(alts: list[str]) -> str:
+        """OR the alternatives; an unconditional path wins over any other."""
+        if '' in alts:
+            return ''
+        if len(alts) == 1:
+            return alts[0]
+        return ' | '.join('(' + alt + ')' for alt in alts)
+
     def process(self, parser: Any, path: str, condition_for_current_dir: 'Precondition') -> None:
-        """Print conditions collected in file_features variable."""
+        """Collect the conditions gathered in the file_features variable."""
         for item in sorted(parser.local_vars['file_features']):
             # Build the precondition, including the conditions for the current
             # directory.
@@ -914,17 +930,9 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
                 parser.local_vars['file_features'][item], condition_for_current_dir
             )
 
-            full_string = ' & '.join(precondition)
-            item = os.path.normpath(item)
             # A file reachable from more than one parent keeps every distinct
-            # condition; they are OR-ed flat (no re-nesting, no duplicates).
-            alts = self.alternatives.setdefault(item, [])
+            # condition; they are OR-ed together when the map is read.
+            alts = self.alternatives.setdefault(os.path.normpath(item), [])
+            full_string = ' & '.join(precondition)
             if full_string not in alts:
                 alts.append(full_string)
-            if '' in alts:
-                # An unconditional path wins over any conditional one.
-                self.config[item] = ''
-            elif len(alts) == 1:
-                self.config[item] = alts[0]
-            else:
-                self.config[item] = ' | '.join('(' + alt + ')' for alt in alts)
