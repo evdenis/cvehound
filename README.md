@@ -129,7 +129,15 @@ Other args:
    vulns.git and CIP kernel-sec
  - `--kernel-config` or `--kernel-config <file>` - will infer the kernel configuration required to
    build the affected code (based on Kbuild/Makefiles, ifdefs are not checked) and
-   check kernel .config file if there is one
+   check kernel .config file if there is one. Files the parser can't map to CONFIG_
+   options are reported as `unknown` and counted as affected
+ - `--check-strict` - with `--kernel-config`, report only CVEs whose affected files are
+   enabled in the .config. A CVE is dropped only when the evaluation explicitly rules
+   every affected file out (e.g. the option is disabled, or the file belongs to another
+   architecture); files unknown to the Kbuild parser are still reported with a warning
+ - `--arch` - kernel architecture to analyze (x86, arm64, ...; ARCH spellings like
+   x86_64 are normalized to the arch/ source directory). Defaults to the architecture
+   from the .config banner, or x86
  - `--files` - will limit the scope of checked cves to the kernel files of interest
  - `--exploit` - check only for CVEs that are known to be exploitable (according to
    the CISA Known Exploited Vulnerabilities catalog)
