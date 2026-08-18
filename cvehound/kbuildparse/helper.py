@@ -58,7 +58,8 @@ def guess_source_for_target(target: str) -> str | None:
     generic version for linux and busybox
     return None if no source file could be found
     """
-    for suffix in ('.c', '.S', '.s', '.l', '.y', '.ppm'):
+    target = os.path.normpath(target)
+    for suffix in ('.c', '.S', '.s', '.rs', '.l', '.y', '.ppm'):
         sourcefile = target[:-2] + suffix
         if os.path.exists(sourcefile):
             return sourcefile

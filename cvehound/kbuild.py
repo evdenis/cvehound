@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 
@@ -48,6 +49,7 @@ class KbuildParser:
         have previously been gathered in corresponding lists."""
 
         if not os.path.isfile(path):
+            logging.debug('kbuild: no makefile to parse at %s', path)
             return
 
         basepath = os.path.dirname(path)

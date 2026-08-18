@@ -392,6 +392,7 @@ class LinuxInit(BaseClasses.InitClass):
         be processed."""
 
         parser.global_vars.create_variable('no_config_nesting', 0)
+        parser.global_vars.create_variable('visited_dirs', set())
 
         # Default directories have no precondition
         for subdir in [
@@ -554,7 +555,7 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
             if regex_match.group(2) == 'y' or regex_match.group(2) == 'm':
                 matches = [x for x in re.split('\t| ', rhs) if x]
                 for match in matches:
-                    fullpath = basepath + '/' + match
+                    fullpath = os.path.normpath(basepath + '/' + match)
                     if os.path.isdir(fullpath):
                         parser.local_vars['dir_cond_collection'][fullpath].add_alternative(
                             parser.local_vars['ifdef_condition'][:]
@@ -580,7 +581,7 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
                 parser.local_vars['ifdef_condition'].add_condition(condition)
 
                 for match in matches:
-                    fullpath = basepath + '/' + match
+                    fullpath = os.path.normpath(basepath + '/' + match)
                     if os.path.isdir(fullpath):
                         # Has this directory been picked up via subdir-XY?
                         if (
@@ -620,7 +621,7 @@ class _02_LinuxObjects(BaseClasses.DuringPass):
             rhs = match.group(3)
             rhs_matches = [x.rstrip('/') for x in re.split('\t| ', rhs) if x]
             for m in rhs_matches:
-                fullpath = basepath + '/' + m + '/'
+                fullpath = os.path.normpath(basepath + '/' + m)
                 if not os.path.isdir(fullpath):
                     continue
 
@@ -808,6 +809,14 @@ class _02_LinuxProcessSubdirectories(BaseClasses.AfterPass):
             )
             descend = parser.init_class.get_file_for_subdirectory(directory)
 
+            # Don't re-parse a directory already descended into with the same
+            # downward condition (reachable from several parents).
+            key = (descend, tuple(downward_condition))
+            visited = parser.global_vars['visited_dirs']
+            if key in visited:
+                continue
+            visited.add(key)
+
             parser.process_kbuild_or_makefile(descend, downward_condition)
 
 
@@ -818,6 +827,8 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
         """Constructor for _03_LinuxOutput."""
         super().__init__(model, arch)
         self.config: dict[str, str] = {}
+        # Per-file alternative conditions, deduplicated, in insertion order.
+        self.alternatives: dict[str, list[str]] = {}
 
     def process(self, parser: Any, path: str, condition_for_current_dir: 'Precondition') -> None:
         """Print conditions collected in file_features variable."""
@@ -829,4 +840,16 @@ class _03_LinuxOutput(BaseClasses.AfterPass):
             )
 
             full_string = ' & '.join(precondition)
-            self.config[item] = full_string
+            item = os.path.normpath(item)
+            # A file reachable from more than one parent keeps every distinct
+            # condition; they are OR-ed flat (no re-nesting, no duplicates).
+            alts = self.alternatives.setdefault(item, [])
+            if full_string not in alts:
+                alts.append(full_string)
+            if '' in alts:
+                # An unconditional path wins over any conditional one.
+                self.config[item] = ''
+            elif len(alts) == 1:
+                self.config[item] = alts[0]
+            else:
+                self.config[item] = ' | '.join('(' + alt + ')' for alt in alts)
