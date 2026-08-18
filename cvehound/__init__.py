@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import collections
 import functools
 import logging
 import os
@@ -26,6 +25,9 @@ __VERSION__ = '1.2.1'
 
 RuleMetadata = dict[str, Any]
 
+# Sources that become object files, i.e. the ones the Kbuild map can describe.
+COMPILED_SUFFIXES = ('.c', '.S', '.s', '.rs')
+
 
 @functools.cache
 def _simplify_condition(logic: str) -> Any:
@@ -46,19 +48,23 @@ def evaluate_file_condition(
     """
     if relpath.startswith('arch/') and not relpath.startswith('arch/' + srcarch + '/'):
         # Sources of another architecture are never built into this kernel.
-        return ('False', False if config is not None else None)
-    if logic is None:
+        text, affected = 'False', False
+    elif logic is None:
         # Unknown to the parser: assume built (prefer a false positive).
-        return ('unknown', True if config is not None else None)
-    if logic == '':
-        return ('True', True if config is not None else None)
-    simplified = _simplify_condition(logic)
-    if config is None:
-        return (str(simplified), None)
-    # Kconfig is closed-world: a symbol absent from the .config is disabled,
-    # so substitute every free symbol; Config lookups default to False.
-    subs = {sym: config[str(sym)] for sym in simplified.free_symbols}
-    return (str(simplified), bool(simplified.subs(subs)))
+        text, affected = 'unknown', True
+    elif logic == '':
+        text, affected = 'True', True
+    else:
+        simplified = _simplify_condition(logic)
+        if config is None:
+            return (str(simplified), None)
+        # Kconfig is closed-world: a symbol absent from the .config is
+        # disabled, so substitute every free symbol; Config lookups
+        # default to False.
+        subs = {sym: config[str(sym)] for sym in simplified.free_symbols}
+        return (str(simplified), bool(simplified.subs(subs)))
+
+    return (text, affected if config is not None else None)
 
 
 class CVEhound:
@@ -100,15 +106,12 @@ class CVEhound:
         self.config: Config | None = None
 
         if config:
-            kbuild_parser = KbuildParser(None, self.srcarch, kernel)
-            dirs_to_process: dict[str, Any] = collections.OrderedDict()
-            kbuild_parser.init_class.process(kbuild_parser, dirs_to_process, kernel)
-
-            for item in dirs_to_process:
-                descend = kbuild_parser.init_class.get_file_for_subdirectory(item)
-                kbuild_parser.process_kbuild_or_makefile(descend, dirs_to_process[item])
-
-            self.config_map = kbuild_parser.get_config()
+            self.config_map = KbuildParser(None, arch, kernel).parse_tree()
+            if not self.config_map:
+                logging.warning(
+                    "Couldn't map any kernel file to CONFIG_ options: "
+                    'every finding will be reported as affected'
+                )
             if config != '-':
                 self.config_file = config
                 self.config = Config(config)
@@ -149,9 +152,9 @@ class CVEhound:
             logging.info('Affected Files:')
             for file in config['files']:
                 entry = config['files'][file]
-                logic = str(entry.get('logic', 'unknown'))
+                logic = entry['logic']
                 verdict = entry.get('config')
-                if self.config is not None and self.config_file and verdict is not None:
+                if verdict is not None and self.config_file:
                     affected = 'affected' if verdict else 'not affected'
                     logging.info(
                         ' - ' + file + ': ' + logic + '\n   ' + self.config_file + ': ' + affected
@@ -258,7 +261,7 @@ class CVEhound:
                     if os.path.isfile(f):
                         kernel_files[f] = self.config_map.get(f)
             if kernel_files:
-                config_affected: bool | None = None
+                verdicts: list[bool] = []
                 config_result['files'] = {}
                 for kfile, kconfig in kernel_files.items():
                     rel_file = kfile[len(self.kernel) + 1 :]
@@ -269,19 +272,21 @@ class CVEhound:
                         'logic': logic,
                         'mapped': kconfig is not None,
                     }
-                    if kconfig is None and affected is not False:
-                        logging.warning(
-                            'No Kbuild mapping for ' + rel_file + ': assuming the file is built'
+                    if logic == 'unknown':
+                        # Only compilation units are expected in the map;
+                        # headers and the like are never built on their own.
+                        report = (
+                            logging.warning
+                            if rel_file.endswith(COMPILED_SUFFIXES)
+                            else logging.debug
                         )
+                        report('No Kbuild mapping for ' + rel_file + ': assuming the file is built')
                     if affected is not None:
                         result_file['config'] = affected
-                        if affected:
-                            config_affected = True
-                        elif config_affected is None:
-                            config_affected = False
+                        verdicts.append(affected)
                     config_result['files'][rel_file] = result_file
-                if config_affected is not None:
-                    config_result['affected'] = config_affected
+                if verdicts:
+                    config_result['affected'] = any(verdicts)
 
         # Drop a hit under --check-strict only when the .config evaluation
         # explicitly ruled every affected file out; an undetermined verdict

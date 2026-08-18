@@ -24,6 +24,3 @@ class Config(Mapping[str, bool]):
 
     def __len__(self) -> int:
         return len(self._storage)
-
-    def get_mapping(self) -> dict[str, bool]:
-        return self._storage
