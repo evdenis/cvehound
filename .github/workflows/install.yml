@@ -36,7 +36,7 @@ jobs:
     - uses: actions/checkout@v7
 
     - name: Install uv with Python ${{ matrix.python-version }}
-      uses: astral-sh/setup-uv@v8.0.0
+      uses: astral-sh/setup-uv@v10.0.1
       with:
         python-version: ${{ matrix.python-version }}
         enable-cache: true
