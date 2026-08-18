@@ -249,23 +249,24 @@ class CVEhound:
                 if config_affected is not None:
                     config_result['affected'] = config_affected
 
-        if (
-            self.check_strict and 'affected' in config_result and config_result['affected']
-        ) or not self.check_strict:
-            if cve in self.metadata:
-                result = self.metadata[cve]
-            result['config'] = config_result
-            result['spatch_output'] = output
-            if not is_grep:
-                result['files'] = parse_coccinelle_output(output)
-            else:
-                result['files'] = [{'file': x} for x in files]
-            self._print_found_cve(cve)
-            self._print_affected_files(config_result)
-            logging.debug(output)
-            logging.info('')
-        else:
+        # Drop a hit under --check-strict only when the .config evaluation
+        # explicitly ruled every affected file out; an undetermined verdict
+        # (no .config, unmapped files) must not silence a finding.
+        if self.check_strict and config_result.get('affected') is False:
             return False
+
+        if cve in self.metadata:
+            result = self.metadata[cve]
+        result['config'] = config_result
+        result['spatch_output'] = output
+        if not is_grep:
+            result['files'] = parse_coccinelle_output(output)
+        else:
+            result['files'] = [{'file': x} for x in files]
+        self._print_found_cve(cve)
+        self._print_affected_files(config_result)
+        logging.debug(output)
+        logging.info('')
 
         return result
 

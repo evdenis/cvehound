@@ -160,6 +160,18 @@ def main(args: list[str] | None = None) -> None:
         config = os.path.normpath(os.path.join(args_cfg['kernel'], '.config'))
         if os.path.isfile(config):
             args_cfg['kernel_config'] = config
+        elif args_cfg['check_strict']:
+            print(
+                '--check-strict needs a kernel .config, but', config, 'not found', file=sys.stderr
+            )
+            sys.exit(1)
+        else:
+            print(
+                'No',
+                config,
+                'found: inferring CONFIG_ options without a .config check',
+                file=sys.stderr,
+            )
     else:
         if args_cfg['kernel_config'] and not os.path.isfile(args_cfg['kernel_config']):
             print("Can't find config file", args_cfg['kernel_config'], file=sys.stderr)
