@@ -31,6 +31,8 @@ jobs:
           python-version: "3.12"
         - os: ubuntu-latest
           python-version: "3.13"
+        - os: ubuntu-latest
+          python-version: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v7
@@ -48,3 +50,4 @@ jobs:
       run: |
         uv run cvehound --help
         uv run cvehound --version
+        uv run python -m cvehound --version
