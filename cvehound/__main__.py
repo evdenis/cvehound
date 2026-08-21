@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import json
 import logging
+import multiprocessing
 import os
 import re
 import shutil
@@ -22,29 +23,7 @@ from cvehound.util import (
     get_srcarch,
     parse_config,
 )
-
-# The hound instance each worker process operates on: sent once per worker
-# via the pool initializer instead of being pickled into every task (the
-# Kbuild config map alone is several MB).
-_hound: CVEhound | None = None
-
-
-def _worker_init(hound: CVEhound, loglevel: int) -> None:
-    global _hound
-    _hound = hound
-    # Workers do the user-facing logging; under the spawn/forkserver start
-    # methods (the default on some platforms) the parent's logging setup is
-    # not inherited. basicConfig is a no-op when it was (fork).
-    setup_logging(loglevel)
-
-
-def _worker_check_cve(cve: str, all_files: bool) -> dict[str, Any] | bool:
-    assert _hound is not None
-    return _hound.check_cve(cve, all_files)
-
-
-def setup_logging(loglevel: int) -> None:
-    logging.basicConfig(level=loglevel, format='%(message)s')
+from cvehound.worker import _worker_check_cve, _worker_init, setup_logging
 
 
 def resolve_arch(args_cfg: dict[str, Any], config_info: dict[str, str]) -> str:
@@ -391,6 +370,10 @@ def main(args: list[str] | None = None) -> None:
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
 
+    # Under forkserver (the Linux default since Python 3.14) workers would
+    # otherwise each re-import cvehound (and sympy) when the CLI runs as
+    # `python -m cvehound`; preloading amortizes that once. No-op for fork/spawn.
+    multiprocessing.set_forkserver_preload(['cvehound.worker'])
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=os.cpu_count(), initializer=_worker_init, initargs=(hound, loglevel)
     ) as executor:
