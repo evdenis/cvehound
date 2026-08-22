@@ -5,7 +5,6 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
 from typing import Any
 
 from sympy.logic import simplify_logic
@@ -14,6 +13,7 @@ from cvehound.config import Config
 from cvehound.exception import UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
+    fix_date_str,
     get_cves_metadata,
     get_rule_cves,
     get_spatch_version,
@@ -141,10 +141,7 @@ class CVEhound:
             if 'cmt_msg' in info:
                 logging.info('MSG: ' + info['cmt_msg'])
             if 'fix_date' in info:
-                logging.info(
-                    'FIX DATE: '
-                    + datetime.fromtimestamp(info['fix_date'], tz=UTC).strftime('%Y-%m-%d')
-                )
+                logging.info('FIX DATE: ' + fix_date_str(info['fix_date']))
         logging.info('https://www.cve.org/CVERecord?id=' + cve)
 
     def _print_affected_files(self, config: dict[str, Any]) -> None:

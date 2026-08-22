@@ -4,9 +4,11 @@ import os
 import re
 import subprocess
 from configparser import ConfigParser
+from datetime import UTC, datetime
 from importlib.metadata import distribution, version
-from importlib.resources import files
 from typing import Any
+
+from cvehound.content import RULE_SUFFIXES, resolve_content
 
 # The top-level Makefile's ARCH -> SRCARCH mapping: which arch/<dir>
 # the sources for a given ARCH= value actually live in.
@@ -93,28 +95,53 @@ def get_rule_cves() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     known: dict[str, str] = {}
     assigned: dict[str, str] = {}
     disputed: dict[str, str] = {}
-    cve_dir = str(files('cvehound').joinpath('cve'))
+    cve_dir = resolve_content().rules_dir
     for root, _dirs, file_list in os.walk(cve_dir):
+        rel = os.path.relpath(root, cve_dir)
+        is_disputed = rel.split(os.sep)[0] == 'disputed'
         for cve in file_list:
+            if not cve.endswith(RULE_SUFFIXES):
+                continue
             path = os.path.join(root, cve)
             name = cve.removesuffix('.grep').removesuffix('.cocci')
             known[name] = path
-            if 'disputed' in root:
+            if is_disputed:
                 disputed[name] = path
             else:
                 assigned[name] = path
     return (known, assigned, disputed)
 
 
-def get_cves_metadata(path: str | None) -> Any:
+def resolve_metadata_path(path: str | None = None) -> str | None:
+    """Resolve the metadata blob to use: the explicit path, $CVEHOUND_METADATA,
+    the content overlay, then the packaged default; None when nothing exists."""
     if not path:
-        path = os.environ.get(
-            'CVEHOUND_METADATA', str(files('cvehound').joinpath('data/kernel_cves.json.gz'))
-        )
-    data = None
+        path = os.environ.get('CVEHOUND_METADATA')
+    if path:
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Can't find metadata file {path}")
+        if not path.endswith('.gz'):
+            raise ValueError(f'Metadata file {path} is not a gz archive')
+        return path
+    return resolve_content().metadata_path
+
+
+def latest_fix_date(metadata: dict[str, Any]) -> int:
+    """The newest fix_date in a metadata blob: its effective generation date."""
+    return max((info.get('fix_date', 0) for info in metadata.values()), default=0)
+
+
+def fix_date_str(timestamp: int) -> str:
+    """Render a fix_date timestamp the one way it appears everywhere."""
+    return datetime.fromtimestamp(timestamp, tz=UTC).strftime('%Y-%m-%d')
+
+
+def get_cves_metadata(path: str | None) -> Any:
+    path = resolve_metadata_path(path)
+    if path is None:
+        return {}
     with gzip.open(path, 'rt', encoding='utf-8') as fh:
-        data = json.load(fh)
-    return data
+        return json.load(fh)
 
 
 def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:

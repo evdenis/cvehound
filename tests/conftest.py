@@ -4,6 +4,7 @@ import os
 import tempfile
 import textwrap
 from subprocess import PIPE, CalledProcessError, Popen, run
+from urllib.request import urlretrieve
 
 import psutil
 import pytest
@@ -11,7 +12,10 @@ from git import Repo
 from git.exc import GitCommandError
 
 from cvehound import CVEhound, get_rule_cves
+from cvehound.content import DEFAULT_BASE, METADATA_NAME
 from cvehound.kbuild import KbuildParser
+from cvehound.scripts.update_metadata import get_cache_dir
+from cvehound.util import resolve_metadata_path
 
 INITIAL_COMMIT = 'v2.6.12-rc2'
 INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
@@ -174,6 +178,31 @@ class KernelCheckout:
         self.current = identity
 
 
+def _ensure_metadata():
+    """Point CVEHOUND_METADATA at a usable blob when the checkout has none.
+
+    The metadata blob is not git-tracked (CI publishes it as a content-latest
+    release asset); fetch it once into the cvehound cache dir.
+    """
+    if os.environ.get('CVEHOUND_METADATA'):
+        return
+    # CVEHOUND_CONTENT=none is already set, so this resolves to the packaged
+    # blob or None -- exactly "does the checkout have a blob".
+    if resolve_metadata_path(None):
+        return
+    blob_name = os.path.basename(METADATA_NAME)
+    cache = get_cache_dir()
+    dest = os.path.join(cache, blob_name)
+    if not os.path.isfile(dest):
+        os.makedirs(cache, exist_ok=True)
+        # Download to a temp name first: an interrupted download must not
+        # leave a truncated blob that poisons every later run.
+        tmp = dest + '.download'
+        urlretrieve(DEFAULT_BASE + '/' + blob_name, tmp)
+        os.replace(tmp, dest)
+    os.environ['CVEHOUND_METADATA'] = dest
+
+
 def pytest_configure(config):
     global linux_mount
     global linux_repo
@@ -181,6 +210,11 @@ def pytest_configure(config):
     global _kernel_checkout
     global branches
     global cves
+
+    # The suite must parametrize over the repository's own rules and metadata,
+    # never over a developer's content overlay.
+    os.environ['CVEHOUND_CONTENT'] = 'none'
+    _ensure_metadata()
 
     config.addinivalue_line('markers', 'slow: mark test as slow to run')
     config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')

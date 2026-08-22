@@ -26,7 +26,6 @@ dependencies = ["sympy", "pyyaml"]
 [project.scripts]
 cvehound = "cvehound.__main__:main"
 cvehound_update_metadata = "cvehound.scripts.update_metadata:main"
-cvehound_update_rules = "cvehound.scripts.update_rules:main"
 
 [project.urls]
 Homepage = "http://github.com/evdenis/cvehound"
