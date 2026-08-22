@@ -1,5 +1,28 @@
 # ChangeLog
 
+## Unreleased
+
+ - Reworked out-of-band content updates: `cvehound update` downloads a
+   checksummed, versioned content set (rules + metadata) from the rolling
+   content-latest GitHub release and installs it atomically under
+   ~/.local/share/cvehound/ — the installed package is never modified. The
+   old updater could destroy the installed rules on a failed download
+ - Removed the `cvehound_update_rules` script; `cvehound update` replaces
+   it. An invalid or too-new content set falls back to the packaged baseline
+ - Removed kernel_cves.json.gz from git: a weekly CI job regenerates it and
+   publishes it as a content-latest asset; the PyPI build copies it into the
+   package. `cvehound_update_metadata` is a maintainer/CI tool now, writes
+   atomically, refuses empty or drastically shrunken results, and defaults
+   its output to the working directory
+ - `--version` now reports the rules and metadata identity, JSON reports
+   record which content produced the findings (`tools.rules`,
+   `tools.metadata`) plus the previously missing args (metadata, exclude,
+   exploit, ignore_files), and stale metadata prints a warning (--exploit
+   without metadata is an error since it would silently match nothing)
+ - Validated $CVEHOUND_METADATA like --metadata; non-rule files in the rules
+   dir are ignored and the disputed group no longer depends on the install
+   path; an unparsable rule Version: header no longer aborts the whole scan
+
 ## 1.3.0 - Aug 18 2026
 
  - Added detection rules for 16 new CVE IDs and updated 25 existing rules

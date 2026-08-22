@@ -78,11 +78,27 @@ directly from the repository (clone it on your computer beforehand):
 $ pip install -e .
 ```
 
-To update the cve rules from github repository:
+### Updating rules and metadata
+
+Detection rules and CVE metadata evolve much faster than the tool. To refresh
+both without upgrading cvehound:
 
 ``` shell
-$ cvehound_update_rules
+$ cvehound update
 ```
+
+Updates are downloaded from the project's rolling `content-latest` GitHub
+release, verified against a checksummed manifest, and installed atomically
+under `~/.local/share/cvehound/` — the installed package is never modified.
+`cvehound update --check` only reports whether an update is available
+(exit code 10 when one is, handy for cron), and `cvehound --version` shows
+exactly which rules and metadata are in use. If the downloaded content is
+missing or invalid, cvehound falls back to the rules and metadata bundled
+with the package.
+
+The metadata location can also be pinned with `--metadata <file>` or the
+`CVEHOUND_METADATA` environment variable, and default CLI options can be set
+in `/etc/cvehound.ini` or `~/.config/cvehound.ini` (see `--config`).
 
 ## How to use
 
