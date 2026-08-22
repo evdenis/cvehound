@@ -10,20 +10,128 @@ import re
 import shutil
 import subprocess
 import sys
+import zlib
+from datetime import UTC, datetime
 from typing import Any
 
 from cvehound import CVEhound
+from cvehound.content import resolve_content
 from cvehound.exception import UnsupportedVersion
 from cvehound.util import (
+    fix_date_str,
     get_config_data,
     get_cvehound_version,
+    get_cves_metadata,
     get_kernel_version,
     get_rule_cves,
     get_spatch_version,
     get_srcarch,
+    latest_fix_date,
     parse_config,
+    resolve_metadata_path,
 )
 from cvehound.worker import _worker_check_cve, _worker_init, setup_logging
+
+# Metadata older than this gets a warning; --exploit is stricter because the
+# CISA KEV catalog it filters on changes much faster than the fix data.
+METADATA_STALE_DAYS = 90
+METADATA_STALE_DAYS_EXPLOIT = 30
+
+
+def format_version_info() -> str:
+    """Tool version plus the identity of the content it would scan with."""
+    lines = ['cvehound ' + get_cvehound_version()]
+    content = resolve_content()
+    (all_rules, _, _) = get_rule_cves()
+    origin = content.source
+    if content.content_id:
+        origin += ' ' + content.content_id
+    if content.source_commit:
+        origin += ', commit ' + content.source_commit[:12]
+    lines.append(f'rules: {len(all_rules)} ({origin})')
+    try:
+        path = resolve_metadata_path(None)
+    except (FileNotFoundError, ValueError) as err:
+        lines.append(f'metadata: error: {err}')
+        return '\n'.join(lines)
+    if path is None:
+        lines.append("metadata: none (run 'cvehound update')")
+    elif path == content.metadata_path and content.metadata_generated:
+        # The verified manifest already carries the blob's generation date:
+        # no need to gunzip and parse the whole blob just for --version.
+        lines.append(f'metadata: updated {content.metadata_generated} ({path})')
+    else:
+        try:
+            metadata = get_cves_metadata(path)
+        except (OSError, EOFError, ValueError, zlib.error) as err:
+            # A corrupt or truncated blob must not crash the very command
+            # users run to diagnose their install.
+            lines.append(f'metadata: error: {path}: {err}')
+            return '\n'.join(lines)
+        latest = latest_fix_date(metadata)
+        if latest:
+            lines.append(f'metadata: updated {fix_date_str(latest)} ({path})')
+        else:
+            lines.append(f'metadata: {path}')
+    return '\n'.join(lines)
+
+
+class _VersionAction(argparse.Action):
+    def __init__(self, option_strings: list[str], dest: str, **kwargs: Any) -> None:
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        print(format_version_info())
+        parser.exit()
+
+
+def check_metadata_freshness(metadata: dict[str, Any], exploit: bool) -> None:
+    if not metadata:
+        if exploit:
+            print(
+                '--exploit needs CVE metadata, but none was found; '
+                "run 'cvehound update' to fetch it",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(
+            'Warning: no CVE metadata found, findings will lack commit details; '
+            "run 'cvehound update' to fetch it",
+            file=sys.stderr,
+        )
+        return
+    latest = latest_fix_date(metadata)
+    if not latest:
+        return
+    age_days = int((datetime.now(tz=UTC).timestamp() - latest) // 86400)
+    limit = METADATA_STALE_DAYS_EXPLOIT if exploit else METADATA_STALE_DAYS
+    if age_days > limit:
+        hint = ' (--exploit may miss recently catalogued exploits)' if exploit else ''
+        print(
+            f'Warning: the CVE metadata is ~{age_days} days old{hint}; '
+            "run 'cvehound update' to refresh it",
+            file=sys.stderr,
+        )
+
+
+def ensure_rules(all_rules: dict[str, str]) -> None:
+    """An empty rule set means a broken install (e.g. an interrupted run of the
+    legacy in-place updater); scanning would silently report nothing."""
+    if all_rules:
+        return
+    content = resolve_content()
+    if content.source == 'overlay':
+        remedy = "run 'cvehound update --force' to reinstall the content overlay"
+    else:
+        remedy = 'reinstall the package: pip install --force-reinstall cvehound'
+    print('No detection rules found in', content.rules_dir + ';', remedy, file=sys.stderr)
+    sys.exit(1)
 
 
 def resolve_arch(args_cfg: dict[str, Any], config_info: dict[str, str]) -> str:
@@ -99,9 +207,15 @@ def check_config(config: dict[str, Any]) -> None:
 def main(args: list[str] | None = None) -> None:
     if args is None:
         args = sys.argv[1:]
+    if args and args[0] == 'update':
+        from cvehound.scripts.update import main as update_main
+
+        sys.exit(update_main(args[1:]))
     parser = argparse.ArgumentParser(
         prog='cvehound',
         description='A tool to check linux kernel sources dump for known CVEs',
+        epilog="subcommands: 'cvehound update' refreshes the detection rules and "
+        "CVE metadata (see 'cvehound update --help')",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -166,11 +280,17 @@ def main(args: list[str] | None = None) -> None:
     parser.add_argument(
         '--metadata', metavar='PATH', help='Path to non-standard location of kernel_cves.json.gz'
     )
-    parser.add_argument('--version', action='version', version=get_cvehound_version())
-    cmdargs = parser.parse_args()
+    parser.add_argument(
+        '--version',
+        action=_VersionAction,
+        default=argparse.SUPPRESS,
+        help='show the tool, rules, and metadata versions and exit',
+    )
+    cmdargs = parser.parse_args(args)
 
     if cmdargs.list:
         (all_rules, _, _) = get_rule_cves()
+        ensure_rules(all_rules)
         print('\n'.join(sorted(all_rules)))
         sys.exit(0)
 
@@ -201,13 +321,12 @@ def main(args: list[str] | None = None) -> None:
         print('cvehound: error: the following arguments are required: --kernel/-k', file=sys.stderr)
         sys.exit(1)
 
-    if args_cfg['metadata']:
-        if not os.path.isfile(args_cfg['metadata']):
-            print("Can't find metadata file", args_cfg['metadata'], file=sys.stderr)
-            sys.exit(1)
-        if not args_cfg['metadata'].endswith('.gz'):
-            print('Metadata file', args_cfg['metadata'], 'is not the gz archive', file=sys.stderr)
-            sys.exit(1)
+    try:
+        # Also validates $CVEHOUND_METADATA, which --metadata's checks never saw.
+        metadata_path = resolve_metadata_path(args_cfg['metadata'])
+    except (FileNotFoundError, ValueError) as err:
+        print(err, file=sys.stderr)
+        sys.exit(1)
 
     if not all(os.path.isfile(os.path.join(args_cfg['kernel'], f)) for f in ['Makefile']):
         print(args_cfg['kernel'], "isn't a kernel directory", file=sys.stderr)
@@ -260,11 +379,13 @@ def main(args: list[str] | None = None) -> None:
 
     hound = CVEhound(
         args_cfg['kernel'],
-        args_cfg['metadata'],
+        metadata_path,
         args_cfg['kernel_config'],
         args_cfg['check_strict'],
         args_cfg['arch'],
     )
+    ensure_rules(hound.cve_all_rules)
+    check_metadata_freshness(hound.metadata, args_cfg['exploit'])
 
     cve_id = re.compile(r'^CVE-\d{4}-\d{4,7}$')
     cve_set: set[str]
@@ -361,14 +482,33 @@ def main(args: list[str] | None = None) -> None:
     report['args']['kernel'] = args_cfg['kernel']
     report['args']['config'] = args_cfg['kernel_config']
     report['args']['only_files'] = args_cfg['files']
+    report['args']['ignore_files'] = args_cfg['ignore_files']
     report['args']['all_files'] = args_cfg['all_files']
     report['args']['check_strict'] = args_cfg['check_strict']
     report['args']['arch'] = args_cfg['arch']
+    report['args']['exclude'] = sorted(args_cfg['exclude'])
+    report['args']['exploit'] = args_cfg['exploit']
+    report['args']['metadata'] = metadata_path
     report['kernel'] = get_kernel_version(args_cfg['kernel'])
     if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
+    # Rules and metadata update out-of-band, so the tool version alone does not
+    # identify what produced the findings; pin the content identity too.
+    content = resolve_content()
+    rules_info: dict[str, Any] = {'source': content.source, 'count': len(hound.cve_all_rules)}
+    if content.content_id:
+        rules_info['content_id'] = content.content_id
+    if content.source_commit:
+        rules_info['commit'] = content.source_commit
+    report['tools']['rules'] = rules_info
+    latest_fix = latest_fix_date(hound.metadata)
+    report['tools']['metadata'] = {
+        'path': metadata_path,
+        'entries': len(hound.metadata),
+        'latest_fix_date': fix_date_str(latest_fix) if latest_fix else None,
+    }
 
     # Under forkserver (the Linux default since Python 3.14) workers would
     # otherwise each re-import cvehound (and sympy) when the CLI runs as
