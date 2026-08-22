@@ -332,7 +332,17 @@ class CVEhound:
                     fixes = line.partition('Detect-To:')[2].strip()
                 elif 'Version:' in line:
                     version = line.partition('Version:')[2].strip()
-                    version = int(version.replace('.', ''))
+                    try:
+                        version = int(version.replace('.', ''))
+                    except ValueError:
+                        # An unparsable requirement must degrade to "run the
+                        # rule" (prefer a false positive), not abort the scan.
+                        logging.warning(
+                            '%s: cannot parse Version: %r; ignoring the spatch requirement',
+                            cve,
+                            version,
+                        )
+                        version = 0
 
         meta = {'files': files, 'fix': fix, 'fixes': fixes, 'version': version}
         self.rules_metadata[cve] = meta
