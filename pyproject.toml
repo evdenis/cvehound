@@ -42,11 +42,10 @@ lint = [
     "pre-commit>=4.0",
 ]
 
+# Package data (cvehound/cve/*, cvehound/data/*) ships via MANIFEST.in plus
+# setuptools' pyproject-mode include_package_data default.
 [tool.setuptools.packages.find]
 include = ["cvehound", "cvehound.*"]
-
-[tool.setuptools.package-data]
-"*" = ["*.cocci", "*.grep", "*.gz"]
 
 [tool.ruff]
 target-version = "py311"

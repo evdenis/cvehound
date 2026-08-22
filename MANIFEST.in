@@ -1,5 +1,4 @@
 include README.md
-include cvehound/cve/*.cocci
-include cvehound/cve/*.grep
+recursive-include cvehound/cve *.cocci *.grep
 include cvehound/data/*
 include cvehound/scripts/*
