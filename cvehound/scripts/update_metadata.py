@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import contextlib
 import glob
 import gzip
 import json
@@ -8,7 +9,6 @@ import re
 import subprocess
 import sys
 from functools import cache
-from importlib.resources import files
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -409,6 +409,42 @@ def merge_cve_data(
     return merged
 
 
+def write_metadata(js: dict[str, Any], filename: str) -> None:
+    """Atomically write the metadata blob, refusing suspicious regressions.
+
+    A failed fetch of the upstream sources must never destroy a good blob:
+    an empty result is rejected outright, and a large shrink against an
+    existing readable blob is rejected too (write to a fresh path to
+    override).  The write goes through a temp file + os.replace so an
+    interrupted run cannot leave a truncated archive behind.
+    """
+    if not js:
+        raise RuntimeError('no CVE data was fetched from any source; refusing to write')
+
+    old_count = 0
+    if os.path.isfile(filename):
+        try:
+            with gzip.open(filename, 'rt', encoding='utf-8') as fh:
+                old_count = len(json.load(fh))
+        except (OSError, ValueError):
+            old_count = 0  # corrupt or unreadable: treat as absent
+    if old_count and len(js) < 0.9 * old_count:
+        raise RuntimeError(
+            f'refusing to overwrite {filename}: the new set has {len(js)} CVEs '
+            f'vs {old_count} existing (>10% shrink); write to a new path to override'
+        )
+
+    tmp = filename + '.tmp'
+    try:
+        with gzip.open(tmp, 'wt', encoding='utf-8') as fh:
+            json.dump(js, fh)
+        os.replace(tmp, filename)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
 def main(args: list[str] | None = None) -> None:
     if args is None:
         args = sys.argv
@@ -422,9 +458,10 @@ def main(args: list[str] | None = None) -> None:
     if len(args) == 3:
         filename = args[2]
     else:
-        filename = os.environ.get(
-            'CVEHOUND_METADATA', str(files('cvehound').joinpath('data/kernel_cves.json.gz'))
-        )
+        # Default to the working directory: the blob is no longer git-tracked
+        # or rewritten inside the installed package; CI (or the maintainer)
+        # publishes it as a content-latest release asset.
+        filename = os.environ.get('CVEHOUND_METADATA', 'kernel_cves.json.gz')
 
     # Keep the clones in the user cache: the metadata file usually lives inside
     # the installed package, which is no place for a couple of git repositories.
@@ -462,8 +499,11 @@ def main(args: list[str] | None = None) -> None:
     js = {cve: dropempty(info) for cve, info in js.items()}
 
     print(f'Writing metadata to {filename}...')
-    with gzip.open(filename, 'wt', encoding='utf-8') as fh:
-        json.dump(js, fh)
+    try:
+        write_metadata(js, filename)
+    except RuntimeError as err:
+        print(f'Error: {err}', file=sys.stderr)
+        sys.exit(1)
 
     print('Done!')
 
