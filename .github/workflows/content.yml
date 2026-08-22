@@ -1,0 +1,116 @@
+# Builds and publishes the detection content set (rules + metadata blob +
+# manifest) as assets of the rolling `content-latest` GitHub release, which
+# `cvehound update` consumes.
+#
+# Rule pushes republish quickly, reusing the already-published metadata blob;
+# the weekly schedule regenerates the metadata first. Both paths fetch the
+# published blob into kernel_cves.json.gz up front: it is the payload for a
+# rule push, and the baseline write_metadata() compares against (refusing an
+# empty result or a >10% shrink) for the weekly regeneration -- the one
+# shrink guard.
+#
+# One-time bootstrap: create the release with
+#   gh release create content-latest --prerelease --title 'Detection content (rolling)' \
+#     --notes 'Rolling detection content consumed by `cvehound update`. Do not delete.'
+# then run this workflow once via workflow_dispatch while the metadata blob
+# still exists in the tree (it seeds the first published blob).
+
+name: content
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'cvehound/cve/**'
+  workflow_dispatch:
+  schedule:
+    # Weekly metadata regeneration; offset from the Monday test cron.
+    - cron: '0 3 * * WED'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: content-publish
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.11"
+
+      - name: Install CVEhound
+        run: uv sync --locked
+
+      - name: Fetch the published metadata blob
+        run: |
+          if gh release download content-latest --pattern kernel_cves.json.gz --dir . 2>/dev/null; then
+            echo 'Using the published metadata blob'
+          elif [[ -f cvehound/data/kernel_cves.json.gz ]]; then
+            cp cvehound/data/kernel_cves.json.gz .
+            echo 'Bootstrap: using the in-repo metadata blob'
+          elif [[ "${{ github.event_name }}" == 'schedule' ]]; then
+            echo 'No published blob yet; regenerating without a shrink baseline'
+          else
+            echo 'No metadata blob available' >&2
+            exit 1
+          fi
+
+      - name: Get Date
+        if: github.event_name == 'schedule'
+        id: date
+        run: echo "date=$(date +'%Y-%m')" >> $GITHUB_OUTPUT
+
+      # Reuses the kernel clone cache maintained by test.yml. Only commit
+      # objects are needed (rev-list/merge-base/show), so no checkout.
+      - name: Restore Linux Repository
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v6
+        with:
+          path: tests/linux/.git
+          key: linux-git-v1-${{ steps.date.outputs.date }}
+
+      - name: Download Linux Tree
+        if: github.event_name == 'schedule'
+        run: |
+          if [[ ! -d tests/linux/.git ]]; then
+            curl --fail --location --silent --show-error \
+              --retry 5 --retry-all-errors --retry-delay 5 --continue-at - \
+              --output clone.bundle \
+              https://mirrors.edge.kernel.org/pub/scm/.bundles/pub/scm/linux/kernel/git/stable/linux/clone.bundle
+            git clone --no-checkout clone.bundle tests/linux
+            rm -f clone.bundle
+          fi
+          cd tests/linux
+          git config gc.auto 0
+          git remote set-url origin https://github.com/torvalds/linux.git
+          git remote set-branches origin master
+          git fetch --no-tags origin
+
+      # Overwrites the pre-fetched blob through write_metadata()'s guards:
+      # an empty result or a >10% shrink vs the published blob fails the job.
+      - name: Regenerate metadata
+        if: github.event_name == 'schedule'
+        run: uv run python -m cvehound.scripts.update_metadata tests/linux kernel_cves.json.gz
+
+      - name: Build the content set
+        run: |
+          uv run python -m cvehound.scripts.make_manifest \
+            --rules cvehound/cve --metadata kernel_cves.json.gz \
+            --commit "$GITHUB_SHA" --out content-out
+
+      - name: Upload to the content-latest release
+        run: |
+          gh release upload content-latest --clobber \
+            content-out/manifest.json \
+            content-out/cvehound-content-*.tar.gz \
+            content-out/kernel_cves.json.gz

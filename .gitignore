@@ -117,3 +117,9 @@ ENV/
 # cProfile
 prof
 *.prof
+
+# Detection content baseline: not git-tracked. CI publishes the metadata blob
+# to the content-latest release; publish.yml copies it (and the content_id
+# stamp) into the package at build time.
+/cvehound/data/kernel_cves.json.gz
+/cvehound/data/content_id

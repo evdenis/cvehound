@@ -26,6 +26,35 @@ jobs:
         with:
           python-version: "3.11"
 
+      # The metadata blob is not git-tracked: the wheel's baseline copy comes
+      # from the content-latest release (published by content.yml), verified
+      # and placed by cvehound.content itself so the manifest schema has a
+      # single implementation.
+      - name: Fetch the content baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download content-latest --pattern manifest.json --pattern kernel_cves.json.gz --dir content-dl; then
+            uv run python -c "
+          import hashlib, shutil, sys
+          from cvehound.content import CONTENT_ID_NAME, METADATA_NAME, load_manifest
+          manifest = load_manifest('content-dl/manifest.json')
+          blob = 'content-dl/kernel_cves.json.gz'
+          with open(blob, 'rb') as fh:
+              digest = hashlib.sha256(fh.read()).hexdigest()
+          if digest != manifest['metadata']['sha256']:
+              sys.exit('metadata blob checksum mismatch')
+          shutil.copyfile(blob, 'cvehound/' + METADATA_NAME)
+          with open('cvehound/' + CONTENT_ID_NAME, 'w') as fh:
+              fh.write(manifest['content_id'] + '\n')
+          "
+          elif [[ -f cvehound/data/kernel_cves.json.gz ]]; then
+            echo 'Bootstrap: building with the in-repo metadata blob'
+          else
+            echo 'No metadata blob available for the release build' >&2
+            exit 1
+          fi
+
       - name: Build sdist and wheel
         run: uv build --no-sources
 
