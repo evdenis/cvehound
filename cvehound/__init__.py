@@ -116,10 +116,10 @@ class CVEhound:
                 self.config_file = config
                 self.config = Config(config)
 
-        if self.spatch_version <= 104:
+        if self.spatch_version < 110:
             logging.warning(
-                'spatch (coccinelle) version is too old.\n'
-                'Please, consider updating to >= 1.0.7 version.'
+                'spatch (coccinelle) versions older than 1.1.0 are not supported.\n'
+                'Please, update to coccinelle >= 1.1.0.'
             )
 
     def get_grep_pattern(self, rule: str) -> list[str]:

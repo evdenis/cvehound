@@ -22,6 +22,8 @@
  - Validated $CVEHOUND_METADATA like --metadata; non-rule files in the rules
    dir are ignored and the disputed group no longer depends on the install
    path; an unparsable rule Version: header no longer aborts the whole scan
+ - Dropped support for coccinelle < 1.1.0 (last tested in CI long ago); a
+   warning is printed when an older spatch is detected
 
 ## 1.3.0 - Aug 18 2026
 

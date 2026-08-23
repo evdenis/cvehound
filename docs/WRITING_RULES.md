@@ -154,12 +154,14 @@ history" (around fifty rules use it).
 
 #### `Version:` (optional)
 Minimum spatch version, used when the rule needs newer syntax. The value is parsed by
-stripping the dots (`1.0.8` → `108`), so the line must contain the bare version and
+stripping the dots (`1.1.2` → `112`), so the line must contain the bare version and
 nothing else — trailing prose makes rule parsing raise `ValueError`. Below this version
-`check_cve` raises `UnsupportedVersion` and the tests skip.
+`check_cve` raises `UnsupportedVersion` and the tests skip. CVEhound itself supports
+coccinelle >= 1.1.0, so the field only matters for syntax introduced after that (older
+values still parse but never gate anything).
 
 ```cocci
-/// Version: 1.0.8
+/// Version: 1.1.2
 ```
 
 ### Virtual Mode Declaration

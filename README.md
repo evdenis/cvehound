@@ -47,14 +47,12 @@ code patterns of known CVEs and missing fixes for them.
 
 - Python 3 (>=3.11)
 - grep with pcre support (-P flag)
-- coccinelle (>= 1.0.7)
+- coccinelle (>= 1.1.0)
 
 Install prerequisites:
 ``` shell
-# Ubuntu, coccinelle uses libpython2.7 internally
-# Seems like some ppas mark libpython dependency as optional
-$ sudo add-apt-repository ppa:npalix/coccinelle
-$ sudo apt install coccinelle libpython2.7
+# Ubuntu
+$ sudo apt install coccinelle
 
 # Fedora
 $ sudo dnf install coccinelle
