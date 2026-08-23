@@ -3,6 +3,7 @@
 import os
 import tempfile
 import textwrap
+import time
 from subprocess import PIPE, CalledProcessError, Popen, run
 from urllib.request import urlretrieve
 
@@ -22,6 +23,7 @@ INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
 INITIAL_COMMITS = {INITIAL_COMMIT, INITIAL_COMMIT_HASH}
 TMPFS_CVE_THRESHOLD = 5
 TMPFS_SIZE_GB = 3
+FETCH_INTERVAL = 6 * 3600
 
 missing_backports = [
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
@@ -178,6 +180,57 @@ class KernelCheckout:
         self.current = identity
 
 
+def _tune_repo(repo):
+    """Apply idempotent git performance settings to the kernel repo.
+
+    checkout.workers=0 parallelizes working-tree updates across all cores and
+    feature.manyFiles enables index v4 plus the untracked cache. The one-time
+    Bloom-filter commit-graph (--changed-paths) accelerates the path-limited
+    `git log` queries in test_05 and the topo-order ranking at collection time;
+    fetch.writeCommitGraph keeps it current (new layers inherit the filters).
+    """
+    for key, value in (
+        ('checkout.workers', '0'),
+        ('feature.manyFiles', 'true'),
+        ('fetch.writeCommitGraph', 'true'),
+    ):
+        repo.git.config(key, value)
+    try:
+        done = repo.git.config('--get', 'cvehound.commitgraphbloom')
+    except GitCommandError:
+        done = ''
+    if done != '1':
+        repo.git.commit_graph('write', '--reachable', '--changed-paths', '--split=replace')
+        repo.git.config('cvehound.commitgraphbloom', '1')
+
+
+def _reset_worktree(repo):
+    # A clean tree needs no reset/clean/checkout: tests force-checkout the
+    # commits they need and never rely on where HEAD currently points.
+    # --ignored: build products (.config, *.o, include/generated/) are
+    # invisible to plain --porcelain but must still trigger the `-x` clean,
+    # or all_files scans grep stale artifacts forever.
+    if not repo.git.status('--porcelain', '--ignored'):
+        return
+    repo.head.reset(index=True, working_tree=True)
+    repo.git.clean('-f', '-x', '-d')
+    repo.git.checkout('origin/master')
+
+
+def _fetch_remotes(repo):
+    if os.environ.get('CVEHOUND_TEST_OFFLINE'):
+        return
+    fetch_head = os.path.join(repo.git_dir, 'FETCH_HEAD')
+    if os.path.isfile(fetch_head) and time.time() - os.path.getmtime(fetch_head) < FETCH_INTERVAL:
+        return
+    try:
+        repo.remotes.origin.fetch()
+        repo.remotes.stable.fetch()
+        repo.remotes.next.fetch()
+    except Exception:
+        pass
+
+
 def _ensure_metadata():
     """Point CVEHOUND_METADATA at a usable blob when the checkout has none.
 
@@ -241,15 +294,9 @@ def pytest_configure(config):
     repo = None
     if os.path.isdir(os.path.join(linux, '.git')):
         repo = Repo(linux)
-        repo.head.reset(index=True, working_tree=True)
-        repo.git.clean('-f', '-x', '-d')
-        repo.git.checkout('origin/master')
-        try:
-            repo.remotes.origin.fetch()
-            repo.remotes.stable.fetch()
-            repo.remotes.next.fetch()
-        except Exception:
-            pass
+        _tune_repo(repo)
+        _reset_worktree(repo)
+        _fetch_remotes(repo)
     else:
         cwd = os.getcwd()
         os.makedirs(linux, exist_ok=True)
@@ -266,6 +313,7 @@ def pytest_configure(config):
         repo.remotes.stable.fetch()
         repo.remotes.next.fetch()
         os.chdir(cwd)
+        _tune_repo(repo)
 
     if should_use_tmpfs(cves):
         linux_repo, linux_mount = create_tmpfs_repo(repo)
