@@ -12,6 +12,9 @@ on:
 
 jobs:
   deploy:
+    # The rolling content-latest prerelease is a content carrier, not a
+    # software release: publishing it fires this event too.
+    if: github.event.release.tag_name != 'content-latest'
     runs-on: ubuntu-latest
     environment:
       name: pypi
