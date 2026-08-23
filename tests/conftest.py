@@ -497,7 +497,30 @@ def _reorder_kernel_tests(items):
         items[slot] = item
 
 
+def _deselect_non_cve_tests(config, items):
+    """--cve means "test these rules": drop everything not parametrized by cve.
+
+    Harness unit tests can't be affected by a rule, so they are noise in the
+    rule-iteration loop. Explicitly given paths still win: `pytest --cve=X
+    tests/test_12_kerneltree.py` runs what it names.
+    """
+    if not config.getoption('cve') or config.getoption('file_or_dir'):
+        return
+    keep = []
+    deselected = []
+    for item in items:
+        callspec = getattr(item, 'callspec', None)
+        if callspec is not None and 'cve' in callspec.params:
+            keep.append(item)
+        else:
+            deselected.append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = keep
+
+
 def pytest_collection_modifyitems(config, items):
+    _deselect_non_cve_tests(config, items)
     runslow = config.getoption('--runslow')
     runmetadata = config.getoption('--runmetadata')
     skip_slow = pytest.mark.skip(reason='need --runslow option to run')

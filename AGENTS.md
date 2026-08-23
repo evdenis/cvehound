@@ -77,7 +77,9 @@ uv run pytest --cve=CVE-2020-12912  # one CVE
 Custom options (`tests/conftest.py`, `pytest_addoption`): `--runslow`, `--runmetadata`, `--cve`,
 `--branch`, `--dir`, `--between-mode=tags|commits`, `--no-result-cache`. Markers (`pytest.ini`):
 `slow`, `fast`, `notbackported`, `ownfixes`, `nometadata`, `metadata`.
-`--strict-markers` is on, so a misspelled marker is a hard error.
+`--strict-markers` is on, so a misspelled marker is a hard error. `--cve` deselects every
+test not parametrized by cve (the harness unit tests); name paths explicitly to combine,
+e.g. `pytest --cve=X tests/test_12_kerneltree.py`.
 
 The suite runs parallel by default (`-n auto --dist loadgroup` in `pytest.ini`); pass `-n0`
 for a sequential run when debugging. Tests 01-05 never touch the working tree: they check
