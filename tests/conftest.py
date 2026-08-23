@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import textwrap
 import time
-from subprocess import PIPE, Popen, run
+from subprocess import run
 from urllib.request import urlretrieve
 
 import psutil
@@ -106,19 +106,14 @@ class KernelCheckout:
     def __init__(self, repo):
         self.repo = repo
         self.current = None
-        self.commits = {}
-
-    def add_commits(self, commits):
-        self.commits.update(commits)
 
     def checkout(self, commit):
-        identity = self.commits.get(commit, commit)
-        if self.current == identity:
+        if self.current == commit:
             return
 
         self.current = None
         self.repo.git.checkout('--force', commit)
-        self.current = identity
+        self.current = commit
 
 
 def _tune_repo(repo):
@@ -216,15 +211,6 @@ def pytest_configure(config):
     # never over a developer's content overlay.
     os.environ['CVEHOUND_CONTENT'] = 'none'
     _ensure_metadata()
-
-    config.addinivalue_line('markers', 'slow: mark test as slow to run')
-    config.addinivalue_line('markers', 'fast: fast tests that are duplicated by slow ones')
-    config.addinivalue_line('markers', 'notbackported: mark test as failed')
-    config.addinivalue_line('markers', 'ownfixes: mark test as failed')
-    config.addinivalue_line('markers', 'nometadata: mark test as failed')
-    config.addinivalue_line(
-        'markers', 'kernel_history(*route): declare the full-tree checkout route for a test'
-    )
 
     try:
         p = psutil.Process()
@@ -490,100 +476,25 @@ def _get_kernel_route(item):
     return (item.callspec.params['branch'],)
 
 
-def _resolve_kernel_commits(refs):
-    refs = list(dict.fromkeys(refs))
-    result = run(
-        ['git', 'cat-file', '--batch-check=%(objectname) %(objecttype)'],
-        cwd=linux_repo.working_tree_dir,
-        input=''.join(f'{ref}^{{commit}}\n' for ref in refs),
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-
-    resolved = {}
-    missing = []
-    for ref, line in zip(refs, result.stdout.splitlines(), strict=True):
-        fields = line.split()
-        if len(fields) != 2 or fields[1] != 'commit':
-            missing.append(ref)
-            continue
-        resolved[ref] = fields[0]
-
-    if missing:
-        raise pytest.UsageError('kernel commits not found: ' + ', '.join(missing))
-    return resolved
-
-
-def _rank_kernel_commits(commits):
-    commits = set(commits)
-    process = Popen(
-        ['git', 'rev-list', '--topo-order', *sorted(commits)],
-        cwd=linux_repo.working_tree_dir,
-        stdout=PIPE,
-        stderr=PIPE,
-        text=True,
-    )
-    ranks = {}
-    assert process.stdout is not None
-    for rank, line in enumerate(process.stdout):
-        commit = line.rstrip()
-        if commit not in commits:
-            continue
-        ranks[commit] = rank
-        if len(ranks) == len(commits):
-            process.terminate()
-            break
-
-    process.stdout.close()
-    assert process.stderr is not None
-    stderr = process.stderr.read()
-    returncode = process.wait()
-    if len(ranks) != len(commits):
-        missing = sorted(commits - ranks.keys())
-        message = 'kernel commits not reachable: ' + ', '.join(missing)
-        if returncode:
-            message += '\n' + stderr.strip()
-        raise pytest.UsageError(message)
-    return ranks
-
-
-def _apply_kernel_order(items, records, ranks):
-    slots = [record[0] for record in records]
-    ordered = sorted(
-        records,
-        key=lambda record: (
-            ranks[record[2][0]],
-            ranks[record[2][-1]],
-            record[0],
-        ),
-    )
-    for slot, record in zip(slots, ordered, strict=True):
-        items[slot] = record[1]
-
-
 def _reorder_kernel_tests(items):
+    """Group full-tree tests by branch, so the shared-tree fallback switches
+    its checkout once per branch instead of once per test. Skipped items keep
+    their slots and never influence the order."""
     records = []
-    refs = []
     for index, item in enumerate(items):
         if item.get_closest_marker('skip') is not None:
             continue
         route = _get_kernel_route(item)
-        if not route:
-            continue
-        records.append((index, item, route))
-        refs.extend(route)
+        if route:
+            records.append((index, item, route))
 
     if len(records) < 2:
         return
 
-    resolved = _resolve_kernel_commits(refs)
-    _kernel_checkout.add_commits(resolved)
-    records = [
-        (index, item, tuple(resolved[ref] for ref in route)) for index, item, route in records
-    ]
-    ranks = _rank_kernel_commits(resolved.values())
-    _apply_kernel_order(items, records, ranks)
+    slots = [index for index, _, _ in records]
+    ordered = sorted(records, key=lambda record: (record[2], record[0]))
+    for slot, (_, item, _) in zip(slots, ordered, strict=True):
+        items[slot] = item
 
 
 def pytest_collection_modifyitems(config, items):

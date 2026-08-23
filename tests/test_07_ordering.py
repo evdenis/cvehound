@@ -1,4 +1,3 @@
-import conftest
 import pytest
 from conftest import (
     KernelCheckout,
@@ -49,42 +48,30 @@ class FakeItem:
 def test_checkout_skips_clean_duplicate():
     repo = FakeRepo()
     checkout = KernelCheckout(repo)
-    checkout.add_commits({'commit': 'oid', 'alias': 'oid'})
 
     checkout.checkout('commit')
-    checkout.checkout('alias')
+    checkout.checkout('commit')
     checkout.checkout('other')
-    checkout.checkout('alias')
+    checkout.checkout('commit')
 
     assert repo.git.calls == [
         ('--force', 'commit'),
         ('--force', 'other'),
-        ('--force', 'alias'),
+        ('--force', 'commit'),
     ]
 
 
-def test_reorder_kernel_tests_mixes_tests_and_preserves_skipped_slots(monkeypatch):
+def test_reorder_groups_by_branch_and_preserves_skipped_slots():
     metadata = FakeItem()
-    older = FakeItem(('branch',), branch='older')
+    second_b = FakeItem(('branch',), branch='b')
     skipped = FakeItem(('branch',), skipped=True, branch='missing')
-    newer = FakeItem(('branch',), branch='newer')
-    items = [metadata, older, skipped, newer]
-
-    def resolve(refs):
-        assert refs == ['older', 'newer']
-        return {'older': 'old-oid', 'newer': 'new-oid'}
-
-    monkeypatch.setattr(conftest, '_resolve_kernel_commits', resolve)
-    monkeypatch.setattr(
-        conftest,
-        '_rank_kernel_commits',
-        lambda _commits: {'new-oid': 0, 'old-oid': 1},
-    )
-    monkeypatch.setattr(conftest, '_kernel_checkout', KernelCheckout(FakeRepo()))
+    first_a = FakeItem(('branch',), branch='a')
+    second_a = FakeItem(('branch',), branch='a')
+    items = [metadata, second_b, skipped, first_a, second_a]
 
     _reorder_kernel_tests(items)
 
-    assert items == [metadata, newer, skipped, older]
+    assert items == [metadata, first_a, skipped, second_a, second_b]
 
 
 def test_get_kernel_route_uses_selected_branch():
