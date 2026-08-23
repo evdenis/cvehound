@@ -118,6 +118,10 @@ jobs:
       with:
         path: tests/linux/.git
         key: linux-git-v1-${{ steps.date.outputs.date }}
+        # A new month tops up last month's objects with a fetch instead of
+        # re-downloading the 3.4 GB clone bundle.
+        restore-keys: |
+          linux-git-v1-
 
     - name: Download Linux Tree
       run: |
@@ -146,10 +150,13 @@ jobs:
           git remote add --no-tags stable https://github.com/gregkh/linux.git
         fi
         git remote set-branches stable ${stable[@]}
-        git fetch --no-tags origin
+        # One negotiation for master plus the mainline tags: the clone bundle
+        # is only downloaded on a fully cold cache and restore-keys keep the
+        # cache warm forever, so without the tag refspec the newest tags
+        # test_05's tags mode iterates would freeze at the bundle's date.
+        git fetch --no-tags origin master '+refs/tags/v*:refs/tags/v*'
         git fetch --no-tags next
         git fetch --no-tags stable
-        git fetch --no-tags origin tag v2.6.12-rc2
         git reset --hard origin/master
         cd -
         # Same git tuning the test suite applies (parallel checkout, index v4,
@@ -167,13 +174,32 @@ jobs:
         path: tests/linux/.git
         key: linux-git-v1-${{ steps.date.outputs.date }}
 
+    - name: Restore Result Cache
+      uses: actions/cache/restore@v6
+      with:
+        path: tests/.result_cache
+        key: results-v1-${{ matrix.coccinelle-version }}-${{ github.run_id }}
+        restore-keys: |
+          results-v1-${{ matrix.coccinelle-version }}-
+
     - name: Test with pytest
+      env:
+        # The workflow just fetched everything the run needs; make conftest's
+        # fetch skip declarative instead of relying on FETCH_HEAD's age.
+        CVEHOUND_TEST_OFFLINE: 1
       run: |
         sudo setcap cap_sys_nice,cap_sys_admin+eip $(realpath $(which python3))
         which opam >/dev/null 2>&1 && eval $(opam env)
         readarray RULES < <(git diff --name-only ${{ github.event.before }}..${{ github.event.after }} | grep -o 'CVE-[[:digit:]]*-[[:digit:]]*')
         if [[ ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 ]]; then
-          uv run pytest --runslow $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
+          uv run pytest --runslow -n 2 $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
         else
-          uv run pytest
+          uv run pytest -n 2
         fi
+
+    - name: Save Result Cache
+      if: always()
+      uses: actions/cache/save@v6
+      with:
+        path: tests/.result_cache
+        key: results-v1-${{ matrix.coccinelle-version }}-${{ github.run_id }}

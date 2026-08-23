@@ -78,6 +78,8 @@ jobs:
         with:
           path: tests/linux/.git
           key: linux-git-v1-${{ steps.date.outputs.date }}
+          restore-keys: |
+            linux-git-v1-
 
       - name: Download Linux Tree
         if: github.event_name == 'schedule'
