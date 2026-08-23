@@ -152,6 +152,13 @@ jobs:
         git fetch --no-tags origin tag v2.6.12-rc2
         git reset --hard origin/master
         cd -
+        # Same git tuning the test suite applies (parallel checkout, index v4,
+        # Bloom commit-graph); running it here bakes the ~80s one-time graph
+        # write into the .git cache saved below instead of repaying it in
+        # every pytest run.
+        uv run python -c "import sys; sys.path.insert(0, 'tests'); \
+          from git import Repo; from conftest import _tune_repo; \
+          _tune_repo(Repo('tests/linux'))"
 
     - name: Save Linux Repository
       if: steps.linux-cache.outputs.cache-hit != 'true'
