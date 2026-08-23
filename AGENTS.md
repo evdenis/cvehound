@@ -50,7 +50,7 @@ typo:
 | `test_02_on_init` | at `v2.6.12-rc2`, detected only if `Fixes:` is the initial commit |
 | `test_03_on_fix` | detected at `Fix~`, not at `Fix` |
 | `test_04_on_fixes` | detected at `Fixes`, not at `Fixes~` |
-| `test_05_between_fixes_fix` | detected at every commit in `Fixes..Fix~` touching `Files:` |
+| `test_05_between_fixes_fix` | detected at every tag (`-rc` included) in `Fixes..Fix~` where `Files:` changed (`--between-mode=commits`: every touching commit) |
 | `test_06_on_branch_all_files` | same as `test_01` but with `all_files=True` |
 
 Register legitimate failures as data, never as `xfail` in a test file:
@@ -74,9 +74,20 @@ uv run pytest --runslow             # the real suite (needs a kernel checkout)
 uv run pytest --cve=CVE-2020-12912  # one CVE
 ```
 
-Custom options (`tests/conftest.py:115-140`): `--runslow`, `--runmetadata`, `--cve`, `--branch`,
-`--dir`. Markers (`pytest.ini`): `slow`, `fast`, `notbackported`, `ownfixes`, `nometadata`, `metadata`.
+Custom options (`tests/conftest.py`, `pytest_addoption`): `--runslow`, `--runmetadata`, `--cve`,
+`--branch`, `--dir`, `--between-mode=tags|commits`, `--no-result-cache`. Markers (`pytest.ini`):
+`slow`, `fast`, `notbackported`, `ownfixes`, `nometadata`, `metadata`.
 `--strict-markers` is on, so a misspelled marker is a hard error.
+
+The suite runs parallel by default (`-n auto --dist loadgroup` in `pytest.ini`); pass `-n0`
+for a sequential run when debugging. Tests 01-05 never touch the working tree: they check
+rules against per-commit mini-trees materialized from git blobs (`tests/kerneltree.py`),
+and verdicts are memoized in `tests/.result_cache/` keyed by rule bytes + blob signature +
+spatch/python version (`tests/resultcache.py` — bump `HARNESS_EPOCH` when check semantics
+change; `--no-result-cache` bypasses). Only `test_06` needs full trees: one detached
+worktree per branch under `/tmp` (`CVEHOUND_TEST_WORKTREES=0` falls back to checkouts of
+the shared tree, serialized via one xdist group). `CVEHOUND_TEST_OFFLINE=1` skips the
+remote fetches; they are also skipped when `FETCH_HEAD` is younger than 6 hours.
 
 Note that *no* test run is dependency-free: `pytest_configure` always clones or fetches
 the kernel into `tests/linux` and constructs a `CVEhound` instance, so `spatch` and
@@ -94,12 +105,11 @@ uv run pytest --cve=CVE-2020-12912
 
 If no switch is selected, add `--switch=<switch> --set-switch` to `opam env`.
 
-The kernel checkout is not yours — the fixture runs `head.reset()` and
-`git clean -f -x -d` on it. It also needs full history plus `stable` and `next` remotes,
-so never shallow-clone it. Outside GitHub Actions, selections of at least five CVEs try
-to create a shared kernel clone on a 3 GiB tmpfs via `sudo --non-interactive`; Git objects
-stay in the lower repo while the working tree and index live in RAM. The fixture falls
-back to the lower repo when memory, mounting, or clone setup is unavailable.
+The kernel checkout is not yours — the fixture runs `head.reset()` plus
+`git clean -f -x -d` on it whenever the tree is dirty. It also needs full history plus
+`stable` and `next` remotes, so never shallow-clone it. `pytest_configure` applies git
+performance settings to it (parallel checkout, `feature.manyFiles`, a one-time
+Bloom-filter commit-graph marked by the `cvehound.commitgraphbloom` config key).
 
 ## Conventions
 
@@ -125,7 +135,7 @@ changes and `contrib:` for templates.
 
 ## Architecture notes
 
-`check_cve(cve, all_files=False) -> dict | bool` (`cvehound/__init__.py:173`) is the only
+`check_cve(cve, all_files=False, jobs=1) -> dict | bool` (`cvehound/__init__.py:170`) is the only
 detection entry point; it returns a result dict on a hit and `False` otherwise. There is
 no `check_kernel()` and no `get_report()` — iteration over CVEs and JSON report assembly
 live in `cvehound/__main__.py:359-399`.

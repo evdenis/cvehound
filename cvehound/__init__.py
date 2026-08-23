@@ -28,6 +28,10 @@ RuleMetadata = dict[str, Any]
 # Sources that become object files, i.e. the ones the Kbuild map can describe.
 COMPILED_SUFFIXES = ('.c', '.S', '.s', '.rs')
 
+# Force-included into every spatch run when the tree has it; the test harness
+# mirrors this probe when it materializes mini-trees (tests/kerneltree.py).
+KCONFIG_H = 'include/linux/kconfig.h'
+
 
 @functools.cache
 def _simplify_condition(logic: str) -> Any:
@@ -86,7 +90,7 @@ class CVEhound:
         self.rules_metadata: dict[str, RuleMetadata] = {}
         (self.cve_all_rules, self.cve_assigned_rules, self.cve_disputed_rules) = get_rule_cves()
 
-        ipaths = [
+        self.ipaths = [
             os.path.join('arch', self.srcarch, 'include'),
             os.path.join('arch', self.srcarch, 'include/generated'),
             os.path.join('arch', self.srcarch, 'include/uapi'),
@@ -95,11 +99,6 @@ class CVEhound:
             'include/uapi',
             'include/generated/uapi',
         ]
-        includes: list[str] = []
-        for ipath in ipaths:
-            includes.append('-I')
-            includes.append(os.path.join(kernel, ipath))
-        self.includes = includes
 
         self.config_file: str | None = None
         self.config_map: dict[str, str] | None = None
@@ -167,7 +166,7 @@ class CVEhound:
         else:
             logging.info('Config: any ' + config_affected)
 
-    def check_cve(self, cve: str, all_files: bool = False) -> dict[str, Any] | bool:
+    def check_cve(self, cve: str, all_files: bool = False, jobs: int = 1) -> dict[str, Any] | bool:
         result: dict[str, Any] = {}
         is_grep = False
         rule = self.cve_all_rules[cve]
@@ -187,8 +186,13 @@ class CVEhound:
                 logging.debug('Skipping %s: none of the hinted files exist', cve)
                 return False
 
-        includes = self.includes.copy()
-        kconfig = os.path.join(self.kernel, 'include/linux/kconfig.h')
+        # Built from self.kernel per call so a shallow copy pointed at another
+        # tree (tests/kerneltree.py hound_at) needs no include rewriting.
+        includes: list[str] = []
+        for ipath in self.ipaths:
+            includes.append('-I')
+            includes.append(os.path.join(self.kernel, ipath))
+        kconfig = os.path.join(self.kernel, KCONFIG_H)
         if os.path.exists(kconfig):
             includes.append('--include')
             includes.append(kconfig)
@@ -210,7 +214,7 @@ class CVEhound:
                 '--chunksize',
                 '1',
                 '-j',
-                '1',
+                str(jobs),
                 '--no-show-diff',
                 '--very-quiet',
                 *includes,

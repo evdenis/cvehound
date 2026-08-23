@@ -1,6 +1,6 @@
 import conftest
+import pytest
 from conftest import (
-    INITIAL_COMMIT_HASH,
     KernelCheckout,
     _get_kernel_route,
     _reorder_kernel_tests,
@@ -46,27 +46,19 @@ class FakeItem:
         return None
 
 
-class FakeHound:
-    def get_rule_fix(self, _cve):
-        return 'fix'
-
-    def get_rule_fixes(self, _cve):
-        return INITIAL_COMMIT_HASH
-
-
-def test_checkout_skips_clean_duplicate_and_invalidates_after_paths():
+def test_checkout_skips_clean_duplicate():
     repo = FakeRepo()
     checkout = KernelCheckout(repo)
     checkout.add_commits({'commit': 'oid', 'alias': 'oid'})
 
     checkout.checkout('commit')
     checkout.checkout('alias')
-    checkout.checkout('other', ['file.c'])
+    checkout.checkout('other')
     checkout.checkout('alias')
 
     assert repo.git.calls == [
         ('--force', 'commit'),
-        ('--force', 'other', '--', ['file.c']),
+        ('--force', 'other'),
         ('--force', 'alias'),
     ]
 
@@ -95,14 +87,14 @@ def test_reorder_kernel_tests_mixes_tests_and_preserves_skipped_slots(monkeypatc
     assert items == [metadata, newer, skipped, older]
 
 
-def test_get_kernel_route_omits_parent_of_initial_commit(monkeypatch):
-    monkeypatch.setattr('conftest._cvehound', FakeHound())
-    item = FakeItem(('fixes', 'fixes~'), cve='CVE-TEST')
-
-    assert _get_kernel_route(item) == (INITIAL_COMMIT_HASH,)
-
-
 def test_get_kernel_route_uses_selected_branch():
     item = FakeItem(('branch',), branch='stable/linux-6.6.y', cve='CVE-TEST')
 
     assert _get_kernel_route(item) == ('stable/linux-6.6.y',)
+
+
+def test_get_kernel_route_rejects_retired_steps():
+    item = FakeItem(('fixes', 'fixes~'), cve='CVE-TEST')
+
+    with pytest.raises(pytest.UsageError):
+        _get_kernel_route(item)

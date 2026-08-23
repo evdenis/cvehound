@@ -12,6 +12,12 @@ import json
 import subprocess
 import sys
 
+import pytest
+
+# The CLI scans the shared tests/linux tree; share test_06's fallback group so
+# shared-tree checkouts never run concurrently (a no-op in worktree mode).
+pytestmark = pytest.mark.xdist_group('shared-tree')
+
 
 def test_cli_module_invocation(hound, tmp_path):
     report = tmp_path / 'report.json'

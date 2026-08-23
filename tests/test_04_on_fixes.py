@@ -8,16 +8,13 @@ from cvehound.exception import UnsupportedVersion
 
 
 @pytest.mark.slow
-@pytest.mark.kernel_history('fixes', 'fixes~')
-def test_on_fixes(hound, kernel_checkout, cve):
+def test_on_fixes(hound, tree_check, cve):
     fixes = hound.get_rule_fixes(cve)
 
-    kernel_checkout.checkout(fixes)
     try:
-        assert hound.check_cve(cve), 'fails to detect on fixes tag'
+        assert tree_check(fixes, cve), 'fails to detect on fixes tag'
 
         if fixes not in INITIAL_COMMITS:
-            kernel_checkout.checkout(fixes + '~')
-            assert not hound.check_cve(cve), 'detects on fixes~ tag'
+            assert not tree_check(fixes + '~', cve), 'detects on fixes~ tag'
     except UnsupportedVersion:
         pytest.skip('Unsupported spatch version')

@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import tempfile
 import textwrap
 import time
-from subprocess import PIPE, CalledProcessError, Popen, run
+from subprocess import PIPE, Popen, run
 from urllib.request import urlretrieve
 
 import psutil
 import pytest
+from filelock import FileLock
 from git import Repo
 from git.exc import GitCommandError
+from kerneltree import BlobMaterializer, cached_check, hound_at
+from resultcache import ResultCache
 
 from cvehound import CVEhound, get_rule_cves
 from cvehound.content import DEFAULT_BASE, METADATA_NAME
@@ -21,8 +25,6 @@ from cvehound.util import resolve_metadata_path
 INITIAL_COMMIT = 'v2.6.12-rc2'
 INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
 INITIAL_COMMITS = {INITIAL_COMMIT, INITIAL_COMMIT_HASH}
-TMPFS_CVE_THRESHOLD = 5
-TMPFS_SIZE_GB = 3
 FETCH_INTERVAL = 6 * 3600
 
 missing_backports = [
@@ -35,89 +37,6 @@ missing_backports = [
     ('CVE-2024-26595', 'stable/linux-5.15.y'),
     ('CVE-2024-26799', 'stable/linux-6.1.y'),
 ]
-
-
-def mount_tmpfs(target, req_mem_gb):
-    if os.path.ismount(target):
-        return True
-    lines = []
-    with open('/proc/meminfo') as fh:
-        lines = fh.readlines()
-    meminfo = {i.split()[0].rstrip(':'): int(i.split()[1]) for i in lines}
-    av_mem_gb = int(meminfo['MemAvailable'] / 1024**2)
-    if av_mem_gb >= req_mem_gb + 1:
-        ret = run(
-            [
-                'sudo',
-                '--non-interactive',
-                'mount',
-                '-t',
-                'tmpfs',
-                '-o',
-                'rw,noatime,nosuid,nodev,noexec,size=' + str(req_mem_gb) + 'G',
-                'tmpfs',
-                target,
-            ]
-        )
-        return ret.returncode == 0
-    else:
-        return False
-
-
-def umount(target):
-    if os.path.ismount(target):
-        run(['sudo', '--non-interactive', 'umount', target])
-
-
-def should_use_tmpfs(selected_cves):
-    return os.environ.get('GITHUB_ACTIONS') != 'true' and len(selected_cves) >= TMPFS_CVE_THRESHOLD
-
-
-def clone_shared_repo(source, target):
-    run(
-        [
-            'git',
-            'clone',
-            '--shared',
-            '--no-checkout',
-            '--quiet',
-            '--',
-            source.working_tree_dir,
-            target,
-        ],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-
-    refs = source.git.for_each_ref('--format=update %(refname) %(objectname)')
-    if refs:
-        run(
-            ['git', 'update-ref', '--stdin'],
-            cwd=target,
-            input=refs + '\n',
-            capture_output=True,
-            check=True,
-            text=True,
-        )
-
-    repo = Repo(target)
-    repo.git.checkout('--force', 'origin/master')
-    return repo
-
-
-def create_tmpfs_repo(repo):
-    target = tempfile.mkdtemp()
-    if not mount_tmpfs(target, TMPFS_SIZE_GB):
-        os.rmdir(target)
-        return repo, None
-
-    try:
-        return clone_shared_repo(repo, target), target
-    except (CalledProcessError, GitCommandError, OSError):
-        umount(target)
-        os.rmdir(target)
-        return repo, None
 
 
 def pytest_addoption(parser):
@@ -146,14 +65,41 @@ def pytest_addoption(parser):
         default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'linux'),
         help='linux kernel sources dir',
     )
+    parser.addoption(
+        '--between-mode',
+        action='store',
+        default='tags',
+        choices=('tags', 'commits'),
+        help='test_05 verification points: tags incl. -rc (default) or every commit',
+    )
+    parser.addoption(
+        '--no-result-cache',
+        action='store_true',
+        default=False,
+        help='run every spatch check even when a cached verdict exists',
+    )
 
 
-linux_mount = None
 linux_repo = None
 _cvehound = None
 _kernel_checkout = None
+_materializer = None
+_shared_root = None
+_result_cache = None
+_fresh_worktrees = set()
 branches = []
 cves = []
+
+
+def _is_worker(config):
+    return hasattr(config, 'workerinput')
+
+
+def use_worktrees():
+    env = os.environ.get('CVEHOUND_TEST_WORKTREES')
+    if env is not None:
+        return env != '0'
+    return os.environ.get('GITHUB_ACTIONS') != 'true'
 
 
 class KernelCheckout:
@@ -165,12 +111,7 @@ class KernelCheckout:
     def add_commits(self, commits):
         self.commits.update(commits)
 
-    def checkout(self, commit, paths=None):
-        if paths is not None:
-            self.current = None
-            self.repo.git.checkout('--force', commit, '--', paths)
-            return
-
+    def checkout(self, commit):
         identity = self.commits.get(commit, commit)
         if self.current == identity:
             return
@@ -217,6 +158,11 @@ def _reset_worktree(repo):
     repo.git.checkout('origin/master')
 
 
+def _spatch_version_line():
+    out = run(['spatch', '--version'], capture_output=True, check=True, text=True)
+    return out.stdout.splitlines()[0]
+
+
 def _fetch_remotes(repo):
     if os.environ.get('CVEHOUND_TEST_OFFLINE'):
         return
@@ -257,10 +203,12 @@ def _ensure_metadata():
 
 
 def pytest_configure(config):
-    global linux_mount
     global linux_repo
     global _cvehound
     global _kernel_checkout
+    global _materializer
+    global _shared_root
+    global _result_cache
     global branches
     global cves
 
@@ -290,39 +238,48 @@ def pytest_configure(config):
         (cves, _, _) = get_rule_cves()
         cves = cves.keys()
 
-    linux = config.getoption('dir')
-    repo = None
-    if os.path.isdir(os.path.join(linux, '.git')):
-        repo = Repo(linux)
-        _tune_repo(repo)
-        _reset_worktree(repo)
-        _fetch_remotes(repo)
+    if _is_worker(config):
+        # Repo prep already happened on the xdist controller; reuse its state.
+        linux_repo = Repo(config.getoption('dir'))
+        _shared_root = config.workerinput['cvehound_root']
     else:
-        cwd = os.getcwd()
-        os.makedirs(linux, exist_ok=True)
-        os.chdir(linux)
-        repo = Repo.clone_from(
-            'git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git', '.'
-        )
-        repo.create_remote(
-            'stable', 'git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git'
-        )
-        repo.create_remote(
-            'next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git'
-        )
-        repo.remotes.stable.fetch()
-        repo.remotes.next.fetch()
-        os.chdir(cwd)
-        _tune_repo(repo)
+        linux = config.getoption('dir')
+        repo = None
+        if os.path.isdir(os.path.join(linux, '.git')):
+            repo = Repo(linux)
+            _tune_repo(repo)
+            _reset_worktree(repo)
+            _fetch_remotes(repo)
+        else:
+            cwd = os.getcwd()
+            os.makedirs(linux, exist_ok=True)
+            os.chdir(linux)
+            repo = Repo.clone_from(
+                'git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git', '.'
+            )
+            repo.create_remote(
+                'stable', 'git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git'
+            )
+            repo.create_remote(
+                'next', 'git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git'
+            )
+            repo.remotes.stable.fetch()
+            repo.remotes.next.fetch()
+            os.chdir(cwd)
+            _tune_repo(repo)
 
-    if should_use_tmpfs(cves):
-        linux_repo, linux_mount = create_tmpfs_repo(repo)
-    else:
         linux_repo = repo
-        linux_mount = None
+        _shared_root = tempfile.mkdtemp(prefix='cvehound-tests-')
 
     _cvehound = CVEhound(linux_repo.working_tree_dir)
     _kernel_checkout = KernelCheckout(linux_repo)
+    _materializer = BlobMaterializer(linux_repo, os.path.join(_shared_root, 'store'))
+    if not config.getoption('--no-result-cache'):
+        _result_cache = ResultCache(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), '.result_cache'),
+            _spatch_version_line(),
+            worker=os.environ.get('PYTEST_XDIST_WORKER', 'main'),
+        )
 
     branches = config.getoption('branch')
     if not branches:
@@ -339,9 +296,37 @@ def pytest_configure(config):
 
 
 def pytest_unconfigure(config):
-    if linux_mount:
-        umount(linux_mount)
-        os.rmdir(linux_mount)
+    if _is_worker(config):
+        return
+    if _result_cache:
+        if _result_cache.hits or _result_cache.misses:
+            print(f'\nresult cache: {_result_cache.hits} hits, {_result_cache.misses} misses')
+        _result_cache.compact()
+    if _shared_root:
+        shutil.rmtree(_shared_root, ignore_errors=True)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node):
+    # xdist controller hook: hand each worker the shared blob store so the
+    # per-session trees are materialized once, not per worker.
+    node.workerinput['cvehound_root'] = _shared_root
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if _result_cache and _is_worker(session.config):
+        session.config.workeroutput['cvehound_cache'] = [
+            _result_cache.hits,
+            _result_cache.misses,
+        ]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    stats = getattr(node, 'workeroutput', {}).get('cvehound_cache')
+    if stats and _result_cache:
+        _result_cache.hits += stats[0]
+        _result_cache.misses += stats[1]
 
 
 def write_tree(root, files):
@@ -375,14 +360,120 @@ def kernel_checkout():
 
 
 @pytest.fixture
-def branch(request, kernel_checkout):
-    kernel_checkout.checkout(request.param)
-    return request.param
+def materializer():
+    return _materializer
+
+
+@pytest.fixture
+def between_mode(request):
+    return request.config.getoption('--between-mode')
+
+
+@pytest.fixture
+def result_cache():
+    return _result_cache
+
+
+@pytest.fixture
+def sig_check(materializer, hound, result_cache):
+    """Factory: cached bool verdict for a rule on a blob signature."""
+
+    def check(sig, cve):
+        return cached_check(hound, materializer, result_cache, sig, cve)
+
+    return check
+
+
+@pytest.fixture
+def tree_check(materializer, hound, sig_check):
+    """Factory: cached bool verdict for a rule at a commit, without checkouts."""
+
+    def check(commit, cve):
+        return sig_check(materializer.sig(commit, hound.get_rule_files(cve)), cve)
+
+    return check
+
+
+def _branch_worktree(branch_name):
+    """A persistent detached worktree at the branch head.
+
+    Worktrees survive the session (a full kernel checkout costs ~5-15s per
+    branch, and /tmp clears on reboot anyway); each session refreshes a reused
+    worktree to the current branch head once. The lock covers creation and
+    refresh against concurrent pytest sessions.
+    """
+    root = os.path.join(tempfile.gettempdir(), f'cvehound-worktrees-{os.getuid()}')
+    os.makedirs(root, exist_ok=True)
+    path = os.path.join(root, branch_name.replace('/', '-'))
+    if path in _fresh_worktrees:
+        return path
+    with FileLock(path + '.lock'):
+        if not os.path.isdir(path):
+            try:
+                linux_repo.git.worktree('add', '--detach', '--force', path, branch_name)
+            except GitCommandError:
+                # A stale admin entry (e.g. after a /tmp wipe) blocks the add:
+                # prune and retry. Pruning only on this failure path keeps it
+                # away from sibling workers' in-flight worktree adds.
+                linux_repo.git.worktree('prune')
+                linux_repo.git.worktree('add', '--detach', '--force', path, branch_name)
+        else:
+            run(
+                ['git', '-C', path, 'checkout', '--force', '--detach', branch_name],
+                capture_output=True,
+                check=True,
+            )
+    _fresh_worktrees.add(path)
+    return path
+
+
+@pytest.fixture
+def branch_hound(hound, kernel_checkout):
+    """Factory: a CVEhound over a full tree at a branch head.
+
+    A detached worktree per branch when enabled (the default outside CI),
+    falling back to checkouts in the shared tree otherwise.
+    """
+
+    def make(branch_name):
+        if not use_worktrees():
+            kernel_checkout.checkout(branch_name)
+            return _cvehound
+        return hound_at(hound, _branch_worktree(branch_name))
+
+    return make
+
+
+@pytest.fixture
+def all_files_jobs():
+    """spatch -j for whole-tree scans: divide cores by concurrent scans.
+
+    Worktree mode runs one scan per branch group; shared-tree mode serializes
+    every scan into a single group, so the lone scan may use all cores.
+    """
+    workers = int(os.environ.get('PYTEST_XDIST_WORKER_COUNT', '1'))
+    concurrent = min(workers, len(branches)) if use_worktrees() else 1
+    return max(1, (os.cpu_count() or 1) // concurrent)
 
 
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:
-        metafunc.parametrize('branch', branches, indirect=True)
+        params = branches
+        if metafunc.definition.get_closest_marker('kernel_history'):
+            # Full-tree tests declare kernel_history('branch'): serialize each
+            # branch group (worktree mode) or every scan (shared tree) under
+            # --dist loadgroup. Marking at parametrize time guarantees xdist's
+            # nodeid rewrite sees the marker regardless of hook ordering.
+            params = [
+                pytest.param(
+                    branch,
+                    marks=pytest.mark.xdist_group(
+                        'branch:' + branch if use_worktrees() else 'shared-tree'
+                    ),
+                )
+                for branch in branches
+            ]
+        metafunc.parametrize('branch', params)
 
     if 'cve' in metafunc.fixturenames:
         metafunc.parametrize('cve', cves)
@@ -392,31 +483,11 @@ def _get_kernel_route(item):
     marker = item.get_closest_marker('kernel_history')
     if marker is None:
         return ()
-
-    params = item.callspec.params
-    cve = params.get('cve')
-    route = []
-    for step in marker.args:
-        parent = step.endswith('~')
-        name = step.removesuffix('~')
-        if name == 'branch':
-            commit = params['branch']
-        elif name == 'initial':
-            commit = INITIAL_COMMIT
-        elif name == 'fix':
-            commit = _cvehound.get_rule_fix(cve)
-        elif name == 'fixes':
-            commit = _cvehound.get_rule_fixes(cve)
-        else:
-            raise pytest.UsageError(f'unknown kernel_history step {step!r} on {item.nodeid}')
-
-        if parent:
-            if commit in INITIAL_COMMITS:
-                continue
-            commit += '~'
-        route.append(commit)
-
-    return tuple(route)
+    if marker.args != ('branch',):
+        # The richer fix/fixes/initial vocabulary died with the checkout-based
+        # tests; only the branch route (test_06's shared-tree fallback) is left.
+        raise pytest.UsageError(f'unknown kernel_history route {marker.args!r} on {item.nodeid}')
+    return (item.callspec.params['branch'],)
 
 
 def _resolve_kernel_commits(refs):

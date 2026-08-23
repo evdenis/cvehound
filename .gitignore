@@ -123,3 +123,4 @@ prof
 # stamp) into the package at build time.
 /cvehound/data/kernel_cves.json.gz
 /cvehound/data/content_id
+/tests/.result_cache/

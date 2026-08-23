@@ -35,7 +35,7 @@ dev = [
     {include-group = "test"},
     {include-group = "lint"},
 ]
-test = ["pytest", "gitpython", "psutil"]
+test = ["pytest", "pytest-xdist", "filelock", "gitpython", "psutil"]
 lint = [
     "ruff>=0.15.10",
     "ty>=0.0.29",
