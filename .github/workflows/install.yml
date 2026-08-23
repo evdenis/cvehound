@@ -21,26 +21,14 @@ on:
 
 jobs:
   install:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - os: ubuntu-latest
-          python-version: "3.11"
-        - os: ubuntu-latest
-          python-version: "3.12"
-        - os: ubuntu-latest
-          python-version: "3.13"
-        - os: ubuntu-latest
-          python-version: "3.14"
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
 
-    - name: Install uv with Python ${{ matrix.python-version }}
+    - name: Install uv with Python 3.11
       uses: astral-sh/setup-uv@v10.0.1
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.11"
         enable-cache: true
 
     - name: Install CVEhound (locked, runtime deps only)

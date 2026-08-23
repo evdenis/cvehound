@@ -31,17 +31,17 @@ jobs:
         ocaml-version: [4.11.2]
         coccinelle-version: [1.1.0, system, 1.2, 1.3.2, git]
         # One python per coccinelle version. These entries only add a key to an
-        # already existing combination, so the matrix stays at 5 jobs. Python 3.14
-        # defaults to the forkserver start method on Linux and covers the CLI pool
-        # path under it (see tests/test_10_cli.py); 3.11 is the requires-python
-        # floor and is the one version tested twice.
+        # already existing combination, so the matrix stays at 5 jobs. Pytest runs
+        # on the requires-python floor (3.11) everywhere except one job on 3.14,
+        # which defaults to the forkserver start method on Linux and covers the
+        # CLI pool path under it (see tests/test_10_cli.py).
         include:
         - coccinelle-version: 1.1.0
           python-version: "3.11"
         - coccinelle-version: system
-          python-version: "3.12"
+          python-version: "3.11"
         - coccinelle-version: 1.2
-          python-version: "3.13"
+          python-version: "3.11"
         - coccinelle-version: 1.3.2
           python-version: "3.14"
         - coccinelle-version: git
