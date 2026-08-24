@@ -12,17 +12,17 @@ Quick reference for writing CVE detection rules in CVEhound.
 virtual detect
 
 @rule_name@
-position p;
 @@
 
-* pattern@p;
-
-@script:python depends on detect@
-p << rule_name.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+func(...)
+{
+*	pattern;
+}
 ```
+
+Rules are match rules only: the `*` lines *are* the report. spatch prints a unified diff of
+them on a match, and nothing at all otherwise. No script rule, no `position` metavariable —
+rules must run under a spatch built without Python.
 
 ## Metavariable Types
 
@@ -33,7 +33,6 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 | `statement S` | Any statement | `statement S;` |
 | `type T` | Any type | `type T;` |
 | `symbol sym` | Specific symbol | `symbol kfree;` |
-| `position p` | Source position | `position p;` |
 
 ## Pattern Matching
 
@@ -41,21 +40,29 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 ```cocci
 func(...)              // Match any arguments
 {
-    ...                // Match any statements
-    code();
-    ...                // More statements
+	...                // Match any statements
+	code();
+	...                // More statements
 }
 ```
 
 ### Context marker (*)
 ```cocci
-* dangerous_func@p();  // Marks the line to report
+* dangerous_func();  // The line to report — this is the whole reporting mechanism
 ```
 
 **Note**: `*` is the context marker, not a wildcard (that's `...`). It puts the whole
 patch into match mode, which flips the default quantification of un-annotated `...` from
 `forall` to `exists` — so adding or removing it can change what matches. It cannot be
 mixed with `-`/`+`.
+
+Two disciplines that decide whether a rule is correct:
+
+- **Star only the rule that reports.** A starred rule prints whenever *it* matches, no
+  matter what the other rules did — a `*` on a helper rule (e.g. one that recognises the
+  fix) fires on fixed trees.
+- **Star only the identifying line(s).** With several starred lines separated by `...`,
+  spatch prints the prefix it managed to match even when the rest of the pattern fails.
 
 ### Alternatives
 ```cocci
@@ -108,6 +115,10 @@ pattern4
 pattern5
 ```
 
+`depends on` is how a rule expresses "all of these must hold": chain the rules so the last
+one depends on the rest, and star only that last rule. Separate starred rules are an OR —
+each reports on its own.
+
 ## Common Vulnerability Patterns
 
 The canonical catalog. Each entry names real rules in `cvehound/cve/` — read those
@@ -118,15 +129,14 @@ Real rules: `CVE-2020-12352`, `CVE-2018-11508`
 ```cocci
 @err@
 identifier var;
-position p;
 @@
 
 func(...)
 {
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));
-        when != var = ...;
-*   use(&var)@p;
+	struct foo var;
+	... when != memset(&var, 0, sizeof(var));
+		when != var = ...;
+*	use(&var);
 }
 ```
 
@@ -136,14 +146,13 @@ Real rules: `CVE-2019-15924`
 @err exists@
 identifier ptr;
 statement S;
-position p;
 @@
 
 target_func(...)
 {
-    ... when != if (!ptr) S
-        when != if (ptr == NULL) S
-*   ptr->field@p;
+	... when != if (!ptr) S
+		when != if (ptr == NULL) S
+*	ptr->field;
 }
 ```
 
@@ -153,14 +162,13 @@ Real rules: `CVE-2014-0049`, `CVE-2020-29371`
 @err exists@
 identifier arr, idx;
 statement S;
-position p;
 @@
 
 target_func(...)
 {
-    ... when != if (idx >= SIZE) S
-        when != if (idx < 0 || idx >= MAX) S
-*   arr[idx]@p;
+	... when != if (idx >= SIZE) S
+		when != if (idx < 0 || idx >= MAX) S
+*	arr[idx];
 }
 ```
 
@@ -169,27 +177,31 @@ Real rules: `CVE-2021-3347`
 ```cocci
 @err@
 identifier var;
-position p1, p2;
 @@
 
-* kfree@p1(var);
-  ... when != var = ...
-* use(var)@p2;
+func(...)
+{
+	kfree(var);
+	... when != var = ...
+*	use(var);
+}
 ```
+
+Star the use, not the `kfree()`: two starred lines around a `...` let spatch report the
+`kfree()` alone when no matching use follows.
 
 ### Information Leak
 Real rules: `CVE-2014-1738`, `CVE-2016-6156`
 ```cocci
 @err@
 identifier var;
-position p;
 @@
 
 func(...)
 {
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));
-*   copy_to_user(..., &var, ...)@p;
+	struct foo var;
+	... when != memset(&var, 0, sizeof(var));
+*	copy_to_user(..., &var, ...);
 }
 ```
 
@@ -197,12 +209,11 @@ func(...)
 Real rules: `CVE-2020-12912`
 ```cocci
 @err@
-position p;
 @@
 
 sysfs_func(...)
 {
-*   return 0444;@p  // Too permissive (CVE-2020-12912: 0444 -> 0400)
+*	return 0444;  // Too permissive (CVE-2020-12912: 0444 -> 0400)
 }
 ```
 
@@ -214,18 +225,17 @@ Real rules: `CVE-2021-3564`
 
 func(...)
 {
-    spin_lock(...);
-    ...
-    spin_unlock(...);
+	spin_lock(...);
+	...
+	spin_unlock(...);
 }
 
 @err depends on !locked@
-position p;
 @@
 
 func(...)
 {
-*   shared_data@p = ...;
+*	shared_data = ...;
 }
 ```
 
@@ -236,12 +246,14 @@ Real rules: `CVE-2015-8746`
 expression E1, E2;
 identifier var, use;
 statement S;
-position p;
 @@
 
-* var =@p E1 + E2;
-  ... when != if (var < E1) S
-  use(var);
+func(...)
+{
+*	var = E1 + E2;
+	... when != if (var < E1) S
+	use(var);
+}
 ```
 
 ## Matching Functions
@@ -256,12 +268,12 @@ target_func(arg1, arg2);
 ```cocci
 func(...)
 {
-    ...
+	...
 }
 
 int func(int param, char *buf)
 {
-    ...
+	...
 }
 ```
 
@@ -281,17 +293,17 @@ s.field = value;
 ### Struct Initialization
 ```cocci
 struct my_struct s = {
-    ...,
-    .field1 = val1,       // note the "...," - a bare "..." here is a parse error
-    ...,
+	...,
+	.field1 = val1,       // note the "...," - a bare "..." here is a parse error
+	...,
 };
 ```
 
 ### Struct Definition
 ```cocci
 struct foo {
-    int field;
-    ...
+	int field;
+	...
 };
 ```
 
@@ -299,13 +311,13 @@ struct foo {
 
 ```cocci
 if (condition)
-    statement;
+	statement;
 
 if (...)
-    S
+	S
 
 if (E1 && E2)
-    return -ERROR;
+	return -ERROR;
 ```
 
 ## Matching Operators
@@ -332,54 +344,67 @@ var = a * b;
 var = a / b;
 ```
 
-## Python Scripting
+## Without Python
 
-### Basic Report
+Rules are scriptless, so the things a `@script:python@` rule used to do are expressed in
+the match rules themselves.
+
+### Report a match
 ```cocci
-@script:python depends on detect@
-p << rule.p;
+@err@
 @@
 
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+func(...)
+{
+*	vulnerable_line;
+}
 ```
+The starred lines are the report — see the two disciplines under
+[Pattern Matching](#pattern-matching) for where the `*` may go.
 
-### Multiple Positions
+### Several conditions must hold
 ```cocci
-@script:python depends on detect@
-p1 << rule.p1;
-p2 << rule.p2;
+@a@
+@@
+pattern_a
+
+@b depends on a@
+@@
+pattern_b
+
+@err depends on a && b@          // only this rule stars, so only it reports
 @@
 
-coccilib.report.print_report(p1[0], 'ERROR: CVE-YYYY-NNNNN (part 1)')
-coccilib.report.print_report(p2[0], 'ERROR: CVE-YYYY-NNNNN (part 2)')
+func(...)
+{
+*	vulnerable_line;
+}
 ```
 
-### Conditional Reporting
+### Only inside particular functions
 ```cocci
-@script:python depends on detect@
-func << rule.func;
-p << rule.p;
+@err exists@
 @@
 
-if func.startswith("unsafe_"):
-    coccilib.report.print_report(p[0], f'ERROR: CVE-YYYY-NNNNN in {func}')
+\(caller1\|caller2\)(...)
+{
+	... when any
+*	vulnerable_line;
+	... when any
+}
 ```
+
+Use `... when any`, not `<+... ...+>`, to wrap a *statement* pattern: both mean "anywhere in
+the body, nested blocks included", but the `<+...+>` spelling is orders of magnitude slower
+on stock spatch. `<+... e ...+>` is for expression contexts (`if (<+... e ...+>)`).
 
 ## Position Markers
 
-```cocci
-@rule@
-position p;              // Declare position
-@@
-
-* code@p;                // Mark position
-
-@script:python@
-p << rule.p;             // Retrieve position
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: ...')
-```
+Not used for reporting: `position` metavariables and `@p` bindings existed to feed
+`@script:python@` report rules, and with the `*` lines carrying the report there is
+nothing to bind. They remain valid as a *match constraint* — `cvehound/cve/CVE-2020-27777.cocci`
+uses `position p != stub.p;` to exclude the empty-stub definition of a function — which is
+the only reason to declare one.
 
 ## Testing Commands
 
@@ -389,14 +414,15 @@ spatch --parse-cocci CVE.cocci
 ```
 
 ### Run the rule
-`-D detect` is required — report scripts are `depends on detect`, so without it the rule
-matches but prints nothing.
+Pass `-D detect` (the rule declares `virtual detect`; spatch aborts on an undeclared
+virtual) and do **not** pass `--no-show-diff` — the diff is the report.
 ```bash
 spatch --no-includes --include-headers -D detect \
-    --very-quiet --no-show-diff \
+    --very-quiet \
     --cocci-file CVE.cocci file.c
 ```
-Output on a hit: `file:line:col-col: ERROR: CVE-YYYY-NNNNN`
+Output on a hit: a unified diff with the starred lines as `-` lines. No output at all
+means the rule did not detect anything.
 
 ### Test with CVEhound
 ```bash
@@ -413,8 +439,8 @@ uv run pytest --runslow --cve=CVE-YYYY-NNNNN   # the real validation
 | `-D detect` | Enable detect virtual mode |
 | `--no-includes` | Don't process includes |
 | `--include-headers` | Process headers |
-| `--very-quiet` | Minimal output |
-| `--no-show-diff` | Don't show diffs |
+| `--very-quiet` | Minimal output (keeps the diff, drops the banners) |
+| `--no-show-diff` | Suppress the diff — **do not use**, it suppresses the report |
 | `--parse-cocci` | Parse the rule only — first thing to run |
 | `-j N` | N parallel jobs (CVEhound pins `-j 1` and parallelizes across CVEs instead) |
 
@@ -440,32 +466,52 @@ uv run pytest --runslow --cve=CVE-YYYY-NNNNN   # the real validation
 
 * return -1;
 
-// Missing position marker
+// Nothing starred: the rule matches and reports nothing
 @err@
 @@
 
-dangerous_func();  // No @p marker
+func(...)
+{
+	dangerous_func();
+}
+
+// Starred helper rule: fires on FIXED trees, because a starred rule
+// reports whenever it matches, whatever the other rules did
+@fix@
+@@
+
+*	safety_check(...);
+
+@err depends on !fix@
+@@
+...
 ```
 
 ### Do
 ```cocci
 // Specific with context
 @err@
-position p;
 @@
 
 specific_func(...)
 {
-    ...
-*   return -1;@p
+	...
+*	return -1;
 }
 
-// Always use position marker
-@err@
-position p;
+// Star the identifying line only, in the rule that decides
+@fix@
 @@
 
-* dangerous_func@p();
+	safety_check(...);
+
+@err depends on !fix@
+@@
+
+specific_func(...)
+{
+*	dangerous_func();
+}
 ```
 
 ## Quick Examples
@@ -473,24 +519,22 @@ position p;
 ### Example 1: Removed Function
 ```cocci
 @err exists@
-position p;
 @@
 
-* removed_vulnerable_func@p(...)
+* removed_vulnerable_func(...)
 {
-    ...
+	...
 }
 ```
 
 ### Example 2: Wrong Value
 ```cocci
 @err@
-position p;
 @@
 
 visibility_func(...)
 {
-*   return 0444;@p  // Should be 0400
+*	return 0444;  // Should be 0400
 }
 ```
 
@@ -498,14 +542,13 @@ visibility_func(...)
 ```cocci
 @err@
 identifier req;
-position p;
 @@
 
 func(...)
 {
-    struct foo req;
-    ... when != memset(&req, 0, sizeof(req));
-*   send(..., &req)@p;
+	struct foo req;
+	... when != memset(&req, 0, sizeof(req));
+*	send(..., &req);
 }
 ```
 
@@ -516,14 +559,16 @@ func(...)
 
 vuln_feature_init(...)
 {
-    ...
+	...
 }
 
 @err depends on has_vuln_feature@
-position p;
 @@
 
-* unsafe_usage@p(...);
+caller(...)
+{
+*	unsafe_usage(...);
+}
 ```
 
 ## Resources

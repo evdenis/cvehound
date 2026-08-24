@@ -92,17 +92,20 @@ virtual detect
 
 @<rule_name>@
 <metavariable declarations>
-position p;
 @@
 
-<code pattern to match>
-
-@script:python depends on detect@
-p << <rule_name>.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+<enclosing function>(...)
+{
+	...
+*	<the line that identifies the vulnerability>
+	...
+}
 ```
+
+A rule is **match rules only**. The report is the `*`: when the pattern matches, spatch
+prints a unified diff with the starred lines removed, and that output is the detection.
+Silence means "not vulnerable". There is no script rule, no `position` metavariable and no
+`@p` binding — the rules have to run under a spatch built without Python.
 
 ### Metadata Fields Explained
 
@@ -183,8 +186,10 @@ virtual detect
 ```
 
 This line declares a virtual mode that CVEhound uses to activate detection patterns.
-Always include this line after the metadata. Every report script is written as
-`depends on detect`, so a rule without this declaration parses but never reports.
+Always include this line after the metadata: CVEhound runs spatch with `-D detect`, and an
+undeclared virtual is a hard error (`virtual rule detect not supported`), not a silent
+no-op. A match rule may still be gated with `depends on detect`, though no rule in
+`cvehound/cve/` needs that today.
 
 ## Coccinelle Basics
 
@@ -242,28 +247,88 @@ first place unless you anchor it to the enclosing function. See
 
 ## Pattern Construction Rules
 
-### Rule 1: Always declare and bind a position
+### Rule 1: The `*` is the report
 
 ```cocci
 @err@
-position p;        // REQUIRED: declare the position variable
 @@
 
-* vulnerable_code@p(...);  // REQUIRED: bind it with @p
+vulnerable_function(...)
+{
+*	return 0444;         // context marker: the line to report
+}
 ```
 
-Without a bound position there is nothing for the Python script rule to report.
+`*` is the context marker, not a wildcard (`...` is). It is not cosmetic, and it is not
+just a formatting choice: it *is* the reporting mechanism. On a match spatch prints a diff
+of the starred lines; a rule with no `*` matches and reports nothing. Marking also switches
+the whole patch into match mode, which flips the default quantification of un-annotated
+`...` from `forall` to `exists`, so adding or removing a `*` can change what matches. It
+cannot be combined with `-`/`+`.
 
-### Rule 2: Mark vulnerable lines with `*`
+### Rule 2: Star discipline
+
+Two failure modes, both learned the hard way:
+
+**Star only the rule that reports.** A starred rule prints whenever *it* matches, no matter
+what the other rules in the file did. So a `*` on a helper rule — most often a `@fix@` rule
+whose job is to recognise the fix — reports on **fixed** trees. That is a false positive on
+every patched kernel, and the tests catch it as "fires at Fix".
 
 ```cocci
-* return 0444;@p         // context marker: the line to report
+// WRONG: the helper stars, so it reports even when the fix is present
+@fix@
+symbol nfs_v4_2_minor_ops, nfs41_mig_recovery_ops;
+@@
+
+*struct nfs4_minor_version_ops nfs_v4_2_minor_ops = {
+	...,
+	.mig_recovery_ops = &nfs41_mig_recovery_ops,
+	...
+};
+
+// CORRECT: the helper only matches; the rule that decides is the one that stars
+@fix@
+symbol nfs_v4_2_minor_ops, nfs41_mig_recovery_ops;
+@@
+
+struct nfs4_minor_version_ops nfs_v4_2_minor_ops = {
+	...,
+	.mig_recovery_ops = &nfs41_mig_recovery_ops,
+	...
+};
+
+@err depends on !fix && ops@
+symbol nfs_v4_2_minor_ops;
+@@
+
+*struct nfs4_minor_version_ops nfs_v4_2_minor_ops = {
+	...
+};
 ```
 
-`*` is the context marker, not a wildcard (`...` is). It is not cosmetic: it switches the
-whole patch into match mode, which flips the default quantification of un-annotated `...`
-from `forall` to `exists`, so adding or removing it can change what matches. It also
-cannot be combined with `-`/`+`. Nearly every rule in the repository uses it.
+(That is `cvehound/cve/CVE-2015-8746.cocci`.)
+
+**Star only the identifying line(s), not the whole pattern.** With several starred lines
+separated by `...`, spatch emits the prefix it managed to match even when the rest of the
+pattern fails — so a partial match becomes a report. Star the one line the reader needs to
+see; leave the surrounding context unmarked:
+
+```cocci
+// WRONG: the kfree() alone reports, even with no use after it
+*	kfree(var);
+	... when != var = ...
+*	use(var);
+
+// CORRECT: the use is what identifies the bug
+	kfree(var);
+	... when != var = ...
+*	use(var);
+```
+
+The one exception in the corpus is `cvehound/cve/CVE-2019-19448.cocci`, whose natural
+report line is a bare `else`; it stars the whole shape because there is nothing else to
+point at.
 
 ### Rule 3: Use appropriate metavariables
 
@@ -273,7 +338,6 @@ symbol kfree;        // Match this exact name literally, not as a metavariable
 expression E;        // For any expression
 statement S;         // For any statement
 type T;              // For any type
-position p;          // For location tracking (required)
 ```
 
 Full selection table:
@@ -285,7 +349,6 @@ Full selection table:
 | Any expression | `expression` | `expression E;` |
 | Any statement | `statement` | `statement S;` |
 | Any type | `type` | `type T;` |
-| Location for reporting | `position` | `position p;` |
 | A specific constant | write it literally | `0444`, `-EINVAL` |
 | Any constant | `constant` | `constant C;` |
 
@@ -300,20 +363,18 @@ Always provide enough context to avoid false positives:
 ```cocci
 // BAD: too generic, matches across the whole tree
 @err@
-position p;
 @@
 
-* return -1;@p
+* return -1;
 
 // GOOD: anchored in the function that has the bug
 @err@
-position p;
 @@
 
 vulnerable_function(...)
 {
-    ...
-*   return -1;@p
+	...
+*	return -1;
 }
 ```
 
@@ -322,9 +383,9 @@ vulnerable_function(...)
 ```cocci
 func(...)              // Match any function arguments
 {
-    ...                // Match 0 or more statements
-    code();
-    ...                // More statements
+	...                // Match 0 or more statements
+	code();
+	...                // More statements
 }
 ```
 
@@ -333,15 +394,14 @@ func(...)              // Match any function arguments
 ```cocci
 @err@
 identifier var;
-position p;
 @@
 
 func(...)
 {
-    struct foo var;
-    ... when != memset(&var, 0, sizeof(var));    // Must NOT have init
-        when != var = ...;                        // Must NOT be assigned
-*   use_var(&var)@p;
+	struct foo var;
+	... when != memset(&var, 0, sizeof(var));    // Must NOT have init
+		when != var = ...;                        // Must NOT be assigned
+*	use_var(&var);
 }
 ```
 
@@ -352,17 +412,16 @@ it is what most rules in `cvehound/cve/` look like:
 
 ```cocci
 @err@
-position p;
 @@
 
 function(...)
 {
-*   return 0444;@p
+*	return 0444;
 }
 ```
 
 **Medium — two or three rules with a dependency**, for "the fix introduced X, so only
-look for the bug where X exists":
+look for the bug where X exists". Only the last rule stars:
 
 ```cocci
 @has_feature@
@@ -371,10 +430,12 @@ look for the bug where X exists":
 init_function(...)
 
 @err depends on has_feature@
-position p;
 @@
 
-* usage@p(...);
+caller(...)
+{
+*	usage(...);
+}
 ```
 
 **Complex — many rules, alternatives, several detection points.** Only reach for this
@@ -407,7 +468,7 @@ identifier func;
 
 int func(int param1, char *param2)
 {
-    ...
+	...
 }
 ```
 
@@ -426,8 +487,8 @@ s->field = 0;
 @@
 
 struct my_struct s = {
-    .field1 = value1,
-    .field2 = value2,
+	.field1 = value1,
+	.field2 = value2,
 };
 ```
 
@@ -440,7 +501,7 @@ expression E;
 @@
 
 if (E < 0)
-    return E;
+	return E;
 
 // Match any conditional
 @rule@
@@ -448,7 +509,7 @@ statement S;
 @@
 
 if (...)
-    S
+	S
 ```
 
 ### Matching Return Statements
@@ -456,10 +517,9 @@ if (...)
 ```cocci
 // Match specific return value
 @rule@
-position p;
 @@
 
-* return -EINVAL;@p
+* return -EINVAL;
 
 // Match return with expression
 @rule@
@@ -483,12 +543,11 @@ related functions:
 
 // The same bug across renamed variants of one function
 @err@
-position p;
 @@
 
 \(follow_page_pte\|follow_page_mask\|follow_page\)(...)
 {
-*   vulnerable_pattern@p;
+*	vulnerable_pattern;
 }
 ```
 
@@ -568,16 +627,9 @@ from `contrib/blank.cocci` or the template:
 virtual detect
 
 @err@
-position p;
 @@
 
-<pattern goes here>
-
-@script:python depends on detect@
-p << err.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+<pattern goes here, with * on the line that identifies the bug>
 ```
 
 ### Step 5: Write the Pattern
@@ -586,18 +638,17 @@ Using the example from Step 3:
 
 ```cocci
 @err@
-position p;
 @@
 
 some_visibility_func(...)
 {
-*   return 0444;@p
+*	return 0444;
 }
 ```
 
 Key points:
-- Declare `position p;` and bind it with `@p`
-- Mark the line to report with `*`
+- Mark the line to report with `*` — that is the whole reporting mechanism
+- Star only that line, and only in the rule that decides
 - Anchor the pattern in the enclosing function
 
 ### Step 6: Add Context (if needed)
@@ -606,16 +657,15 @@ If the pattern is too generic, add more context:
 
 ```cocci
 @err@
-identifier driver, attr;
-position p;
+identifier attr;
 @@
 
 driver_sysfs_ops(...)
 {
-    ...
-    if (attr->mode)
-*       return 0444;@p
-    ...
+	...
+	if (attr->mode)
+*		return 0444;
+	...
 }
 ```
 
@@ -645,12 +695,15 @@ If you miss the vulnerability:
 
 ## Best Practices
 
-Two rules matter more than any checklist here:
+Three rules matter more than any checklist here:
 
 1. **Anchor the pattern in a named function.** A bare `return -1;` or `kfree(x);` with no
    enclosing context is the most common source of false positives. Nearly every real rule
    in `cvehound/cve/` names the function it matches.
-2. **Read three similar rules before writing yours.** They are the ground truth for house
+2. **Keep star discipline.** Star only the rule that decides, and only the line that
+   identifies the bug — see [Rule 2](#rule-2-star-discipline). A stray `*` on a helper rule
+   reports on fixed kernels; a starred multi-line pattern reports on partial matches.
+3. **Read three similar rules before writing yours.** They are the ground truth for house
    style, and they encode workarounds this prose cannot:
    `grep -l copy_to_user cvehound/cve/*.cocci`.
 
@@ -662,10 +715,10 @@ noisy one.
 
 ## Common Mistakes to Avoid
 
-### Mistake 1: No position to report
+### Mistake 1: Nothing starred
 
 ```cocci
-// WRONG: nothing for the script rule to bind
+// WRONG: the rule matches and reports nothing
 @err@
 @@
 
@@ -673,10 +726,9 @@ vulnerable_code();
 
 // CORRECT
 @err@
-position p;
 @@
 
-* vulnerable_code@p();
+* vulnerable_code();
 ```
 
 ### Mistake 2: Pattern too generic
@@ -684,54 +736,36 @@ position p;
 ```cocci
 // WRONG: will match across the whole tree
 @err@
-position p;
 @@
 
-* return -1;@p
+* return -1;
 
 // CORRECT: specific function context
 @err@
-position p;
 @@
 
 specific_function(...)
 {
-    ...
-*   return -1;@p
+	...
+*	return -1;
 }
 ```
 
-### Mistake 3: Wrong position syntax
+### Mistake 3: A helper rule stars
 
-```cocci
-// WRONG: two positions bound on one expression
-* vulnerable_code@p1()@p2;
+A `*` on a `@fix@`-style rule reports on fixed trees. See
+[Rule 2](#rule-2-star-discipline) for the worked example.
 
-// CORRECT: one position per statement
-* vulnerable_code@p();
-```
+### Mistake 4: Starring the whole pattern
 
-### Mistake 4: Script rule references the wrong rule name
-
-```cocci
-@err@
-position p;
-@@
-
-* code@p;
-
-@script:python depends on detect@
-p << err.p;    // must match the @err@ rule name, not something else
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
-```
+Several starred lines separated by `...` report the prefix spatch matched, so a partial
+match fires. See [Rule 2](#rule-2-star-discipline).
 
 ### Mistake 5: Forgetting `virtual detect`
 
 ```cocci
-// WRONG: rule parses, matches, and silently reports nothing,
-// because every script rule is "depends on detect"
+// WRONG: CVEhound runs spatch with -D detect, and spatch refuses the file:
+// "virtual rule detect not supported"
 /// Files: foo.c
 /// Fix: abc123
 
@@ -746,29 +780,34 @@ virtual detect
 @err@
 ```
 
-### Mistake 6: One script rule bound to several rules
+### Mistake 6: Independent sites chained with `depends on`
 
-A script rule fires only if **all** the rules it binds matched. Binding two independent
-detection sites to one script rule turns an OR into an AND:
+Separate starred rules are an **OR** — each reports on its own. `depends on` is an **AND**.
+Chaining two independent detection sites means neither reports unless both matched:
 
 ```cocci
 // WRONG if err_a and err_b are independent sites:
-@script:python depends on detect@
-p << err_a.p;
-q << err_b.p;
+@err_a@
 @@
+...
 
-// CORRECT: one script rule per independent site
-@script:python depends on detect@
-p << err_a.p;
+@err_b depends on err_a@
 @@
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+...
 
-@script:python depends on detect@
-p << err_b.p;
+// CORRECT: two independent starred rules, no dependency between them
+@err_a@
 @@
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
+...
+
+@err_b@
+@@
+...
 ```
+
+Conversely, if the CVE is only present when *several* conditions hold, the dependency is
+required — see
+[Several Detection Sites: OR and AND](#several-detection-sites-or-and-and).
 
 ### Mistake 7: `Files:` names no path that exists
 
@@ -785,19 +824,32 @@ the older name too, or the rule resolves nowhere at `Fixes:` and on pre-rename b
 # Check the rule parses before anything else
 spatch --parse-cocci CVE-2020-12345.cocci
 
-# Run it. -D detect is required: every report script is "depends on detect",
-# so without it the rule matches but prints nothing.
+# Run it. Pass -D detect (the rule declares "virtual detect", and spatch refuses a
+# file whose virtual is not defined). Do NOT pass --no-show-diff: the diff is the report.
 spatch --no-includes --include-headers -D detect \
-    --very-quiet --no-show-diff \
+    --very-quiet \
     --cocci-file CVE-2020-12345.cocci \
     file.c
 ```
 
-A hit is reported as `file:line:col-col: ERROR: CVE-YYYY-NNNNN`, for example:
+A hit is a unified diff of the starred lines — this is `CVE-2022-3106.cocci` on the parent
+of its fix commit:
 
 ```
-net/nfc/rawsock.c:123:4-13: ERROR: CVE-2020-12345
+--- drivers/net/ethernet/sfc/ef100_nic.c
++++ /tmp/cocci-output-2086817-bb6e21-ef100_nic.c
+@@ -609,7 +609,6 @@ static size_t ef100_update_stats(struct
+ 	ef100_common_stat_mask(mask);
+ 	ef100_ethtool_stat_mask(mask);
+
+-	efx_nic_copy_stats(efx, mc_stats);
+ 	efx_nic_update_stats(ef100_stat_desc, EF100_STAT_COUNT, mask,
+ 			     stats, mc_stats, false);
 ```
+
+No output at all means the rule did not detect anything. Read the diff, not just its
+presence: the starred lines tell you *which* site matched, and a surprising one usually
+means the pattern is looser than you meant.
 
 The three checks that matter, run against a kernel checkout:
 
@@ -857,9 +909,11 @@ Before submitting:
 - [ ] `Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:` present and correct
 - [ ] Every path in `Files:` exists in the tree at the `Fix` commit
 - [ ] Some path in `Files:` exists at `Fixes:`/`Detect-To:` too -- add pre-rename names
-- [ ] `position p;` declared and bound with `@p`
-- [ ] Each script rule binds exactly the rules that should report together
-- [ ] CVE ID in the report message matches the filename
+- [ ] At least one line starred with `*`, in the rule that decides
+- [ ] No helper rule (a `@fix@`-style rule) stars anything
+- [ ] Only the identifying line(s) starred, not a multi-line pattern spanning `...`
+- [ ] Independent sites are separate starred rules; conditions that must all hold are
+      chained with `depends on`
 - [ ] Parses: `spatch --parse-cocci CVE-YYYY-NNNNN.cocci`
 - [ ] Detects at `Fix~`, silent at `Fix`
 - [ ] No false positives on unrelated code
@@ -867,37 +921,115 @@ Before submitting:
 
 ## Advanced Techniques
 
-### Multiple Rule Dependencies
+### Several Detection Sites: OR and AND
 
-Create complex detection logic with rule chains:
+This is the distinction that most often decides whether a rule is right.
+
+**Independent sites — an OR.** One starred rule per site, no dependency between them. Each
+reports on its own:
 
 ```cocci
-// Check if feature exists
-@has_feature@
+@err_a exists@
 @@
 
-feature_init(...)
+func_a(...)
 {
-    ...
+*	vulnerable_call1(...);
 }
 
-// Check if feature is used unsafely
-@uses_feature depends on has_feature@
-position p;
+@err_b exists@
 @@
 
-* feature_unsafe_call@p(...);
-
-// Only report if both conditions are met
-@err depends on has_feature && uses_feature@
-position p;
-@@
-
-* another_vulnerable_pattern@p();
+func_b(...)
+{
+*	vulnerable_call2(...);
+}
 ```
 
-**Example**: CVE-2016-5195 (Dirty COW) — checks for function existence before detecting
-the vulnerability.
+`cvehound/cve/CVE-2016-5195.cocci` (Dirty COW) is two such sites; `CVE-2020-12352` repeats
+the shape ten times, once per affected function.
+
+**Conditions that must all hold — an AND.** Chain the rules with `depends on` so the last
+one depends on all the others, and star **only** that last rule:
+
+```cocci
+@cond_a exists@
+@@
+
+pattern_a
+
+@cond_b depends on cond_a exists@
+@@
+
+pattern_b
+
+@err depends on cond_a && cond_b exists@
+@@
+
+reporting_function(...)
+{
+*	the_line_that_identifies_the_bug;
+}
+```
+
+`cvehound/cve/CVE-2021-3347.cocci` chains three futex functions this way;
+`cvehound/cve/CVE-2021-3609.cocci` combines a negative dependency with a positive one
+(`depends on !bcm_free_op_rcu && err_bcm_delete_rx_op`). Both star exactly one rule.
+
+The mirror image is just as important: a `@fix@` rule that recognises the fix, gated with
+`depends on !fix`, must not star anything — see
+[Rule 2](#rule-2-star-discipline).
+
+### Restricting a Pattern to Particular Functions
+
+"Report this only inside `foo()`" is expressed by anchoring the pattern in the function
+definition, not by filtering matches afterwards:
+
+```cocci
+@err exists@
+identifier pebs_status, cpuc;
+@@
+
+intel_pmu_drain_pebs_nhm(...)
+{
+	... when any
+	if (!pebs_status && cpuc->pebs_enabled &&
+	    !(cpuc->pebs_enabled & (cpuc->pebs_enabled-1)))
+*			pebs_status = cpuc->pebs_enabled;
+	... when any
+}
+```
+
+That is `cvehound/cve/CVE-2021-28971.cocci`. `... when any` on both sides means "anywhere in
+the body, nested blocks included", which is what the anchoring needs.
+
+Reach for `<+... ...+>` only in an *expression* context — "this subexpression appears
+somewhere in this condition", as in `cvehound/cve/CVE-2017-1000112.cocci`. Wrapping a whole
+*statement* body in `<+... ...+>` asks for the same thing but costs far more: on stock
+spatch 1.3.2 the `<+...+>` spelling of the rule above takes ~228s on a matching
+`arch/x86/events/intel/ds.c` against ~5.8s for the `... when any` spelling, and the slow
+suite runs it once per tag in a six-year range.
+
+For several acceptable functions —
+including a function that was renamed across the range — use the alternatives syntax:
+
+```cocci
+\(__ip_append_data\|ip_append_data\)(...)
+{
+	...
+*	vulnerable_line;
+	...
+}
+```
+
+See `cvehound/cve/CVE-2017-1000112.cocci` and `cvehound/cve/CVE-2016-5195.cocci`.
+
+> **Performance footnote.** The "wrapper" shape — a whole function definition around a
+> pattern — was pathological on unpatched spatch 1.3.x, where a single rule could take
+> 60-80x longer than the equivalent unanchored one. The bundled spatch carries the
+> `satLabel` memoization fix (upstream PR coccinelle/coccinelle#417), so the shape is
+> cheap again. If you see a rule of this shape crawl, check which spatch you are running
+> before rewriting the rule.
 
 ### Matching Macros
 
@@ -905,80 +1037,13 @@ Coccinelle expands macros, but you can match macro usage:
 
 ```cocci
 @err@
-position p;
 @@
 
 // Match macro call
-* UNSAFE_MACRO@p(...);
+* UNSAFE_MACRO(...);
 
 // Or match the expanded form
-* expanded_function@p(...);
-```
-
-### Capturing Multiple Positions
-
-When a CVE has several vulnerable sites, the house style is one rule per site — each with
-its own `position p;` — and a separate script rule per site:
-
-```cocci
-@err_a exists@
-position p;
-@@
-
-* vulnerable_call1@p(...);
-
-@err_b exists@
-position p;
-@@
-
-* vulnerable_call2@p(...);
-
-@script:python depends on detect@
-p << err_a.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
-
-@script:python depends on detect@
-p << err_b.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
-```
-
-A script rule fires only if **all** its bound rules matched, so binding independent sites
-to one script rule silently turns an OR into an AND. See
-`cvehound/cve/CVE-2016-5195.cocci` (two independent sites, two script rules) and
-`cvehound/cve/CVE-2021-3347.cocci` (three rules deliberately bound at once). Declaring
-`position p1, p2;` inside a single rule is not the idiom used here.
-
-This is also the shape to use when the same bug repeats across many functions — one
-`@err_funcN exists@` rule per function, each with its own script rule. `CVE-2020-12352`
-does this ten times.
-
-### Complex Python Scripts
-
-Use Python for advanced logic:
-
-```cocci
-@err@
-identifier func;
-position p;
-@@
-
-* func@p(...)
-{
-    ...
-}
-
-@script:python depends on detect@
-func << err.func;
-p << err.p;
-@@
-
-# Custom validation logic
-if func.startswith("unsafe_") and not func.endswith("_safe"):
-    coccilib.report.print_report(p[0], f'ERROR: CVE-YYYY-NNNNN in {func}')
+* expanded_function(...);
 ```
 
 ### Matching Type Definitions
@@ -988,36 +1053,41 @@ Detect vulnerable type declarations:
 ```cocci
 @err@
 identifier T;
-position p;
 @@
 
-* struct T@p {
-    unsigned int field;  // Should be unsigned long
-    ...
+* struct T {
+	unsigned int field;  // Should be unsigned long
+	...
 };
 ```
 
 ## Execution Model
 
-For `.cocci` rules, CVEhound builds this command (`cvehound/__init__.py`):
+For `.cocci` rules, CVEhound runs `spatch` once per CVE over the paths named in the rule's
+`Files:` header. The authoritative flag list is in `check_cve()`
+(`cvehound/__init__.py`) — read it there rather than trusting a copy. The flags that
+change what your rule sees or prints:
 
 ```bash
 spatch \
     --no-includes \             # do not resolve #include directives at all
     --include-headers \         # process .h files as inputs in their own right
-    -D detect \                 # enable the "detect" virtual mode
+    -D detect \                 # define the "detect" virtual mode the rule declares
     --chunksize 1 -j 1 \        # one job here; CVEhound parallelizes across CVEs
-    --no-show-diff --very-quiet \
+    --very-quiet \
     -I <kernel>/arch/<arch>/include ... -I <kernel>/include/uapi ... \
     --include <kernel>/include/linux/kconfig.h \
-    --python <sys.executable> \
     --cocci-file <rule> \
     <every path from the rule's Files: header>
 ```
 
+The match arrives as a unified diff of the starred lines on stdout; no output means no
+detection. Because the report is a diff and not a Python `print_report()`, the rules run
+under a spatch built without Python support — that is the point of the idiom, and the
+reason a rule must never grow a script rule back.
+
 `.grep` rules take a different path entirely: `grep -rPzle <pattern> <files>`.
 
-Output goes to stdout as `file:line:col-col: ERROR: CVE-…` and is parsed by CVEhound.
 Note the two-level parallelism: `spatch` is pinned to `-j 1` and `__main__.py` fans out
 across CVEs with a `ProcessPoolExecutor`, so don't add another layer.
 
@@ -1038,7 +1108,8 @@ grep -l "copy_to_user" *.cocci    # information leaks
 grep -l "when != if" *.cocci      # missing checks
 
 # By technique
-grep -lP 'depends on (?!detect)' *.cocci   # real inter-rule dependencies
+grep -l 'depends on' *.cocci               # inter-rule dependencies
+grep -l 'depends on .*&&' *.cocci          # conjunctions (several conditions)
 grep -l '\\(' *.cocci                      # function alternatives
 grep -lw 'exists' *.cocci                  # the exists constraint
 
@@ -1046,10 +1117,14 @@ grep -lw 'exists' *.cocci                  # the exists constraint
 wc -l *.cocci | sort -n | tail -5
 ```
 
-Note the `-P 'depends on (?!detect)'`: a plain `grep -l "depends on"` matches every rule
-in the directory, because each one ends with `@script:python depends on detect@`.
+Around a fifth of the rules use `depends on`; reading a few of those is the fastest way to
+learn when a dependency is warranted and when two independent starred rules are the right
+answer.
 
 ## Examples Walkthrough
+
+Every example below is quoted from the real file in `cvehound/cve/` — only Example 3 is
+cut short, as noted there.
 
 ### Example 1: Simple Pattern - CVE-2015-4004
 
@@ -1067,25 +1142,19 @@ in the directory, because each one ends with `@script:python depends on detect@`
 virtual detect
 
 @err exists@
-position p;
 @@
 
-* ozwpan_init@p(...)
+* ozwpan_init(...)
 {
-    ...
+	...
 }
-
-@script:python depends on detect@
-p << err.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2015-4004')
 ```
 
 **Explanation**:
 - Matches the entire `ozwpan_init` function
 - Uses `exists` to relax matching constraints
 - If this function exists, the vulnerable driver is present
+- The `*` sits on the function's signature line — one line, and it is the whole report
 - Simple and effective for removed/deprecated code
 
 ### Example 2: Value-Based Detection - CVE-2020-12912
@@ -1104,19 +1173,12 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-4004')
 virtual detect
 
 @err@
-position p;
 @@
 
 amd_energy_is_visible(...)
 {
-*   return 0444;@p
+*	return 0444;
 }
-
-@script:python depends on detect@
-p << err.p;
-@@
-
-coccilib.report.print_report(p[0], "ERROR: CVE-2020-12912")
 ```
 
 **Explanation**:
@@ -1124,6 +1186,7 @@ coccilib.report.print_report(p[0], "ERROR: CVE-2020-12912")
 - Looks for exact vulnerable value `0444` (read for all)
 - Fixed version returns `0400` (read for owner only)
 - Context (function name) prevents false positives
+- Nothing else in the rule: no metavariables, no dependencies, one starred line
 
 ### Example 3: Missing Initialization - CVE-2020-12352
 
@@ -1136,28 +1199,24 @@ coccilib.report.print_report(p[0], "ERROR: CVE-2020-12912")
 ```cocci
 /// Files: net/bluetooth/a2mp.c
 /// Fix: eddb7732119d53400f48a02536a84c509692faa8
+/// Detect-To: 6b44d9b8d96b37f72ccd7335b32f386a67b7f1f4
 
 virtual detect
 
 @err_a2mp_discover_rsp exists@
 identifier req;
-position p;
 @@
 
 a2mp_discover_rsp(...)
 {
-    ...
-    struct a2mp_info_req req;
-    ... when != memset(&req, 0, sizeof(req));
-*   a2mp_send(..., A2MP_GETINFO_REQ, ..., sizeof(req), &req)@p;
-    ...
+	...
+	struct a2mp_info_req req;
+	... when != memset(&req, 0, sizeof(req));
+*	a2mp_send(..., A2MP_GETINFO_REQ, ..., sizeof(req), &req);
+	...
 }
 
-@script:python depends on detect@
-p << err_a2mp_discover_rsp.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2020-12352')
+// ... nine more rules of the same shape, one per affected function
 ```
 
 **Explanation**:
@@ -1165,7 +1224,8 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2020-12352')
 - `when != memset(...)` ensures the struct is NOT initialized
 - Detects when uninitialized struct is passed to `a2mp_send`
 - This is the canonical Missing Fix Detection shape
-- The real rule repeats this block ten times, once per affected function
+- The real rule repeats this block ten times, once per affected function — ten independent
+  starred rules, no dependencies between them, so any one of them reports on its own
 
 ### Example 4: Complex Dependencies - CVE-2016-5195 (Dirty COW)
 
@@ -1178,65 +1238,48 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2020-12352')
 ```cocci
 /// Files: mm/gup.c mm/memory.c mm/madvise.c
 /// Fix: 19be0eaffa3ac7d8eb6784ad9bdbc7d67ed8e619
+/// Detect-To: 0a27a14a62921b438bb6f33772690d345a089be6
 
 virtual detect
 
-// Check if fixed function exists
 @madvise exists@
 @@
 
 madvise_need_mmap_write(...)
 {
-    ...
+	...
 }
 
-// If fixed function exists, check for unfixed pattern 1
 @err_follow_page_pte depends on madvise exists@
 identifier flags;
-position p;
 statement S;
 @@
 
-\(follow_page_pte\|follow_page_mask\|follow_page\)(..., unsigned int flags, ...)
+\(follow_page_pte\|follow_page_mask\|follow_page\)(...)
 {
-    ...
-*   if ((flags & FOLL_WRITE) &&@p !pte_write(...)) S
-    ...
+	... when any
+*	if ((flags & FOLL_WRITE) && !pte_write(...)) S
+	... when any
 }
 
-// Check for unfixed pattern 2
 @err_faultin_page depends on madvise exists@
-identifier ret, vma, flags;
-position p;
+identifier flags;
 @@
 
 \(faultin_page\|__get_user_pages\|get_user_pages\)(...)
 {
-    ...
-    if ((ret & VM_FAULT_WRITE) && !(vma->vm_flags & VM_WRITE))
-*       *flags &=@p ~FOLL_WRITE;
-    ...
+	... when any
+*	*flags &= ~FOLL_WRITE;
+	... when any
 }
-
-@script:python depends on detect@
-p << err_follow_page_pte.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2016-5195')
-
-@script:python depends on detect@
-p << err_faultin_page.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2016-5195')
 ```
 
 **Explanation**:
-- First rule checks if fix introduced `madvise_need_mmap_write`
-- Only checks for unfixed patterns if this function exists
-- Uses function alternatives with `\(func1\|func2\|func3\)`
-- Detects two different unfixed code patterns
-- Two separate script rules, so either site reports independently
+- First rule checks whether the fix introduced `madvise_need_mmap_write`; it does **not**
+  star anything, because it is a guard, not the report
+- Only checks for unfixed patterns if this function exists (`depends on madvise`)
+- Uses function alternatives with `\(func1\|func2\|func3\)` for renamed variants
+- Two independent starred rules: either site reports on its own (an OR)
 
 ### Example 5: ASLR Weakness - CVE-2015-1593
 
@@ -1249,49 +1292,38 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2016-5195')
 ```cocci
 /// Files: arch/x86/mm/mmap.c fs/binfmt_elf.c
 /// Fix: 4e7c22d447bb6d7e37bfe39ff658486ae78e8d77
+/// Fixes: v2.6.12-rc2
 
 virtual detect
 
 @err_stack_maxrandom_size exists@
-position p;
 @@
 
-* unsigned int stack_maxrandom_size@p(void)
+* unsigned int stack_maxrandom_size(void)
 {
-    ...
+	...
 }
 
 @err_randomize_stack_top exists@
 identifier random_variable;
-position p;
 @@
 
-*   unsigned int random_variable = 0;
-    ...
+	unsigned int random_variable = 0;
+	...
 (
-*   random_variable =@p get_random_int() % ...;
+*	random_variable = get_random_int() % ...;
 |
-*   random_variable =@p get_random_int() & ...;
+*	random_variable = get_random_int() & ...;
 )
-
-@script:python depends on detect@
-p << err_stack_maxrandom_size.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
-
-@script:python depends on detect@
-p << err_randomize_stack_top.p;
-@@
-
-coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 ```
 
 **Explanation**:
 - Detects the vulnerable `stack_maxrandom_size` function
 - Also detects weak randomization pattern in `randomize_stack_top`
-- Uses disjunction `( ... | ... )` for alternative operations (% or &)
-- Both patterns indicate the vulnerable code is present
+- Uses disjunction `( ... | ... )` for alternative operations (% or &) — the star goes
+  inside each branch, on the assignment that identifies the bug, not on the declaration
+  above it
+- Both patterns indicate the vulnerable code is present, and either reports alone
 
 ## Troubleshooting
 
@@ -1307,10 +1339,12 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 ### Problem: Rule parses and matches but prints nothing
 
 **Solutions**:
-- Add `virtual detect` — without it every `depends on detect` script rule is inert
-- Pass `-D detect` on the spatch command line
-- Check the script rule binds the rule name that actually matched
-- Check you are not binding several independent rules to one script rule (that ANDs them)
+- Check that something is starred — without a `*` there is no report
+- Check that the `*` is in the rule that actually matched, not only in a rule whose
+  `depends on` was not satisfied
+- Make sure you did not pass `--no-show-diff`; it suppresses the diff, which is the report
+- Add `virtual detect` and pass `-D detect` (spatch refuses a file whose declared virtual
+  is undefined, and vice versa)
 
 ### Problem: Too many false positives
 
@@ -1327,16 +1361,21 @@ coccilib.report.print_report(p[0], 'ERROR: CVE-2015-1593')
 - Reduce scope with file-specific matching
 - Avoid deeply nested `...` patterns
 - Split complex rules into smaller ones
-- Check for infinite loops in Python scripts
 - Increase timeout or memory limits
+- Check which `spatch` you are running: the function-definition wrapper shape was
+  pathological before the `satLabel` fix (see the footnote under
+  [Restricting a Pattern to Particular Functions](#restricting-a-pattern-to-particular-functions))
 
-### Problem: Position not reported correctly
+### Problem: The rule fires on a fixed tree
 
 **Solutions**:
-- Ensure `position p;` is declared
-- Mark correct line with `@p`
-- Use `p[0]` in Python script
-- Check that position is passed correctly: `p << rule.p;`
+- Look at which lines the diff removed — that names the rule that fired
+- Check that no helper rule stars anything; a starred `@fix@`-style rule reports whenever
+  it matches, whatever the rest of the file says
+- Check that a multi-line starred pattern is not reporting a partial match: star only the
+  identifying line
+- Check the `depends on` chain: a condition you meant as an AND is an OR unless the last
+  rule depends on the earlier ones
 
 ### Problem: Rule works in one kernel version but not another
 
