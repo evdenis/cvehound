@@ -10,7 +10,7 @@ from typing import Any
 from sympy.logic import simplify_logic
 
 from cvehound.config import Config
-from cvehound.exception import UnsupportedVersion
+from cvehound.exception import SpatchError, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
     fix_date_str,
@@ -227,7 +227,9 @@ class CVEhound:
 
             logging.debug(' '.join(cocci_cmd))
 
-            run = subprocess.run(cocci_cmd, capture_output=True, check=True, text=True)
+            run = subprocess.run(cocci_cmd, capture_output=True, check=False, text=True)
+            if run.returncode != 0:
+                raise SpatchError(cve, self.kernel, run.returncode, run.stderr)
             output = run.stdout.strip()
         else:
             for pattern in self.get_grep_pattern(rule):

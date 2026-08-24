@@ -8,7 +8,6 @@ import multiprocessing
 import os
 import re
 import shutil
-import subprocess
 import sys
 import zlib
 from datetime import UTC, datetime
@@ -16,7 +15,7 @@ from typing import Any
 
 from cvehound import CVEhound
 from cvehound.content import resolve_content
-from cvehound.exception import UnsupportedVersion
+from cvehound.exception import SpatchError, UnsupportedVersion
 from cvehound.util import (
     fix_date_str,
     get_config_data,
@@ -528,8 +527,8 @@ def main(args: list[str] | None = None) -> None:
                 result = future.result()
                 if result:
                     report['results'][cve] = result
-            except subprocess.CalledProcessError as e:
-                logging.error('Failed to run: ' + ' '.join(e.cmd) + '\nError: ' + e.stderr)
+            except SpatchError as err:
+                logging.error(str(err))
             except UnsupportedVersion as err:
                 logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
 
