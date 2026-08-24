@@ -42,6 +42,14 @@ def test_materialize_is_idempotent_and_shared(materializer, hound):
     assert os.path.samefile(blob, os.path.join(tree, FILE))
 
 
+def test_blob_publish_is_write_once(materializer, hound, monkeypatch):
+    oid = dict(materializer.sig(hound.get_rule_fix(CVE), [FILE]))[FILE]
+    before = os.stat(materializer._fetch_blob(oid)).st_ino
+    # a racing worker that passed the exists() check before the first writer landed
+    monkeypatch.setattr(os.path, 'exists', lambda _: False)
+    assert os.stat(materializer._fetch_blob(oid)).st_ino == before
+
+
 def test_hound_at_verdicts(materializer, hound):
     fix = hound.get_rule_fix(CVE)
     files = hound.get_rule_files(CVE)

@@ -85,7 +85,18 @@ class BlobMaterializer:
         tmp = dest + f'.tmp{os.getpid()}-{threading.get_ident()}'
         with open(tmp, 'wb') as fh:
             fh.write(data)
-        os.replace(tmp, dest)
+        # Publish write-once: os.replace() would swap the inode at dest when a
+        # second worker misses on the same oid, orphaning the copy that trees
+        # already hardlinked and quietly ending the sharing.
+        try:
+            os.link(tmp, dest)
+        except FileExistsError:
+            pass
+        except OSError:
+            # No hardlinks on this filesystem; materialize() copies here anyway.
+            os.replace(tmp, dest)
+            return dest
+        os.unlink(tmp)
         return dest
 
     def materialize(self, sig):
