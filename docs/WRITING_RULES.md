@@ -121,9 +121,21 @@ Kernel source paths affected by this CVE, space-separated, relative to the kerne
 /// Files: net/bluetooth/a2mp.c net/bluetooth/mgmt.c
 ```
 
-Nothing enforces this field, which makes a typo dangerous rather than loud: if none of
+Nothing enforces this field, which makes a bad path dangerous rather than loud: if none of
 the listed paths exist, `check_cve` silently skips the rule unless the caller explicitly
 requests `all_files=True`. A typo can therefore cause a false negative.
+
+Renames fall into the same trap. The tests run the rule over the whole `Fixes..Fix` range
+and on old stable branches, so list **every** name the file has had in that range:
+
+```cocci
+/// Files: drivers/tty/n_hdlc.c drivers/char/n_hdlc.c
+```
+
+With only the current name, the rule is blind at its own `Fixes:` commit -- `test_04`
+reports "fails to detect on fixes tag" -- and `test_05` skips every tag before the rename.
+`git log --follow --name-only -- <path>` lists the historical names, and `validate-rule.sh`
+prints them for you when no listed path resolves at the older end.
 
 #### `Fix:` (required in practice)
 The mainline commit that fixed the vulnerability.
@@ -758,11 +770,12 @@ p << err_b.p;
 coccilib.report.print_report(p[0], 'ERROR: CVE-YYYY-NNNNN')
 ```
 
-### Mistake 7: A typo in `Files:`
+### Mistake 7: `Files:` names no path that exists
 
 If none of the paths exist in the tree, `check_cve` skips the rule instead of erroring
 unless the caller explicitly requests `all_files=True`. This can hide a vulnerable kernel,
-so verify each path exists at the `Fix` commit.
+so verify each path exists at the `Fix` commit -- and, for a file that was renamed, list
+the older name too, or the rule resolves nowhere at `Fixes:` and on pre-rename branches.
 
 ## Testing Your Rules
 
@@ -843,6 +856,7 @@ Before submitting:
 - [ ] `virtual detect` present
 - [ ] `Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:` present and correct
 - [ ] Every path in `Files:` exists in the tree at the `Fix` commit
+- [ ] Some path in `Files:` exists at `Fixes:`/`Detect-To:` too -- add pre-rename names
 - [ ] `position p;` declared and bound with `@p`
 - [ ] Each script rule binds exactly the rules that should report together
 - [ ] CVE ID in the report message matches the filename

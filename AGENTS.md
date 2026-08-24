@@ -60,11 +60,14 @@ Register legitimate failures as data, never as `xfail` in a test file:
 - `ownfixes` — `tests/test_00_metadata.py:26`, `(cve, reason)` pairs for CVEs whose
   upstream `Fixes:` tag is wrong.
 
-### Gotcha: a typo'd `Files:` path is silent
+### Gotcha: a `Files:` path that resolves nowhere is silent
 
 If none of a rule's `Files:` paths exist in the tree, `check_cve` skips the rule unless
-`all_files=True`. A typo therefore causes a false negative instead of an error; the validator
-checks that the paths exist at the fix commit.
+`all_files=True`, so a bad path is a false negative rather than an error. A typo does this;
+so does a rename, because the tests run the rule across the whole `Fixes..Fix` range and on
+old stable branches. List every name the file has had in that range, not just the current
+one. The validator checks both ends of the range and prints the historical name when the
+older end has none.
 
 ## Tests
 
