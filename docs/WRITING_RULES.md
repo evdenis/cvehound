@@ -268,7 +268,7 @@ cannot be combined with `-`/`+`.
 
 ### Rule 2: Star discipline
 
-Two failure modes, both learned the hard way:
+Three failure modes, all learned the hard way:
 
 **Star only the rule that reports.** A starred rule prints whenever *it* matches, no matter
 what the other rules in the file did. So a `*` on a helper rule — most often a `@fix@` rule
@@ -329,6 +329,28 @@ see; leave the surrounding context unmarked:
 The one exception in the corpus is `cvehound/cve/CVE-2019-19448.cocci`, whose natural
 report line is a bare `else`; it stars the whole shape because there is nothing else to
 point at.
+
+**Star a line spatch can delete — in every kernel version of the range.** A `*` is a
+minus line internally, so it must sit on something deletable everywhere the rule runs,
+which is every commit in `Fixes..Fix` plus the stable branches. Two tokens are not:
+
+- **A lone `}` (or `{`).** spatch *silently drops* the star: the branch still matches,
+  but contributes nothing to the diff, so the match reports nothing — a false negative
+  with no error anywhere. If it is the only star in the file, spatch at least complains
+  "doesn't contain any +/-/* code"; buried in one branch of a disjunction it is
+  invisible. Star a statement inside the block instead. (Starring a whole statement
+  *including* its braces — `*if (...) {` … `*}` — is fine, as are `case X:` labels and
+  `else` lines; only an unpaired brace is dropped.)
+- **A macro-expanded token.** If *any* version in the range produces the starred token
+  by macro expansion, spatch hard-errors with "try to delete an expanded token".
+  2.6-era code does this a lot — old `floppy.c` wraps ioctl calls as
+  `ECALL(get_floppy_geometry(...))`, so starring the call works on today's tree and
+  aborts on 2005's. Unstarred context is allowed to match expanded code; only the star
+  is restricted. Star an adjacent plain-token statement (`break;`, an assignment)
+  instead.
+
+The validator runs the rule at both ends of the range, which catches both; the deep
+history in between is what `pytest --runslow` is for.
 
 ### Rule 3: Use appropriate metavariables
 
@@ -404,6 +426,78 @@ func(...)
 *	use_var(&var);
 }
 ```
+
+### Rule 7: Match the invariant, not the era
+
+A rule does not run against one kernel. It runs against every commit in `Fixes..Fix`,
+every tag in between, and the head of every supported stable branch — often fifteen
+years of drift in the same function. A pattern that transcribes the exact shape the
+code has *today* (the precise condition, the current line layout) breaks every time
+that shape changed, and the usual repair — adding one disjunction branch per
+historical form — is an arms race the history always wins: the next refactor in the
+range is a silent false negative until someone adds branch N+1.
+
+Instead, separate what the rule needs into two parts, each matched as loosely as the
+vulnerability allows:
+
+1. **A vulnerable anchor that held for the whole range** — the call or computation
+   that *is* the bug's substrate, which existed from `Fixes` to `Fix`. That is what
+   gets the star.
+2. **The fix's marker, matched by a helper rule** — the check or call the fix commit
+   introduced. The error rule is `depends on !fixed`.
+
+`cvehound/cve/CVE-2017-1000112.cocci` is the worked example. The fix guards the UFO
+path in `__ip_append_data()` with a `skb_queue_len(queue) <= 1` check. The first
+version of the rule transcribed the vulnerable condition itself — seven disjunction
+branches, one per historical spelling of the `if`, still missing any era nobody
+thought to transcribe. The invariant version is two short rules per protocol family:
+
+```cocci
+@fixed4 exists@
+expression E;
+@@
+
+\(__ip_append_data\|ip_append_data\)(...)
+{
+	... when any
+	if (<+... \(skb_queue_len(E) <= 1\|skb_queue_len(E) == 1\) ...+>) { ... }
+	... when any
+}
+
+@err4 depends on !fixed4 exists@
+@@
+
+\(__ip_append_data\|ip_append_data\)(...)
+{
+	... when any
+*	ip_ufo_append_data(...)
+	... when any
+}
+```
+
+"Calls `ip_ufo_append_data()` and nothing in the function checks `skb_queue_len`" is
+true in every vulnerable version regardless of how the condition was spelled, false at
+the fix, and vacuously false once UFO was removed entirely. As a bonus it ran ~100×
+faster than the seven-branch version, whose condition disjunctions dominated the
+matching cost.
+
+The loosening toolbox, in the order to reach for it:
+
+- `\(old_name\|new_name\)` for identifiers that were renamed in the range
+- `<+... e ...+>` for "the expression appears somewhere in this condition", when the
+  surrounding expression drifted — an expression context only; to say "anywhere in this
+  function body" use `... when any`, which means the same thing far more cheaply (see
+  [Restricting a Pattern to Particular Functions](#restricting-a-pattern-to-particular-functions))
+- `... when any` for "anywhere in the function", when position within the function
+  drifted
+- a `@fixed@` helper + `depends on !fixed` instead of writing the vulnerable
+  condition at all, when the condition itself is what drifted
+
+When choosing how tight to make the `@fixed@` marker, remember which way the errors
+fall: a marker that is too *specific* fails to recognise an odd backport of the fix
+and fires — a false positive; a marker that is too *loose* matches something that is
+not the fix and stays silent — a false negative. Prefer the specific marker: a missed
+CVE is worse than a noisy one.
 
 ### Pattern complexity: prefer the simplest thing that works
 
@@ -1340,6 +1434,9 @@ identifier random_variable;
 
 **Solutions**:
 - Check that something is starred — without a `*` there is no report
+- Check that no starred line is a lone `}` — spatch drops that star silently, so the
+  branch it sits in matches without reporting (see
+  [Rule 2](#rule-2-star-discipline))
 - Check that the `*` is in the rule that actually matched, not only in a rule whose
   `depends on` was not satisfied
 - Make sure you did not pass `--no-show-diff`; it suppresses the diff, which is the report
@@ -1381,6 +1478,13 @@ identifier random_variable;
 
 **Solutions**:
 - Check if affected code exists in that version
+- If the pattern spells out the code's exact shape, rewrite it around the invariant —
+  the anchor that existed for the whole range plus a `depends on !fixed` helper — rather
+  than adding another disjunction branch per era (see
+  [Rule 7](#rule-7-match-the-invariant-not-the-era))
+- Check the starred line in *that* version: a star on a token the older code builds by
+  macro expansion aborts spatch ("try to delete an expanded token"), and a star on a
+  lone `}` is silently dropped (see [Rule 2](#rule-2-star-discipline))
 - Account for backported changes
 - Use alternative patterns with `\( ... \| ... \)` for renamed functions
 - Consider using version-specific metadata
@@ -1388,6 +1492,10 @@ identifier random_variable;
 ### Problem: Macro expansion issues
 
 **Solutions**:
+- "try to delete an expanded token: X" (exit 255) means a `*` sits on a token that this
+  version of the code produces via a macro (`ECALL(...)`-style wrappers are common in
+  2.6-era drivers). Context lines may match expanded code; starred lines may not. Move
+  the star to an adjacent plain-token statement.
 - Match both macro and expanded forms
 - Remember CVEhound runs with `--no-includes`, so headers are not resolved
 - Use `--macro-file` option with spatch when testing manually
