@@ -107,16 +107,20 @@ def test_metadata(hound, cve):
     if rule.endswith('.grep'):
         return
 
-    found = False
-    cve_id = re.compile(r'CVE-\d{4}-\d{4,7}')
     with open(rule) as fh:
-        for line in fh:
-            res = cve_id.search(line)
-            if res:
-                assert res.group(0) == cve, 'wrong CVE-id in the rule'
-                found = True
+        text = fh.read()
 
-    assert found, 'no CVE-id in the rule'
+    # Scriptless rules carry their identity in the filename alone; any CVE id
+    # that does appear (comments, a leftover report string) must match it.
+    cve_id = re.compile(r'CVE-\d{4}-\d{4,7}')
+    for res in cve_id.finditer(text):
+        assert res.group(0) == cve, 'wrong CVE-id in the rule'
+
+    # The '*' lines are the whole report: a rule with none matches silently,
+    # which is a false negative no other test can see. And the shipped spatch
+    # is built without Python, so a script rule cannot run at all.
+    assert any(line.startswith('*') for line in text.splitlines()), 'nothing starred in the rule'
+    assert 'script:python' not in text, 'rules must run under a spatch built without Python'
 
 
 @pytest.mark.nometadata(

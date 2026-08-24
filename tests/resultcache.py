@@ -2,11 +2,12 @@
 """Persistent verdict cache for materialized detection runs.
 
 The fixes..fix~ history is immutable, so a rule's verdict on a blob signature
-is a pure function of (rule bytes, blobs, spatch version, python, harness
+is a pure function of (rule bytes, blobs, which spatch binary, python, harness
 logic). Verdicts — both True and False — are stored as JSONL, append-only per
 xdist worker (no locking needed); every process loads all files of its context
-at startup. A context directory pins everything environmental, so a spatch or
-python upgrade, or a HARNESS_EPOCH bump, simply starts an empty namespace.
+at startup. A context directory pins everything environmental, so pointing at a
+different spatch, upgrading either it or python, or a HARNESS_EPOCH bump simply
+starts an empty namespace.
 """
 
 import contextlib
@@ -20,21 +21,21 @@ import time
 from filelock import FileLock
 
 # Bump on any semantic change to how checks are invoked or keys are built.
-HARNESS_EPOCH = 1
+HARNESS_EPOCH = 2
 
 MAX_AGE = 90 * 24 * 3600
 
 
-def context_id(spatch_version_line):
+def context_id(spatch_identity):
     python = '{}.{}'.format(*sys.version_info[:2])
-    raw = '\x00'.join((spatch_version_line, str(HARNESS_EPOCH), python))
+    raw = '\x00'.join((spatch_identity, str(HARNESS_EPOCH), python))
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 class ResultCache:
-    def __init__(self, root, spatch_version_line, worker='main'):
+    def __init__(self, root, spatch_identity, worker='main'):
         self.root = root
-        self.dir = os.path.join(root, context_id(spatch_version_line))
+        self.dir = os.path.join(root, context_id(spatch_identity))
         os.makedirs(self.dir, exist_ok=True)
         self._path = os.path.join(self.dir, worker + '.jsonl')
         self._entries = {}

@@ -98,6 +98,12 @@ The metadata location can also be pinned with `--metadata <file>` or the
 `CVEHOUND_METADATA` environment variable, and default CLI options can be set
 in `/etc/cvehound.ini` or `~/.config/cvehound.ini` (see `--config`).
 
+Which `spatch` runs is chosen the same way: `--spatch <path>` (or a `spatch`
+key in the config file), else the `CVEHOUND_SPATCH` environment variable, else
+the bundled `cvehound-spatch` package if it is installed, else whatever is on
+`PATH`. A binary you name explicitly is never silently replaced by a fallback —
+if it does not resolve, cvehound stops and says so.
+
 ## How to use
 
 The simplest way to start using CVEhound is to run the following command:

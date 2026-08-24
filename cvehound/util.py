@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import re
+import shutil
 import subprocess
 from configparser import ConfigParser
 from datetime import UTC, datetime
@@ -9,6 +10,7 @@ from importlib.metadata import distribution, version
 from typing import Any
 
 from cvehound.content import RULE_SUFFIXES, resolve_content
+from cvehound.exception import SpatchNotFound
 
 # The top-level Makefile's ARCH -> SRCARCH mapping: which arch/<dir>
 # the sources for a given ARCH= value actually live in.
@@ -73,10 +75,51 @@ def get_cvehound_version() -> str:
     return pkg_version
 
 
-def get_spatch_version() -> int:
+def find_spatch(explicit: str | None = None) -> str:
+    """Resolve the spatch binary to run.
+
+    Precedence: an explicit path/name (--spatch, config file) -> the
+    CVEHOUND_SPATCH environment variable -> the bundled cvehound-spatch
+    package -> whatever is on PATH.
+
+    An explicitly named binary that does not resolve is an error, never a
+    silent fallback; an implicit source that does not resolve falls through
+    to the next one. Failure to resolve anything at all raises
+    SpatchNotFound, so callers never have to handle a None.
+    """
+
+    def resolve(name: str, origin: str) -> str:
+        path = shutil.which(name)
+        if path is None:
+            raise SpatchNotFound(f'spatch not found at {name!r} (from {origin})')
+        return path
+
+    if explicit:
+        return resolve(explicit, '--spatch')
+    env = os.environ.get('CVEHOUND_SPATCH')
+    if env:
+        return resolve(env, '$CVEHOUND_SPATCH')
+    try:
+        import cvehound_spatch  # ty: ignore[unresolved-import]  # optional sidecar package
+
+        # The sidecar is not an explicit choice, so a package whose binary is
+        # missing must fall through to PATH rather than hand back a path that
+        # only fails later, inside subprocess.
+        bundled = shutil.which(str(cvehound_spatch.spatch_path()))
+        if bundled:
+            return bundled
+    except ImportError:
+        pass
+    found = shutil.which('spatch')
+    if found is None:
+        raise SpatchNotFound('spatch not found: install coccinelle or the cvehound-spatch package')
+    return found
+
+
+def get_spatch_version(spatch: str) -> int:
     version_output = (
         subprocess.check_output(
-            ['spatch', '--version'], stderr=subprocess.DEVNULL, universal_newlines=True
+            [spatch, '--version'], stderr=subprocess.DEVNULL, universal_newlines=True
         )
         .strip()
         .split('\n')[0]
@@ -145,15 +188,29 @@ def get_cves_metadata(path: str | None) -> Any:
 
 
 def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
+    """Parse spatch context-mode output: unified diffs of the starred lines.
+
+    Rules report by starring lines, so a match is a diff whose removed
+    lines are the starred ones; each removed line becomes one hit with
+    its line number in the original file.
+    """
     result: list[dict[str, str | int]] = []
+    file = ''
+    old_line = 0
     for line in output.splitlines():
-        file, hline, _ = line.split(':', 2)
-        result.append(
-            {
-                'file': file,
-                'line': int(hline),
-            }
-        )
+        if line.startswith('--- '):
+            file = line[4:]
+        elif line.startswith('@@'):
+            hunk = re.match(r'@@ -(\d+)', line)
+            if hunk:
+                old_line = int(hunk.group(1))
+        elif line.startswith('-'):
+            result.append({'file': file, 'line': old_line})
+            old_line += 1
+        elif not line.startswith('+'):
+            # Context lines advance the original-file counter; '+++' and added
+            # lines do not exist in the original and are skipped by the above.
+            old_line += 1
     return result
 
 

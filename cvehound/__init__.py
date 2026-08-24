@@ -4,7 +4,6 @@ import functools
 import logging
 import os
 import subprocess
-import sys
 from typing import Any
 
 from sympy.logic import simplify_logic
@@ -13,6 +12,7 @@ from cvehound.config import Config
 from cvehound.exception import SpatchError, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
+    find_spatch,
     fix_date_str,
     get_cves_metadata,
     get_rule_cves,
@@ -79,11 +79,13 @@ class CVEhound:
         config: str | None = None,
         check_strict: bool = False,
         arch: str = 'x86',
+        spatch: str | None = None,
     ) -> None:
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
         self.metadata: dict[str, Any] = get_cves_metadata(metadata)
-        self.spatch_version = get_spatch_version()
+        self.spatch: str = spatch or find_spatch()
+        self.spatch_version = get_spatch_version(self.spatch)
         self.check_strict = check_strict
         self.arch = arch
         self.srcarch = get_srcarch(arch)
@@ -200,13 +202,13 @@ class CVEhound:
         logging.debug('Checking: ' + cve)
 
         output = ''
-        run = None
+        hits: list[dict[str, str | int]] = []
         if not is_grep:
             rule_ver = self.get_rule_version(cve)
             if rule_ver and rule_ver > self.spatch_version:
                 raise UnsupportedVersion(self.spatch_version, cve, rule_ver)
             cocci_cmd = [
-                'spatch',
+                self.spatch,
                 '--no-includes',
                 '--include-headers',
                 '-D',
@@ -215,11 +217,8 @@ class CVEhound:
                 '1',
                 '-j',
                 str(jobs),
-                '--no-show-diff',
                 '--very-quiet',
                 *includes,
-                '--python',
-                os.path.realpath(sys.executable),
                 '--cocci-file',
                 rule,
                 *files,
@@ -230,29 +229,31 @@ class CVEhound:
             run = subprocess.run(cocci_cmd, capture_output=True, check=False, text=True)
             if run.returncode != 0:
                 raise SpatchError(cve, self.kernel, run.returncode, run.stderr)
+            # Rules report by starring lines: a match is a unified diff of the
+            # starred lines on stdout, silence means not vulnerable. The parsed
+            # hits are the verdict, so "detected" and the reported locations can
+            # never disagree.
             output = run.stdout.strip()
+            hits = parse_coccinelle_output(output)
+            if not hits:
+                return False
         else:
             for pattern in self.get_grep_pattern(rule):
                 args = ['grep', '-rPzle', pattern, *files]
                 run = subprocess.run(args, capture_output=True, check=False, text=True)
                 if run.returncode != 0:
-                    break
+                    # A grep rule needs every pattern to match somewhere.
+                    return False
                 output += run.stdout.strip()
-            else:
-                # Found all patterns
-                output += '\nERROR'
-
-        if 'ERROR' not in output:
-            return False
 
         config_result: dict[str, Any] = {}
         if self.config_map is not None:
             kernel_files: dict[str, str | None] = {}
-            for line in output.split('\n'):
-                file_list: list[str] = []
-                if not is_grep:
-                    file_list = [line.split(':')[0]]
-                else:
+            file_list: list[str] = []
+            if not is_grep:
+                file_list = sorted({str(hit['file']) for hit in hits})
+            else:
+                for line in output.split('\n'):
                     while True:
                         try:
                             rindex = line.rindex(self.kernel)
@@ -260,9 +261,9 @@ class CVEhound:
                             break
                         file_list.append(line[rindex:])
                         line = line[:rindex]
-                for f in file_list:
-                    if os.path.isfile(f):
-                        kernel_files[f] = self.config_map.get(f)
+            for f in file_list:
+                if os.path.isfile(f):
+                    kernel_files[f] = self.config_map.get(f)
             if kernel_files:
                 verdicts: list[bool] = []
                 config_result['files'] = {}
@@ -302,7 +303,7 @@ class CVEhound:
         result['config'] = config_result
         result['spatch_output'] = output
         if not is_grep:
-            result['files'] = parse_coccinelle_output(output)
+            result['files'] = hits
         else:
             result['files'] = [{'file': x} for x in files]
         self._print_found_cve(cve)

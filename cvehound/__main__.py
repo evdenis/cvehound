@@ -7,7 +7,6 @@ import logging
 import multiprocessing
 import os
 import re
-import shutil
 import sys
 import zlib
 from datetime import UTC, datetime
@@ -15,15 +14,15 @@ from typing import Any
 
 from cvehound import CVEhound
 from cvehound.content import resolve_content
-from cvehound.exception import SpatchError, UnsupportedVersion
+from cvehound.exception import SpatchError, SpatchNotFound, UnsupportedVersion
 from cvehound.util import (
+    find_spatch,
     fix_date_str,
     get_config_data,
     get_cvehound_version,
     get_cves_metadata,
     get_kernel_version,
     get_rule_cves,
-    get_spatch_version,
     get_srcarch,
     latest_fix_date,
     parse_config,
@@ -196,6 +195,7 @@ def check_config(config: dict[str, Any]) -> None:
         'all_files',
         'metadata',
         'arch',
+        'spatch',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -280,6 +280,12 @@ def main(args: list[str] | None = None) -> None:
         '--metadata', metavar='PATH', help='Path to non-standard location of kernel_cves.json.gz'
     )
     parser.add_argument(
+        '--spatch',
+        metavar='PATH',
+        help='spatch binary to use (default: $CVEHOUND_SPATCH, the bundled'
+        ' cvehound-spatch package, then PATH)',
+    )
+    parser.add_argument(
         '--version',
         action=_VersionAction,
         default=argparse.SUPPRESS,
@@ -359,8 +365,10 @@ def main(args: list[str] | None = None) -> None:
         print('Please, use --check-strict with --kernel-config', file=sys.stderr)
         sys.exit(1)
 
-    if not shutil.which('spatch'):
-        print('coccinelle is not installed', file=sys.stderr)
+    try:
+        spatch = find_spatch(args_cfg.get('spatch'))
+    except SpatchNotFound as err:
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     loglevel = logging.WARNING
@@ -382,6 +390,7 @@ def main(args: list[str] | None = None) -> None:
         args_cfg['kernel_config'],
         args_cfg['check_strict'],
         args_cfg['arch'],
+        spatch=spatch,
     )
     ensure_rules(hound.cve_all_rules)
     check_metadata_freshness(hound.metadata, args_cfg['exploit'])
@@ -492,7 +501,8 @@ def main(args: list[str] | None = None) -> None:
     if args_cfg['kernel_config'] and args_cfg['kernel_config'] != '-':
         report['config'] = config_info
     report['tools']['cvehound'] = get_cvehound_version()
-    report['tools']['spatch'] = '.'.join(list(str(get_spatch_version())))
+    report['tools']['spatch'] = '.'.join(list(str(hound.spatch_version)))
+    report['tools']['spatch_path'] = hound.spatch
     # Rules and metadata update out-of-band, so the tool version alone does not
     # identify what produced the findings; pin the content identity too.
     content = resolve_content()

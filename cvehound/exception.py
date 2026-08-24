@@ -12,6 +12,15 @@ class UnsupportedVersion(Exception):
         self.rule_version = f'{rule_version // 100}.{(rule_version // 10) % 10}.{rule_version % 10}'
 
 
+class SpatchNotFound(Exception):
+    """No usable spatch binary: carries the message for the source that failed.
+
+    find_spatch() reports every resolution failure this way -- an explicitly
+    named binary that is missing, or nothing found at all -- so callers handle
+    one exception instead of an exception plus a None return.
+    """
+
+
 class SpatchError(Exception):
     """spatch exited non-zero: report what it said, not just how it was called.
 

@@ -153,9 +153,14 @@ def _reset_worktree(repo):
     repo.git.checkout('origin/master')
 
 
-def _spatch_version_line():
-    out = run(['spatch', '--version'], capture_output=True, check=True, text=True)
-    return out.stdout.splitlines()[0]
+def _spatch_identity(spatch):
+    # The version line alone does not identify the binary: the bundled build
+    # and a distro one report the same "spatch version 1.3.2 compiled with
+    # OCaml ...", yet differ in patches and configure flags (--disable-python),
+    # which changes verdicts. Keep the path and the whole banner, whose second
+    # line lists those flags, so switching binaries starts a fresh namespace.
+    out = run([spatch, '--version'], capture_output=True, check=True, text=True)
+    return '\x00'.join((spatch, out.stdout.strip()))
 
 
 def _fetch_remotes(repo):
@@ -263,7 +268,7 @@ def pytest_configure(config):
     if not config.getoption('--no-result-cache'):
         _result_cache = ResultCache(
             os.path.join(os.path.dirname(os.path.realpath(__file__)), '.result_cache'),
-            _spatch_version_line(),
+            _spatch_identity(_cvehound.spatch),
             worker=os.environ.get('PYTEST_XDIST_WORKER', 'main'),
         )
 
