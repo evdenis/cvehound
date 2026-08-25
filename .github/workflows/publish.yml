@@ -39,7 +39,7 @@ jobs:
         run: |
           if gh release download content-latest --pattern manifest.json --pattern kernel_cves.json.gz --dir content-dl; then
             uv run python -c "
-          import hashlib, shutil, sys
+          import hashlib, os, shutil, sys
           from cvehound.content import CONTENT_ID_NAME, METADATA_NAME, load_manifest
           manifest = load_manifest('content-dl/manifest.json')
           blob = 'content-dl/kernel_cves.json.gz'
@@ -47,6 +47,9 @@ jobs:
               digest = hashlib.sha256(fh.read()).hexdigest()
           if digest != manifest['metadata']['sha256']:
               sys.exit('metadata blob checksum mismatch')
+          # Nothing under cvehound/data/ is git-tracked, so a fresh checkout
+          # has no such directory to copy into.
+          os.makedirs('cvehound/' + os.path.dirname(METADATA_NAME), exist_ok=True)
           shutil.copyfile(blob, 'cvehound/' + METADATA_NAME)
           with open('cvehound/' + CONTENT_ID_NAME, 'w') as fh:
               fh.write(manifest['content_id'] + '\n')
