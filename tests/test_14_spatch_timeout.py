@@ -13,6 +13,7 @@ classifying every timeout as "nothing to see".
 """
 
 import pickle
+import subprocess
 
 import pytest
 from kerneltree import hound_at
@@ -169,12 +170,38 @@ def test_check_cve_raises_spatch_timeout(slow_hound, monkeypatch, all_files, ret
     assert not err.wall
 
 
-def test_wall_watchdog_kills_the_process_group(slow_hound, monkeypatch):
+def test_wall_watchdog_reports_a_wall_timeout(slow_hound, monkeypatch):
     # The engine budget cannot see a process that is not burning CPU, which is
-    # the whole reason for the outer one.
+    # the whole reason for the outer one. It names no file: only spatch knows
+    # where it got to, and it was killed before it could say.
     monkeypatch.setattr(cvehound, 'SPATCH_TIMEOUT', 0)
     monkeypatch.setattr(cvehound, 'SPATCH_WALL_TIMEOUT', 1)
     with pytest.raises(SpatchTimeout) as excinfo:
         slow_hound.check_cve(CVE)
     assert excinfo.value.wall
     assert excinfo.value.timeout == 1
+    assert excinfo.value.files == []
+
+
+def test_wall_watchdog_leaves_no_parmap_children(slow_hound, slow_tree, tmp_path, monkeypatch):
+    """The reason the watchdog signals a process group and not a process.
+
+    Under -j>1 spatch hands the work to parmap, which forks; killing the parent
+    alone would orphan those children still burning cores. jobs=2 is what makes
+    this test differ from the one above -- at jobs=1 there is nothing to orphan.
+
+    chdir is belt and braces: check_cve() points --tmp-dir at a private
+    mkdtemp it removes itself, so the scratch directory the SIGKILL strands
+    lands nowhere near the repo root even without it.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cvehound, 'SPATCH_TIMEOUT', 0)
+    monkeypatch.setattr(cvehound, 'SPATCH_WALL_TIMEOUT', 2)
+    with pytest.raises(SpatchTimeout):
+        slow_hound.check_cve(CVE, True, jobs=2)
+    # pgrep matches the rule path, which is unique to this tree, so a surviving
+    # child cannot be confused with another worker's spatch under xdist.
+    survivors = subprocess.run(
+        ['pgrep', '-fa', str(slow_tree / f'{CVE}.cocci')], capture_output=True, text=True
+    )
+    assert survivors.stdout == '', survivors.stdout
