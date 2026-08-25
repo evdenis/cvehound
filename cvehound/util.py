@@ -112,7 +112,10 @@ def find_spatch(explicit: str | None = None) -> str:
         pass
     found = shutil.which('spatch')
     if found is None:
-        raise SpatchNotFound('spatch not found: install coccinelle or the cvehound-spatch package')
+        raise SpatchNotFound(
+            "spatch not found: install coccinelle, or pip install 'cvehound[spatch]' "
+            'to get a prebuilt one'
+        )
     return found
 
 

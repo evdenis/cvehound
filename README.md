@@ -43,39 +43,24 @@ code patterns of known CVEs and missing fixes for them.
  - Security [regression CVE-2020-10781](https://lkml.org/lkml/2023/4/17/744)
  - See [tests exceptions](https://github.com/evdenis/cvehound/blob/master/tests/test_01_on_branch.py#L7) for more examples
 
-## Prerequisites
-
-- Python 3 (>=3.11)
-- grep with pcre support (-P flag)
-- diffutils (spatch renders what it matched by running `diff`)
-- coccinelle (>= 1.1.0)
-
-Install prerequisites:
-``` shell
-# Ubuntu
-$ sudo apt install coccinelle
-
-# Fedora
-$ sudo dnf install coccinelle
-
-# macOS
-$ brew install coccinelle
-```
-
 ## Installation
 
-To install the latest stable version just run the following command:
-
 ``` shell
-$ python3 -m pip install --user cvehound
+$ python3 -m pip install --user 'cvehound[spatch]'
 ```
 
-For development purposes you may install cvehound in "editable" mode
-directly from the repository (clone it on your computer beforehand):
+That brings a prebuilt, tailored `spatch` along with the tool
+([cvehound-spatch](https://github.com/evdenis/cvehound-spatch)), so there is
+nothing else to install and no coccinelle build to keep in step. It is used
+automatically unless you name another `spatch` explicitly.
 
-``` shell
-$ pip install -e .
-```
+Prerequisites: Python 3.11+, `grep` with PCRE support (`-P`), and `diffutils`
+(spatch renders what it matched by running `diff`).
+
+The wheel covers Linux on x86_64 and aarch64. Anywhere else, drop the
+`[spatch]` part and provide coccinelle (>= 1.1.0) yourself — `apt install
+coccinelle`, `dnf install coccinelle`, `brew install coccinelle`. A development
+install from a clone takes the extra too: `pip install -e '.[spatch]'`.
 
 ### Updating rules and metadata
 

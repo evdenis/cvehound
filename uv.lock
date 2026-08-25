@@ -29,6 +29,11 @@ dependencies = [
     { name = "sympy" },
 ]
 
+[package.optional-dependencies]
+spatch = [
+    { name = "cvehound-spatch", marker = "platform_machine in 'x86_64 aarch64' and sys_platform == 'linux'" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "filelock" },
@@ -55,9 +60,11 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cvehound-spatch", marker = "platform_machine in 'x86_64 aarch64' and sys_platform == 'linux' and extra == 'spatch'", specifier = ">=1.3.2" },
     { name = "pyyaml" },
     { name = "sympy" },
 ]
+provides-extras = ["spatch"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -81,6 +88,15 @@ test = [
     { name = "psutil" },
     { name = "pytest" },
     { name = "pytest-xdist" },
+]
+
+[[package]]
+name = "cvehound-spatch"
+version = "1.3.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/33/60dfdad88b531a6685ed24a17618699894677b35a0aac6bc999476b1fe00/cvehound_spatch-1.3.2-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:88af94857062aee1a4fbccbc9b2ea6f87a683a22a45b265b075c28c5999c573f", size = 7979134, upload-time = "2026-08-25T11:25:47.493Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/da/ff9f1f59ef4001a4be9cf8e5ad0792d1c6bfd2f8a9368153b4f30044d546/cvehound_spatch-1.3.2-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:834dee14e04ed3fe36d556943800290f63649774d310a9da526b7513313adb35", size = 6360321, upload-time = "2026-08-25T11:25:49.898Z" },
 ]
 
 [[package]]

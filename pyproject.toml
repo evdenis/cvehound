@@ -23,6 +23,15 @@ classifiers = [
 ]
 dependencies = ["sympy", "pyyaml"]
 
+# Ships a tailored spatch so that coccinelle need not be installed separately;
+# find_spatch() picks it up automatically. Linux-only, and only for the
+# architectures the sidecar publishes wheels for -- everywhere else cvehound
+# falls back to the spatch on PATH.
+[project.optional-dependencies]
+spatch = [
+    "cvehound-spatch>=1.3.2; sys_platform == 'linux' and platform_machine in 'x86_64 aarch64'",
+]
+
 [project.scripts]
 cvehound = "cvehound.__main__:main"
 cvehound_update_metadata = "cvehound.scripts.update_metadata:main"
