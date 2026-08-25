@@ -19,7 +19,7 @@ name: content
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'cvehound/cve/**'
   workflow_dispatch:
