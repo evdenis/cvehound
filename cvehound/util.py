@@ -217,6 +217,43 @@ def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
     return result
 
 
+# spatch reports a fired --timeout in three shapes, and which one you get depends
+# on how the run was invoked, not on what went wrong:
+#
+#   file list, -j 1   exit 2    "timeout (we abort): <files>" then
+#                               "Fatal error: exception <mod>Common.Timeout"
+#   directory arg     exit 0    "EXN: <mod>Common.Timeout in <file>", one per file,
+#                               then "An error occurred when attempting to ..."
+#   file list, -j > 1 exit 255  "[Parmap]: error at index ... got exception
+#                               <mod>Common.Timeout on core N"
+#
+# The exit code alone settles nothing -- OCaml gives any uncaught exception exit 2,
+# and the directory shape does not fail at all -- so the stderr text is the verdict.
+# The module prefix is build-dependent (Coccinelle_modules.Common.Timeout on the
+# OCaml 5 builds, bare Common.Timeout on older ones), hence the optional group.
+_TIMEOUT_EXN = re.compile(r'\bCommon\.Timeout\b')
+_TIMEOUT_EXN_FILE = re.compile(r'^EXN: (?:\S+\.)?Common\.Timeout in (.+)$', re.MULTILINE)
+_TIMEOUT_ABORT = re.compile(r'^timeout \(we abort\): (.*)$', re.MULTILINE)
+
+
+def parse_spatch_timeout(stderr: str) -> list[str] | None:
+    """Classify spatch stderr: None when no --timeout fired, else the files blamed.
+
+    The list is empty when spatch named no file -- the parmap and fatal-error
+    lines carry only the exception. Callers must treat "empty" as "timed out,
+    files unknown", never as "did not time out".
+    """
+    if not _TIMEOUT_EXN.search(stderr):
+        return None
+    files = _TIMEOUT_EXN_FILE.findall(stderr)
+    if not files:
+        # The abort line lists the whole work unit, space-separated: under a file
+        # list that is every file spatch was given, since they are one unit.
+        for group in _TIMEOUT_ABORT.findall(stderr):
+            files.extend(group.split())
+    return sorted(set(files))
+
+
 def parse_config(file: str) -> dict[str, Any]:
     parser = ConfigParser()
     with open(file) as fh:

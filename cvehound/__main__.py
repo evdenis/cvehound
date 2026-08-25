@@ -12,9 +12,9 @@ import zlib
 from datetime import UTC, datetime
 from typing import Any
 
-from cvehound import CVEhound
+from cvehound import SPATCH_TIMEOUT, SPATCH_WALL_TIMEOUT, CVEhound
 from cvehound.content import resolve_content
-from cvehound.exception import SpatchError, SpatchNotFound, UnsupportedVersion
+from cvehound.exception import SpatchError, SpatchNotFound, SpatchTimeout, UnsupportedVersion
 from cvehound.util import (
     find_spatch,
     fix_date_str,
@@ -485,7 +485,17 @@ def main(args: list[str] | None = None) -> None:
     args_cfg['ignore_files'].sort()
     cves_sorted = sorted(cves)
 
-    report: dict[str, Any] = {'args': {}, 'kernel': {}, 'config': {}, 'tools': {}, 'results': {}}
+    # 'errors' is part of the schema whether or not anything failed: a consumer
+    # that has to tell "no CVE fired" from "the rule never ran" needs the key to
+    # be there unconditionally.
+    report: dict[str, Any] = {
+        'args': {},
+        'kernel': {},
+        'config': {},
+        'tools': {},
+        'results': {},
+        'errors': {},
+    }
     report['args']['cve'] = cves_sorted
     report['args']['kernel'] = args_cfg['kernel']
     report['args']['config'] = args_cfg['kernel_config']
@@ -503,6 +513,11 @@ def main(args: list[str] | None = None) -> None:
     report['tools']['cvehound'] = get_cvehound_version()
     report['tools']['spatch'] = '.'.join(list(str(hound.spatch_version)))
     report['tools']['spatch_path'] = hound.spatch
+    # The budgets that produced these findings: a rule that timed out here may
+    # well have fired on a machine that gave it more room, so a report is not
+    # comparable to another one without them.
+    report['tools']['spatch_timeout'] = SPATCH_TIMEOUT
+    report['tools']['spatch_wall_timeout'] = SPATCH_WALL_TIMEOUT
     # Rules and metadata update out-of-band, so the tool version alone does not
     # identify what produced the findings; pin the content identity too.
     content = resolve_content()
@@ -537,10 +552,29 @@ def main(args: list[str] | None = None) -> None:
                 result = future.result()
                 if result:
                     report['results'][cve] = result
+            except SpatchTimeout as err:
+                logging.error(str(err))
+                report['errors'][cve] = {
+                    'error': 'timeout',
+                    'returncode': err.returncode,
+                    'timeout': err.timeout,
+                    'wall': err.wall,
+                    'files': err.files,
+                    'stderr': err.stderr_tail,
+                }
             except SpatchError as err:
                 logging.error(str(err))
+                report['errors'][cve] = {
+                    'error': 'spatch',
+                    'returncode': err.returncode,
+                    'stderr': err.stderr_tail,
+                }
             except UnsupportedVersion as err:
                 logging.error('Skipping: ' + err.cve + ' requires spatch >= ' + err.rule_version)
+                report['errors'][cve] = {
+                    'error': 'unsupported_version',
+                    'requires': err.rule_version,
+                }
 
     if args_cfg['report']:
         with open(args_cfg['report'], 'w', encoding='utf-8') as fh:

@@ -21,7 +21,7 @@ import time
 from filelock import FileLock
 
 # Bump on any semantic change to how checks are invoked or keys are built.
-HARNESS_EPOCH = 2
+HARNESS_EPOCH = 3
 
 MAX_AGE = 90 * 24 * 3600
 

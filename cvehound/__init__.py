@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 
+import contextlib
 import functools
 import logging
 import os
 import shutil
+import signal
 import subprocess
+import tempfile
 from typing import Any
 
 from sympy.logic import simplify_logic
 
 from cvehound.config import Config
-from cvehound.exception import SpatchError, SpatchNotFound, UnsupportedVersion
+from cvehound.exception import SpatchError, SpatchNotFound, SpatchTimeout, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
     find_spatch,
@@ -20,6 +23,7 @@ from cvehound.util import (
     get_spatch_version,
     get_srcarch,
     parse_coccinelle_output,
+    parse_spatch_timeout,
 )
 
 __VERSION__ = '1.4.0'
@@ -32,6 +36,29 @@ COMPILED_SUFFIXES = ('.c', '.S', '.s', '.rs')
 # Force-included into every spatch run when the tree has it; the test harness
 # mirrors this probe when it materializes mini-trees (tests/kerneltree.py).
 KCONFIG_H = 'include/linux/kconfig.h'
+
+# CPU-seconds inside the matching engine, per work unit -- and each of those
+# three words matters. CPU, because coccinelle arms ITIMER_VIRTUAL, so an
+# oversubscribed machine does not trip it. Matching engine, because the timer
+# wraps Cocci.full_engine only: the ~3s of iso loading and rule parsing, and any
+# wait on I/O, are outside it. Work unit, because given a file list spatch
+# treats the whole list as one, and only a directory (--all-files) splits per
+# file.
+#
+# 60 against a worst measured file of 0.5 CPU-seconds is margin for the two
+# things that move billed CPU -- machine load and core speed -- not for
+# expensive rules. docs/WRITING_RULES.md -> "The rule exceeds its time budget"
+# carries the numbers.
+SPATCH_TIMEOUT = 60
+
+# The outer bound, and the only one that sees what a CPU budget structurally
+# cannot: a stalled read, a deadlocked parmap child, a rule parse that never
+# returns. It is also the coarser statement of the same standard -- no single
+# spatch run has any business taking five minutes, whole-tree scan included, and
+# one that does is a rule to rewrite rather than a budget to raise. The slowest
+# --all-files scan of the whole rule set measures 43s wall / 37s CPU, so this
+# leaves ~7x for slower hardware. 0 disables it, as it does for spatch.
+SPATCH_WALL_TIMEOUT = 300
 
 
 @functools.cache
@@ -70,6 +97,59 @@ def evaluate_file_condition(
         return (str(simplified), bool(simplified.subs(subs)))
 
     return (text, affected if config is not None else None)
+
+
+def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str:
+    """Run spatch under both budgets and hand back its stdout, or raise.
+
+    Both halves of "did this run finish" live here so they cannot be used apart:
+    a caller that got the wall watchdog but skipped the engine verdict would
+    read a rule that gave up as a rule that found nothing.
+
+    The wall half needs its own process group. subprocess.run(timeout=) kills
+    only spatch, leaving the parmap workers it forks under -j>1 orphaned and
+    still burning cores; start_new_session lets one signal reach all of them.
+    That also costs spatch its SIGINT, so the same kill runs for any exception.
+    """
+    with subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    ) as proc:
+        try:
+            # 0 disables the watchdog, matching what spatch reads --timeout 0 as.
+            stdout, stderr = proc.communicate(timeout=wall_timeout or None)
+        except subprocess.TimeoutExpired as err:
+            _killpg(proc)
+            # Whatever spatch said before the kill is the only clue to where it
+            # wedged, and communicate() leaves it out of the exception.
+            raise SpatchTimeout(
+                cve, kernel, -signal.SIGKILL, proc.communicate()[1], wall_timeout, wall=True
+            ) from err
+        except BaseException:
+            _killpg(proc)
+            proc.communicate()
+            raise
+
+    # The engine half is a question about stderr, not the exit code: handed a
+    # directory spatch drops the file it gave up on and still exits 0, so the
+    # exit code alone would report a runaway rule as "not vulnerable".
+    timed_out = parse_spatch_timeout(stderr)
+    if timed_out is not None:
+        raise SpatchTimeout(
+            cve,
+            kernel,
+            proc.returncode,
+            stderr,
+            SPATCH_TIMEOUT,
+            [os.path.relpath(f, kernel) for f in timed_out],
+        )
+    if proc.returncode != 0:
+        raise SpatchError(cve, kernel, proc.returncode, stderr)
+    return stdout
+
+
+def _killpg(proc: subprocess.Popen[str]) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 class CVEhound:
@@ -213,33 +293,44 @@ class CVEhound:
             rule_ver = self.get_rule_version(cve)
             if rule_ver and rule_ver > self.spatch_version:
                 raise UnsupportedVersion(self.spatch_version, cve, rule_ver)
-            cocci_cmd = [
-                self.spatch,
-                '--no-includes',
-                '--include-headers',
-                '-D',
-                'detect',
-                '--chunksize',
-                '1',
-                '-j',
-                str(jobs),
-                '--very-quiet',
-                *includes,
-                '--cocci-file',
-                rule,
-                *files,
-            ]
+            # spatch stages each parmap worker's output in a directory built from
+            # --tmp-dir and removes it as it exits (enter.ml, par_fold) -- which
+            # the watchdog's SIGKILL denies it. A private directory keeps the
+            # strand ours to remove, and keeps the staging out of a world-writable
+            # /tmp, where a predictable name is at least a denial of service
+            # (spatch refuses to start when the path exists) and, under a
+            # permissive umask, lets a planted stdout* file be replayed as hits.
+            with tempfile.TemporaryDirectory(
+                prefix='cvehound-spatch-', ignore_cleanup_errors=True
+            ) as tmpdir:
+                cocci_cmd = [
+                    self.spatch,
+                    '--no-includes',
+                    '--include-headers',
+                    '-D',
+                    'detect',
+                    '--chunksize',
+                    '1',
+                    '-j',
+                    str(jobs),
+                    '--timeout',
+                    str(SPATCH_TIMEOUT),
+                    '--tmp-dir',
+                    os.path.join(tmpdir, 'par'),
+                    '--very-quiet',
+                    *includes,
+                    '--cocci-file',
+                    rule,
+                    *files,
+                ]
 
-            logging.debug(' '.join(cocci_cmd))
+                logging.debug(' '.join(cocci_cmd))
 
-            run = subprocess.run(cocci_cmd, capture_output=True, check=False, text=True)
-            if run.returncode != 0:
-                raise SpatchError(cve, self.kernel, run.returncode, run.stderr)
+                output = _run_spatch(cve, self.kernel, cocci_cmd, SPATCH_WALL_TIMEOUT).strip()
             # Rules report by starring lines: a match is a unified diff of the
             # starred lines on stdout, silence means not vulnerable. The parsed
             # hits are the verdict, so "detected" and the reported locations can
             # never disagree.
-            output = run.stdout.strip()
             hits = parse_coccinelle_output(output)
             if not hits:
                 return False
