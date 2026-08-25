@@ -41,6 +41,12 @@ scan (`test_06`, `--all-files`) — CVE-2020-12352 cost 632 CPU-seconds per scan
 candidate files. `validate-rule.sh` measures it; `docs/WRITING_RULES.md` → "Rule 8: Keep
 the grep query selective" explains it.
 
+That cost is now bounded, not just documented: `SPATCH_TIMEOUT` and
+`SPATCH_WALL_TIMEOUT` in `cvehound/__init__.py`, both failing the CVE with
+`SpatchTimeout`. `docs/WRITING_RULES.md` → "The rule exceeds its time budget" has the
+values, what each one counts, and why a fired `--timeout` has to be read off stderr
+rather than the exit code.
+
 ### Metadata headers are test inputs, not documentation
 
 The leading `///` block (`Files:`, `Fix:`, `Fixes:`/`Detect-To:`, `Version:`) is parsed at

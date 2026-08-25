@@ -132,7 +132,10 @@ Config: ./linux/.config not affected
 Other args:
  - `--report` - will produce json file with found CVEs
    Most of the metainformation in the generated report is taken from kernel.org
-   vulns.git and CIP kernel-sec
+   vulns.git and CIP kernel-sec. Rules that could not be checked are listed
+   separately under `errors` (a rule that blew its time budget, a spatch failure,
+   a rule needing a newer spatch), so an empty `results` can be told apart from a
+   scan that did not finish
  - `--kernel-config` or `--kernel-config <file>` - will infer the kernel configuration required to
    build the affected code (based on Kbuild/Makefiles, ifdefs are not checked) and
    check kernel .config file if there is one. Files the parser can't map to CONFIG_

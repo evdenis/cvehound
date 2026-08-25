@@ -1524,13 +1524,55 @@ identifier random_variable;
 - Add dependencies on other rules
 - Check if fix actually addresses your pattern
 
+### Problem: The rule exceeds its time budget
+
+`check_cve()` runs spatch under two bounds, and blowing either one fails the CVE with
+`SpatchTimeout` — a rule that gives up mid-scan cannot be told apart from one that found
+nothing, so it is reported rather than silently returning "not vulnerable".
+
+| Bound | Value | Counts | Covers |
+| --- | --- | --- | --- |
+| `--timeout` (`SPATCH_TIMEOUT`) | 60 | CPU-seconds, per work unit | the matching engine only |
+| wall watchdog (`SPATCH_WALL_TIMEOUT`) | 300 | wall seconds, per invocation | the whole run |
+
+Two things about `--timeout` are easy to get wrong. It counts **CPU** time
+(coccinelle arms `ITIMER_VIRTUAL`), not wall time, so a machine that is merely
+oversubscribed does not trip it. That is not the same as being load-proof: work
+competing for cache and memory bandwidth bills more CPU for the same result, and the
+sweep below moved by more than 2x between an idle machine and one running the suite.
+And its unit is a *work unit*, not a file: given a list of files spatch treats the
+whole list as one, and only a directory argument (`--all-files`) is split per file.
+
+Either bound says the same thing about a rule that hits it, and both are set well
+above what the tree actually costs: the slowest whole-tree scan takes 43s against the
+300s wall bound, and the most expensive single file needs 0.5 CPU-seconds of engine
+time against the 60 CPU-second one. The margin is for the two things that move that
+number — machine load and core speed, both of which scale billed CPU — not for
+expensive rules. Hitting either means the pattern, not the machine. The usual cause is a
+`<+... ...+>` wrapped around a statement body where `... when any` would do — same
+question asked, ~40x the cost (see
+[Rule 8](#rule-8-keep-the-grep-query-selective) and the note under
+[Restricting a Pattern to Particular Functions](#restricting-a-pattern-to-particular-functions)). `--profile`
+names the phase: time in `full_engine` with little in `mysat` is parsing, not matching.
+
+The failure looks different depending on how spatch was invoked, which is why cvehound
+classifies on stderr rather than the exit code:
+
+```
+timeout (we abort): <files>                  # file list: exit 2, run aborts
+Fatal error: exception ...Common.Timeout
+EXN: ...Common.Timeout in <file>             # directory: exit 0, that file dropped
+```
+
+`validate-rule.sh` runs with the same `--timeout`, so a rule over budget is caught before
+it reaches the suite.
+
 ### Problem: Coccinelle crashes or hangs
 
 **Solutions**:
 - Reduce scope with file-specific matching
 - Avoid deeply nested `...` patterns
 - Split complex rules into smaller ones
-- Increase timeout or memory limits
 - Check which `spatch` you are running: the function-definition wrapper shape was
   pathological before the `satLabel` fix (see the footnote under
   [Restricting a Pattern to Particular Functions](#restricting-a-pattern-to-particular-functions))
