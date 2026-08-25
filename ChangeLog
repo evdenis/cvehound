@@ -1,7 +1,32 @@
 # ChangeLog
 
-## Unreleased
+## 1.4.0 - Aug 25 2026
 
+ - Added an optional bundled coccinelle: `pip install 'cvehound[spatch]'`
+   pulls a prebuilt, tailored spatch (the cvehound-spatch wheel, Linux
+   x86_64 and aarch64), so scanning no longer requires coccinelle on the
+   system
+ - The spatch binary is now resolved explicitly: `--spatch` (or a `spatch`
+   key in the config file), then $CVEHOUND_SPATCH, then the bundled
+   cvehound-spatch package, then PATH. A binary named explicitly is an error
+   when it does not resolve instead of a silent fallback, and reports record
+   which binary produced the findings
+ - Converted all 534 detection rules from `@script:python` reporting to `*`
+   context mode, and cvehound now parses spatch's diff instead of grepping
+   its python output. Rules no longer need a python-enabled spatch, and a
+   detection and the locations it reports can no longer disagree
+ - CVE-2021-3411 is now a grep rule. CVE-2016-5195, CVE-2017-1000112,
+   CVE-2019-14821 and CVE-2021-28971 are anchored on the enclosing function
+   definition, which is orders of magnitude faster than the previous spelling
+ - Fixed a CVE-2023-42753 false positive on linux-next, CVE-2021-28971 and
+   CVE-2021-3656 `Files:` coverage, and CVE-2022-1016 guarding on a file
+   other than the one it detects in; rules whose range spans a rename now
+   list the pre-rename paths too
+ - A missing diff(1) is now an error: spatch renders what it matched by
+   shelling out to diff and otherwise reports nothing while still exiting
+   successfully. When spatch does fail, cvehound reports what it said
+ - Fixed `python -m cvehound` crashing on Python 3.14 and macOS, where the
+   pool callables were unpicklable under the forkserver/spawn start methods
  - Reworked out-of-band content updates: `cvehound update` downloads a
    checksummed, versioned content set (rules + metadata) from the rolling
    content-latest GitHub release and installs it atomically under
@@ -24,6 +49,13 @@
    path; an unparsable rule Version: header no longer aborts the whole scan
  - Dropped support for coccinelle < 1.1.0 (last tested in CI long ago); a
    warning is printed when an older spatch is detected
+ - Documented the scriptless context-mode rule idiom in docs/WRITING_RULES.md,
+   rewrote the contrib templates around it, and taught the rule validator to
+   check the old end of a rule's commit range, where a `Files:` path that
+   resolves nowhere used to make the rule silently match nothing
+ - Rewrote the test suite to check rules against per-commit trees materialized
+   from git blobs, in parallel and with cached verdicts, instead of checking
+   the kernel tree out for every commit
 
 ## 1.3.0 - Aug 18 2026
 
