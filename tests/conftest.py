@@ -27,6 +27,23 @@ INITIAL_COMMIT_HASH = '1da177e4c3f41524e886b7f1b8a0c1fc7321cac2'
 INITIAL_COMMITS = {INITIAL_COMMIT, INITIAL_COMMIT_HASH}
 FETCH_INTERVAL = 6 * 3600
 
+# Branches every test that takes the `branch` fixture runs against, unless
+# --branch narrows them. Also the canonical set test_08 validates
+# missing_backports against, so a --branch run cannot trip that lint.
+DEFAULT_BRANCHES = (
+    'origin/master',
+    'next/master',
+    'stable/linux-6.18.y',
+    'stable/linux-6.12.y',
+    'stable/linux-6.6.y',
+    'stable/linux-6.1.y',
+    'stable/linux-5.15.y',
+    'stable/linux-5.10.y',
+)
+
+# (cve, branch) pairs whose upstream fix never reached that stable branch, so the
+# rule legitimately fires there. The xfail is strict: once the backport lands the
+# test XPASSes and the suite fails, which is the signal to delete the pair.
 missing_backports = [
     ('CVE-2022-0998', 'stable/linux-5.15.y'),
     ('CVE-2023-4133', 'stable/linux-5.10.y'),
@@ -272,18 +289,7 @@ def pytest_configure(config):
             worker=os.environ.get('PYTEST_XDIST_WORKER', 'main'),
         )
 
-    branches = config.getoption('branch')
-    if not branches:
-        branches = [
-            'origin/master',
-            'next/master',
-            'stable/linux-6.18.y',
-            'stable/linux-6.12.y',
-            'stable/linux-6.6.y',
-            'stable/linux-6.1.y',
-            'stable/linux-5.15.y',
-            'stable/linux-5.10.y',
-        ]
+    branches = config.getoption('branch') or list(DEFAULT_BRANCHES)
 
 
 def pytest_unconfigure(config):
@@ -531,7 +537,11 @@ def pytest_collection_modifyitems(config, items):
     skip_slow = pytest.mark.skip(reason='need --runslow option to run')
     skip_fast = pytest.mark.skip(reason='slow tests cover these testcases')
     skip_metadata = pytest.mark.skip(reason='need --runmetadata option to run')
-    fail_notbackported = pytest.mark.xfail(reason='CVE not backported yet')
+    fail_notbackported = pytest.mark.xfail(
+        strict=True,
+        reason='CVE not backported yet; if it now is, drop the (cve, branch) pair '
+        'from missing_backports in tests/conftest.py',
+    )
     for item in items:
         if not runslow and 'slow' in item.keywords:
             item.add_marker(skip_slow)

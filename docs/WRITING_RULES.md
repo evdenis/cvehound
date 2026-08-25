@@ -1058,6 +1058,11 @@ add it to the `missing_backports` list in `tests/conftest.py` (or `ownfixes` in
 `tests/test_00_metadata.py` if the upstream `Fixes:` tag is wrong) instead of editing a
 test function.
 
+`missing_backports` entries are strict xfails, so they are not fire-and-forget: once the
+stable maintainers backport the fix the test XPASSes and the suite goes red, telling you
+to delete the pair. `tests/test_08_exceptions.py` catches the other direction — an entry
+naming a rule or a branch that no longer exists, which no test would otherwise collect.
+
 ### Validation Checklist
 
 Before submitting:

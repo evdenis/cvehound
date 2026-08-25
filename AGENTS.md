@@ -62,8 +62,12 @@ typo:
 
 Register legitimate failures as data, never as `xfail` in a test file:
 
-- `missing_backports` — `tests/conftest.py:20`, a list of `(cve, branch)` pairs consumed
-  by `@pytest.mark.notbackported` in `test_01` and `test_06`.
+- `missing_backports` — `tests/conftest.py:30`, a list of `(cve, branch)` pairs consumed
+  by `@pytest.mark.notbackported` in `test_01` and `test_06`. The xfail it produces is
+  **strict**: when the backport finally lands the pair XPASSes and the suite fails, which
+  is the signal to delete it. `tests/test_08_exceptions.py` covers the staleness the
+  strict xfail cannot see — a pair naming a rule or a branch that no longer exists is
+  never collected at all, so it fails that lint instead.
 - `ownfixes` — `tests/test_00_metadata.py:26`, `(cve, reason)` pairs for CVEs whose
   upstream `Fixes:` tag is wrong.
 
