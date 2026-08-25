@@ -39,4 +39,9 @@ def test_cli_module_invocation(hound, tmp_path):
         timeout=300,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(report.read_text())['args']['cve'] == ['CVE-2013-2930', 'CVE-2017-1000407']
+    written = json.loads(report.read_text())
+    assert written['args']['cve'] == ['CVE-2013-2930', 'CVE-2017-1000407']
+    # Both rules are checkable here, so nothing should have failed -- and the key
+    # is present either way, which is what lets a consumer tell an empty
+    # 'results' apart from a scan that could not finish.
+    assert written['errors'] == {}
