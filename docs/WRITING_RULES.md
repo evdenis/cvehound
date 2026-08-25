@@ -378,6 +378,11 @@ Full selection table:
 bound as a metavariable, which matters when the name you want to match could otherwise be
 read as a fresh identifier (`symbol current;`). Around fifty rules use it.
 
+Every name left literal — a `symbol`, a spelled-out parameter or field, a constant like
+`-EINVAL` — also becomes a token spatch requires before it will open a file, so the
+choice has a scanning cost as well as a matching one. Declare what you do not need to
+pin; see [Rule 8](#rule-8-keep-the-grep-query-selective).
+
 ### Rule 4: Scope the pattern with context
 
 Always provide enough context to avoid false positives:
@@ -499,6 +504,64 @@ and fires — a false positive; a marker that is too *loose* matches something t
 not the fix and stays silent — a false negative. Prefer the specific marker: a missed
 CVE is worse than a noisy one.
 
+### Rule 8: Keep the grep query selective
+
+Three rules, then why:
+
+- **Don't spell out a name a metavariable would carry.** Parameter and field names are
+  the usual culprits: `ctx->release_agent = param->string` requires `string`,
+  `&laddr->a` requires `a`, `current->thread` requires `thread`. Declaring them drops
+  the token and the fragility together. Watch the reverse too — CVE-2023-50431 declared
+  `identifier sec_attest_info` and then used that name as the function header, so the
+  one rare token in the rule was not required at all. See
+  [Rule 3](#rule-3-use-appropriate-metavariables) for which metavariable to reach for.
+- **Give every rule one rare token.** `kmalloc`, `GFP_KERNEL`, `ENOMEM`, `memcpy`,
+  `current`, `task_struct`, `u32`, `s32`, `EINVAL` are in half the tree. A pattern built
+  only from those needs anchoring in a named function.
+- **Keep the rules that star something at five or fewer.** Past that the query can be
+  discarded outright and the rule parses the whole tree.
+
+Measure it — this is what `validate-rule.sh` reports, and it is the authority when the
+rules above disagree with each other:
+
+```bash
+spatch --no-includes --include-headers -D detect --chunksize 1 -j 1 \
+       --cocci-file cvehound/cve/CVE-YYYY-NNNNN.cocci tests/linux/lib 2>&1 >/dev/null |
+  sed -n '/no inferred keywords/{p;q}; /files match/{p;q}'
+```
+
+`no inferred keywords` means there is no query at all. Otherwise spatch reports how many
+of the 745 files it will parse; a healthy rule reports **0**, or only its own `Files:` if
+those live under `lib/`. `spatch -D detect --parse-cocci <rule> | grep -A1 'Grep query'`
+prints the tokens themselves when you need to see which one is too common.
+
+**Why.** Before parsing anything spatch extracts the literal tokens the rule cannot match
+without (`parsing_cocci/get_constants2.ml`) and skips every file whose text contains none
+of them (`worth_trying`, `cocci.ml`); each survivor is then parsed in full. On a
+whole-tree scan — `cvehound --all-files`, and `test_06` for every rule on every branch —
+that filter is the difference between a one-second run and a ten-minute one. A
+`... when != X` clause contributes nothing, since negated code cannot be required; only
+the positive part of the pattern feeds the query.
+
+The five-rule ceiling comes from the CNF conversion, which gives up once more than
+`max_cnf = 5` of the disjuncts need more than one clause — which any rule requiring two
+or more tokens does. On spatch 1.0.8 through at least 1.3.2, giving up returns *no*
+query. Only rules that modify something join that disjunction: a rule matched purely as
+context — a `@fixed@` marker, anything a later rule reaches through `depends on` — is
+folded into its dependent instead. `cvehound/cve/CVE-2023-42753.cocci` has seven rules,
+one starred, and keeps its query. CVE-2020-12352 had ten starred and cost 632 CPU-seconds
+per whole-tree scan for zero candidate files; collapsed into the single rule that
+expresses the same invariant, it costs 1.5. If a CVE really needs many sites, look for
+the pattern they share before writing them out one by one.
+
+One rule in the corpus warns and should: CVE-2021-20268 detects
+`signed_add32_overflows(s64 a, s64 b)`, where the wrong type *is* the bug, so `s64` has
+to stay literal. It also spells out `a` and `b`, which looks like the first mistake above
+— but a token every rule requires survives the CNF as a clause of its own, so those two
+are what force a candidate file to contain both; declaring them leaves only pairs that
+`s32` or `s64` already satisfy and takes the rule from 7 files to 20. Measure before
+assuming a literal is dead weight.
+
 ### Pattern complexity: prefer the simplest thing that works
 
 **Simple — one rule, direct match, minimal context.** This is the target. It is fast and
@@ -533,9 +596,11 @@ caller(...)
 ```
 
 **Complex — many rules, alternatives, several detection points.** Only reach for this
-when the vulnerability genuinely requires checking multiple conditions, when simpler
-patterns produce too many false positives, or when the CVE affects many similar functions
-(as in CVE-2020-12352).
+when the vulnerability genuinely requires checking multiple conditions or when simpler
+patterns produce too many false positives. "The CVE affects many similar functions" is
+usually *not* such a case: see [Rule 8](#rule-8-keep-the-grep-query-selective) for why
+one rule that captures the shared invariant beats one rule per function, and
+`cvehound/cve/CVE-2020-12352.cocci` for what that looks like.
 
 ## Pattern Matching Techniques
 
@@ -1297,29 +1362,31 @@ amd_energy_is_visible(...)
 
 virtual detect
 
-@err_a2mp_discover_rsp exists@
-identifier req;
+@err exists@
+identifier v;
+type T;
 @@
 
-a2mp_discover_rsp(...)
-{
-	...
-	struct a2mp_info_req req;
-	... when != memset(&req, 0, sizeof(req));
-*	a2mp_send(..., A2MP_GETINFO_REQ, ..., sizeof(req), &req);
-	...
-}
-
-// ... nine more rules of the same shape, one per affected function
+	T v;
+	... when != memset(&v, 0, sizeof(v));
+*	a2mp_send(..., sizeof(v), &v);
 ```
 
 **Explanation**:
-- Declares `identifier req` to match the variable name
-- `when != memset(...)` ensures the struct is NOT initialized
-- Detects when uninitialized struct is passed to `a2mp_send`
+- `T v;` anchors the match to a local declaration, so a parameter or a heap pointer
+  passed to `a2mp_send` cannot match
+- `when != memset(...)` ensures that declaration is NOT zeroed on the way
+- `identifier v` ties the declaration, the `memset` and the `sizeof(v), &v` arguments to
+  one variable
 - This is the canonical Missing Fix Detection shape
-- The real rule repeats this block ten times, once per affected function — ten independent
-  starred rules, no dependencies between them, so any one of them reports on its own
+
+The fix added a `memset` in front of ten different `a2mp_*` functions, and the rule used
+to spell out all ten — one rule per function, each naming its function, its struct type
+and its `A2MP_*` command. That is the shape to avoid. All ten sites share one invariant,
+one rule states it, and the collapsed rule reports exactly the same lines while requiring
+a single token (`a2mp_send`) instead of twenty-six. There is no function wrapper either:
+`...` never crosses a function boundary, so the enclosing `f(...) { ... }` bought nothing.
+See [Rule 8](#rule-8-keep-the-grep-query-selective).
 
 ### Example 4: Complex Dependencies - CVE-2016-5195 (Dirty COW)
 
@@ -1462,6 +1529,15 @@ identifier random_variable;
 - Check which `spatch` you are running: the function-definition wrapper shape was
   pathological before the `satLabel` fix (see the footnote under
   [Restricting a Pattern to Particular Functions](#restricting-a-pattern-to-particular-functions))
+
+### Problem: The rule is slow on a whole-tree scan
+
+Almost always this is the prefilter, not the matching: spatch is parsing files it should
+have skipped. Count them with the command in
+[Rule 8](#rule-8-keep-the-grep-query-selective) before touching the pattern — if it is
+not zero, fix the required constants rather than the CTL. `--profile` settles it either
+way: `full_engine` far above `mysat` means the time went into parsing C, not model
+checking.
 
 ### Problem: The rule fires on a fixed tree
 

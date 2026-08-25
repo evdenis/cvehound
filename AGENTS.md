@@ -34,6 +34,13 @@ Put disputed CVEs in `cvehound/cve/disputed/`. Directory placement is the only t
 that drives the `all` / `assigned` / `disputed` groups for `--cve` (default:
 `assigned`); the split keys off `'disputed' in root` in `get_rule_cves()`.
 
+### A rule's literal tokens are a cost input, not just a pattern
+
+What a rule spells literally decides how much of the tree spatch parses on a whole-tree
+scan (`test_06`, `--all-files`) — CVE-2020-12352 cost 632 CPU-seconds per scan for zero
+candidate files. `validate-rule.sh` measures it; `docs/WRITING_RULES.md` → "Rule 8: Keep
+the grep query selective" explains it.
+
 ### Metadata headers are test inputs, not documentation
 
 The leading `///` block (`Files:`, `Fix:`, `Fixes:`/`Detect-To:`, `Version:`) is parsed at

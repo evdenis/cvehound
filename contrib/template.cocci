@@ -82,6 +82,11 @@ virtual detect
 // {
 // *	other_vulnerable_code(...);
 // }
+//
+// Keep the starred rules at five or fewer: past that spatch can drop the rule's
+// grep query and scan the whole tree. If the sites share one invariant, say it
+// once instead. See docs/WRITING_RULES.md -> "Rule 8: Keep the grep query
+// selective".
 
 // For conditions that must ALL hold, chain the rules with "depends on" and star
 // only the last one. This is the AND:
