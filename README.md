@@ -47,6 +47,7 @@ code patterns of known CVEs and missing fixes for them.
 
 - Python 3 (>=3.11)
 - grep with pcre support (-P flag)
+- diffutils (spatch renders what it matched by running `diff`)
 - coccinelle (>= 1.1.0)
 
 Install prerequisites:

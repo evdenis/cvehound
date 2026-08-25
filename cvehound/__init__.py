@@ -3,13 +3,14 @@
 import functools
 import logging
 import os
+import shutil
 import subprocess
 from typing import Any
 
 from sympy.logic import simplify_logic
 
 from cvehound.config import Config
-from cvehound.exception import SpatchError, UnsupportedVersion
+from cvehound.exception import SpatchError, SpatchNotFound, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
     find_spatch,
@@ -86,6 +87,11 @@ class CVEhound:
         self.metadata: dict[str, Any] = get_cves_metadata(metadata)
         self.spatch: str = spatch or find_spatch()
         self.spatch_version = get_spatch_version(self.spatch)
+        # spatch renders its context-mode output by shelling out to diff(1),
+        # and without it prints an internal error and still exits 0 -- so an
+        # unnoticed missing diffutils turns every rule into a silent miss.
+        if shutil.which('diff') is None:
+            raise SpatchNotFound('diff not found: spatch needs diffutils to report what it matched')
         self.check_strict = check_strict
         self.arch = arch
         self.srcarch = get_srcarch(arch)
