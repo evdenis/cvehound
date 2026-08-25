@@ -16,6 +16,11 @@ on:
     - 'uv.lock'
     - '.github/workflows/test.yml'
   workflow_dispatch:
+    inputs:
+      runslow:
+        description: 'Run the slow suite (every rule across its Fixes..Fix range)'
+        type: boolean
+        default: false
   schedule:
     - cron: '0 0 * * MON'
 
@@ -203,6 +208,10 @@ jobs:
         # unreachable -- each falls back to the full suite below.
         PUSH_BEFORE: ${{ github.event.before }}
         PUSH_AFTER: ${{ github.event.after }}
+        # The slow suite is the only thing that exercises every rule against
+        # every tag in its range, so it is the only way to see this matrix's
+        # older coccinelle builds do it. Nothing schedules that -- dispatch it.
+        RUNSLOW: ${{ inputs.runslow }}
       run: |
         sudo setcap cap_sys_nice,cap_sys_admin+eip $(realpath $(which python3))
         which opam >/dev/null 2>&1 && eval $(opam env)
@@ -216,7 +225,9 @@ jobs:
         # The per-rule fast path only fits pushes that touch nothing but
         # rules: --cve now deselects the harness unit tests, so a push that
         # also changes harness or package code must take the full suite.
-        if [[ -n $CHANGED && ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 && $NONRULE -eq 0 ]]; then
+        if [[ $RUNSLOW == true ]]; then
+          uv run pytest --runslow -n 2
+        elif [[ -n $CHANGED && ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 && $NONRULE -eq 0 ]]; then
           uv run pytest --runslow -n 2 $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
         else
           uv run pytest -n 2
