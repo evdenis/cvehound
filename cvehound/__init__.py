@@ -60,6 +60,22 @@ SPATCH_TIMEOUT = 60
 # leaves ~7x for slower hardware. 0 disables it, as it does for spatch.
 SPATCH_WALL_TIMEOUT = 300
 
+# spatch is OCaml, and its cost on a rule's own files is dominated by allocating
+# and collecting the parsed AST. space_overhead is how much garbage the major
+# collector tolerates before it works, so raising it buys wall-clock with memory
+# -- and the memory it spends is small at this shape: peak RSS per spatch stays
+# ~40-46MB whatever the setting, because a rule sees a handful of files. Measured
+# against the bundled cvehound-spatch build (1.3.2 on OCaml 5.3) on the fast
+# suite (idle 32-thread box, --no-result-cache, paired runs): 56.0s
+# default, 49.4s at o=800, 47.9s at o=1600, 47.2s at o=3200 -- so 1600 sits where
+# the curve flattens. Do not raise the minor heap (s=) with it: every variant
+# tried was slower, and a large one triples system time under 32-way concurrency.
+#
+# Whole-tree scans (--all-files) barely move: handed a directory spatch spends
+# its time on the token prefilter, scanning every file in the tree for the
+# rule's literals, and parses almost nothing. There is no AST there to collect.
+SPATCH_OCAMLRUNPARAM = 'o=1600'
+
 
 @functools.cache
 def _simplify_condition(logic: str) -> Any:
@@ -99,6 +115,20 @@ def evaluate_file_condition(
     return (text, affected if config is not None else None)
 
 
+def _spatch_env() -> dict[str, str]:
+    """The environment for a spatch child: ours, plus our GC defaults.
+
+    A caller who has already said something about the OCaml runtime keeps it
+    untouched -- the tuning is a default, not a policy. CAMLRUNPARAM counts as
+    saying something: the runtime reads OCAMLRUNPARAM first and only falls back
+    to it, so setting ours unconditionally would silently void theirs.
+    """
+    env = dict(os.environ)
+    if 'OCAMLRUNPARAM' not in env and 'CAMLRUNPARAM' not in env:
+        env['OCAMLRUNPARAM'] = SPATCH_OCAMLRUNPARAM
+    return env
+
+
 def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str:
     """Run spatch under both budgets and hand back its stdout, or raise.
 
@@ -112,7 +142,12 @@ def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str
     That also costs spatch its SIGINT, so the same kill runs for any exception.
     """
     with subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+        env=_spatch_env(),
     ) as proc:
         try:
             # 0 disables the watchdog, matching what spatch reads --timeout 0 as.
