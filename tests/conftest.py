@@ -14,7 +14,7 @@ import pytest
 from filelock import FileLock
 from git import Repo
 from git.exc import GitCommandError
-from kerneltree import BlobMaterializer, cached_check, hound_at
+from kerneltree import BlobMaterializer, cached_all_files_check, cached_check, hound_at
 from resultcache import ResultCache
 
 from cvehound import CVEhound, get_rule_cves
@@ -458,6 +458,23 @@ def branch_hound(hound, kernel_checkout):
         return hound_at(hound, _branch_worktree(branch_name))
 
     return make
+
+
+@pytest.fixture
+def branch_check(hound, branch_hound, materializer, result_cache, all_files_jobs):
+    """Factory: cached bool verdict of an all_files scan at a branch head."""
+
+    def check(branch_name, cve):
+        return cached_all_files_check(
+            hound,
+            lambda: branch_hound(branch_name),
+            result_cache,
+            materializer.whole_tree_sig(branch_name),
+            cve,
+            all_files_jobs,
+        )
+
+    return check
 
 
 @pytest.fixture

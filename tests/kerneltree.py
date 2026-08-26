@@ -16,6 +16,26 @@ import threading
 
 from cvehound import KCONFIG_H
 
+# The relpath half of a whole-tree signature. It is not a path any tree holds,
+# which is the point: it can never collide with a materialized mini-tree's
+# signature, so both kinds of verdict share one cache namespace safely.
+ALL_FILES_PATH = '<all-files>'
+
+
+def object_header(repo, name):
+    """Resolve one object name to (oid, type), or None when it does not exist.
+
+    Over GitPython's persistent `cat-file --batch-check` process, so a caller
+    that asks thousands of times pays ~9us each instead of a fork. The quirk
+    worth having in one place: a name that resolves to nothing raises
+    ValueError here, where the one-shot `git rev-parse` raised GitCommandError.
+    """
+    try:
+        oid, otype, _ = repo.git.get_object_header(name)
+    except ValueError:
+        return None
+    return (oid.decode(), otype.decode())
+
 
 class BlobMaterializer:
     def __init__(self, repo, root):
@@ -29,13 +49,9 @@ class BlobMaterializer:
         self._lock = threading.Lock()
 
     def _check_object(self, name):
-        """Resolve one object name to (oid, type) or None if it doesn't exist."""
-        try:
-            with self._lock:
-                oid, otype, _ = self.repo.git.get_object_header(name)
-        except ValueError:
-            return None
-        return (oid.decode(), otype.decode())
+        """object_header() under the lock this instance's stream needs."""
+        with self._lock:
+            return object_header(self.repo, name)
 
     def _expand_tree(self, commit, path):
         """List every (relpath, blob oid) under a directory at a commit."""
@@ -75,6 +91,23 @@ class BlobMaterializer:
             elif otype == 'tree':
                 entries.update(self._expand_tree(commit, path))
         return tuple(sorted(entries.items()))
+
+    def whole_tree_sig(self, commit):
+        """Signature of every file at a commit: its root tree oid names them all.
+
+        An --all-files scan reads the tree rather than a materialized handful,
+        so one entry says everything about what spatch will see -- given that
+        the tree on disk is a clean checkout of this commit and not a built one,
+        which is what --detach --force worktrees and _reset_worktree guarantee.
+
+        Raises on an unresolvable ref for the reason sig() does: a vacuous
+        signature would let every "assert not detected" test pass, and cache
+        that.
+        """
+        obj = self._check_object(f'{commit}^{{tree}}')
+        if obj is None:
+            raise ValueError(f'unresolvable ref: {commit}')
+        return ((ALL_FILES_PATH, obj[0]),)
 
     def _fetch_blob(self, oid):
         dest = os.path.join(self.blob_dir, oid)
@@ -137,23 +170,62 @@ def sig_has_rule_files(sig):
     return any(path != KCONFIG_H for path, _ in sig)
 
 
+def _memoized(cache, rule_path, sig, run):
+    """run()'s bool verdict, memoized under (rule bytes, signature).
+
+    `run` is a thunk so that everything a hit exists to skip -- materializing a
+    tree, checking a branch out, spatch itself -- stays behind the lookup. A
+    None cache (--no-result-cache) runs unconditionally and stores nothing;
+    anything run() raises propagates uncached, which is what keeps a timed-out
+    or unsupported check from being remembered as a verdict.
+    """
+    if cache is None:
+        return bool(run())
+    key = cache.key(rule_path, sig)
+    hit = cache.get(key)
+    if hit is None:
+        hit = bool(run())
+        cache.put(key, hit)
+    return hit
+
+
 def cached_check(hound, materializer, cache, sig, cve):
     """Bool verdict of check_cve() on a materialized signature, memoized.
 
     The verdict is a pure function of (rule bytes, signature) within one
-    cache context (spatch + python + harness epoch), so hits skip both
+    cache context (which spatch + python + harness epoch), so hits skip both
     materialization and spatch. UnsupportedVersion propagates uncached.
     """
-    key = None
-    if cache is not None:
-        key = cache.key(hound.get_rule(cve), sig)
-        hit = cache.get(key)
-        if hit is not None:
-            return hit
-    verdict = bool(hound_at(hound, materializer.materialize(sig)).check_cve(cve))
-    if cache is not None:
-        cache.put(key, verdict)
-    return verdict
+    return _memoized(
+        cache,
+        hound.get_rule(cve),
+        sig,
+        lambda: hound_at(hound, materializer.materialize(sig)).check_cve(cve),
+    )
+
+
+def cached_all_files_check(hound, at_tree, cache, sig, cve, jobs):
+    """Bool verdict of an all_files check over a whole tree, memoized.
+
+    A whole-tree verdict is as pure as a mini-tree one -- a function of (rule
+    bytes, tree content) -- and whole_tree_sig() names the content, so it keys
+    the same cache through the same signature shape.
+
+    Two hounds because they cost different amounts: `hound` answers the key,
+    since get_rule() is the same dict lookup whatever tree it points at, while
+    `at_tree` is called only on a miss -- putting a branch's tree on disk is a
+    ~95k-file checkout in the shared-tree fallback, and that is precisely what a
+    hit is for.
+
+    `jobs` is not part of the key: it is spatch's -j, which changes how the scan
+    is scheduled and never what it finds.
+    """
+    return _memoized(
+        cache,
+        hound.get_rule(cve),
+        sig,
+        lambda: at_tree().check_cve(cve, True, jobs=jobs),
+    )
 
 
 def hound_at(base, tree):
