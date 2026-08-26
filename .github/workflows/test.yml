@@ -21,6 +21,10 @@ on:
         description: 'Run the slow suite (every rule across its Fixes..Fix range)'
         type: boolean
         default: false
+      cves:
+        description: 'With runslow, limit it to these CVEs (space separated). Empty runs all.'
+        type: string
+        default: ''
   schedule:
     - cron: '0 0 * * MON'
 
@@ -212,6 +216,7 @@ jobs:
         # every tag in its range, so it is the only way to see this matrix's
         # older coccinelle builds do it. Nothing schedules that -- dispatch it.
         RUNSLOW: ${{ inputs.runslow }}
+        DISPATCH_CVES: ${{ inputs.cves }}
       run: |
         sudo setcap cap_sys_nice,cap_sys_admin+eip $(realpath $(which python3))
         which opam >/dev/null 2>&1 && eval $(opam env)
@@ -226,7 +231,11 @@ jobs:
         # rules: --cve now deselects the harness unit tests, so a push that
         # also changes harness or package code must take the full suite.
         if [[ $RUNSLOW == true ]]; then
-          uv run pytest --runslow -n 2
+          # The whole slow suite is hours at -n 2, and does not fit a 6h job;
+          # naming the rules is how you ask one question of it -- e.g. do the
+          # heaviest whole-tree scans stay inside SPATCH_WALL_TIMEOUT on a runner
+          # rather than a workstation. Empty expands to no --cve, i.e. all rules.
+          uv run pytest --runslow -n 2 $(for c in $DISPATCH_CVES; do echo " --cve=$c "; done)
         elif [[ -n $CHANGED && ${#RULES[@]} -gt 0 && ${#RULES[@]} -le 5 && $NONRULE -eq 0 ]]; then
           uv run pytest --runslow -n 2 $(for rule in ${RULES[@]}; do echo " --cve=$rule "; done)
         else
