@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import contextlib
+import functools
 import os
 import shutil
 import tempfile
 import textwrap
 import time
-from subprocess import run
+from subprocess import CalledProcessError, run
 from urllib.request import urlretrieve
 
 import psutil
@@ -14,7 +15,13 @@ import pytest
 from filelock import FileLock
 from git import Repo
 from git.exc import GitCommandError
-from kerneltree import BlobMaterializer, cached_all_files_check, cached_check, hound_at
+from kerneltree import (
+    BlobMaterializer,
+    cached_all_files_check,
+    cached_check,
+    hound_at,
+    object_header,
+)
 from resultcache import ResultCache
 
 from cvehound import CVEhound, get_rule_cves
@@ -410,6 +417,38 @@ def tree_check(materializer, hound, sig_check):
     return check
 
 
+@functools.cache
+def _branch_commit_oid(branch_name):
+    """The branch head's commit oid.
+
+    Through the persistent cat-file stream, not repo.rev_parse: that walks all
+    ~6k packed refs per call (~8.5ms against ~9us), and this runs inside the
+    worktree lock where every worker queues behind it.
+    """
+    obj = object_header(linux_repo, f'{branch_name}^{{commit}}')
+    if obj is None:
+        raise ValueError(f'unresolvable branch: {branch_name}')
+    return obj[0]
+
+
+def _worktree_is_at(path, branch_name):
+    """True when the worktree already sits on the branch head.
+
+    The freshness fact belongs to the worktree, not to whoever last looked:
+    _fresh_worktrees is per-process, and with the full-tree tests no longer
+    pinned one branch per worker every worker visits every worktree. Asking
+    HEAD is derived from the state itself, so it stays right no matter which
+    process (or hand) moved the tree last.
+    """
+    try:
+        head = run(
+            ['git', '-C', path, 'rev-parse', 'HEAD'], capture_output=True, check=True, text=True
+        ).stdout.strip()
+    except CalledProcessError:
+        return False
+    return head == _branch_commit_oid(branch_name)
+
+
 def _branch_worktree(branch_name):
     """A persistent detached worktree at the branch head.
 
@@ -433,7 +472,7 @@ def _branch_worktree(branch_name):
                 # away from sibling workers' in-flight worktree adds.
                 linux_repo.git.worktree('prune')
                 linux_repo.git.worktree('add', '--detach', '--force', path, branch_name)
-        else:
+        elif not _worktree_is_at(path, branch_name):
             run(
                 ['git', '-C', path, 'checkout', '--force', '--detach', branch_name],
                 capture_output=True,
@@ -479,31 +518,35 @@ def branch_check(hound, branch_hound, materializer, result_cache, all_files_jobs
 
 @pytest.fixture
 def all_files_jobs():
-    """spatch -j for whole-tree scans: divide cores by concurrent scans.
+    """spatch -j for whole-tree scans: a scan alone on the box may take it all.
 
-    Worktree mode runs one scan per branch group; shared-tree mode serializes
-    every scan into a single group, so the lone scan may use all cores.
+    Two cases, not a spectrum. Worktree mode fans the scans out across every
+    worker, so each gets one core's worth; the shared-tree fallback funnels them
+    into a single xdist group, where the one running scan may use every core.
+    Stated rather than divided, so a cgroup-limited runner -- where xdist counts
+    affinity and os.cpu_count() does not -- cannot land somewhere in between.
     """
     workers = int(os.environ.get('PYTEST_XDIST_WORKER_COUNT', '1'))
-    concurrent = min(workers, len(branches)) if use_worktrees() else 1
-    return max(1, (os.cpu_count() or 1) // concurrent)
+    if use_worktrees() and workers > 1:
+        return 1
+    return os.cpu_count() or 1
 
 
 def pytest_generate_tests(metafunc):
     if 'branch' in metafunc.fixturenames:
         params = branches
-        if metafunc.definition.get_closest_marker('kernel_history'):
-            # Full-tree tests declare kernel_history('branch'): serialize each
-            # branch group (worktree mode) or every scan (shared tree) under
-            # --dist loadgroup. Marking at parametrize time guarantees xdist's
-            # nodeid rewrite sees the marker regardless of hook ordering.
+        if metafunc.definition.get_closest_marker('kernel_history') and not use_worktrees():
+            # Full-tree tests declare kernel_history('branch'), and grouping
+            # them is about the tree they share, not the branch they name:
+            # without worktrees every scan runs in one checkout, so they must
+            # serialize into a single group and _reorder_kernel_tests keeps the
+            # branch switches down. With worktrees the trees are separate
+            # directories that need no coordination, and any grouping would
+            # only cap the fan-out below the worker count. Marking at
+            # parametrize time guarantees xdist's nodeid rewrite sees the
+            # marker regardless of hook ordering.
             params = [
-                pytest.param(
-                    branch,
-                    marks=pytest.mark.xdist_group(
-                        'branch:' + branch if use_worktrees() else 'shared-tree'
-                    ),
-                )
+                pytest.param(branch, marks=pytest.mark.xdist_group('shared-tree'))
                 for branch in branches
             ]
         metafunc.parametrize('branch', params)
@@ -524,9 +567,10 @@ def _get_kernel_route(item):
 
 
 def _reorder_kernel_tests(items):
-    """Group full-tree tests by branch, so the shared-tree fallback switches
-    its checkout once per branch instead of once per test. Skipped items keep
-    their slots and never influence the order."""
+    """Group full-tree tests by branch: the shared-tree fallback then switches
+    its checkout once per branch instead of once per test, and worktree runs get
+    the page-cache locality for free. Skipped items keep their slots and never
+    influence the order."""
     records = []
     for index, item in enumerate(items):
         if item.get_closest_marker('skip') is not None:
