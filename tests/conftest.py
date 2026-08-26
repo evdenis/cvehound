@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import contextlib
 import os
 import shutil
 import tempfile
@@ -219,6 +220,29 @@ def _ensure_metadata():
     os.environ['CVEHOUND_METADATA'] = dest
 
 
+def _raise_priority():
+    """Ask for as much CPU and I/O priority as we are allowed, one ask at a time.
+
+    Each ask is independently privileged, so each gets its own handler: sharing
+    one try means the first refusal silently cancels every ask after it, and on
+    a box without CAP_SYS_NICE (CI grants it with setcap; a developer machine
+    does not) the first refusal is the very first call.
+
+    Nothing here is required -- the suite runs at whatever priority it is given.
+    """
+    proc = psutil.Process()
+    # -20 is the floor Linux accepts; anything lower is an error, not a stronger
+    # request. Needs CAP_SYS_NICE or a raised RLIMIT_NICE.
+    with contextlib.suppress(Exception):
+        proc.nice(-20)
+    # Real-time I/O needs CAP_SYS_ADMIN; best-effort 0 needs nothing. First one
+    # that takes, wins.
+    for ioclass in (psutil.IOPRIO_CLASS_RT, psutil.IOPRIO_CLASS_BE):
+        with contextlib.suppress(Exception):
+            proc.ionice(ioclass, value=0)
+            break
+
+
 def pytest_configure(config):
     global linux_repo
     global _cvehound
@@ -234,12 +258,7 @@ def pytest_configure(config):
     os.environ['CVEHOUND_CONTENT'] = 'none'
     _ensure_metadata()
 
-    try:
-        p = psutil.Process()
-        p.nice(-100)
-        p.ionice(psutil.IOPRIO_CLASS_RT, value=0)
-    except Exception:
-        pass
+    _raise_priority()
 
     cves = config.getoption('cve')
     if not cves:
