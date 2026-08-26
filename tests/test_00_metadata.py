@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from kerneltree import object_header
 
 # CVEs that neither kernel.org vulns.git nor CIP kernel-sec covers. They are all
 # still PUBLISHED at cve.org - mostly 2013-2018 entries and Android/Qualcomm
@@ -212,6 +213,19 @@ def test_cves_metadata_fixes(hound, cve):
     assert fixes == meta_breaks, f'{fixes[0:12]} vs. {meta_breaks[0:12]}'
 
 
+def _commit_exists(repo, rev):
+    """Does `rev` name a commit, without spawning a process to ask?
+
+    The two sweeps below ask this ~33,000 times between them, once per metadata
+    entry. A `git rev-parse` each is ~1ms of fork/exec inside two single test
+    items that xdist cannot spread; over the persistent stream it is ~9us.
+
+    ^{commit} carries the type check: anything that is not a commit fails to
+    peel and comes back as None.
+    """
+    return object_header(repo, rev + '^{commit}') is not None
+
+
 @pytest.mark.metadata
 def test_cves_metadata_fix_all(hound, repo):
     broken = []
@@ -227,9 +241,7 @@ def test_cves_metadata_fix_all(hound, repo):
         if not re.match(r'[0-9a-fA-F]{7,40}', fix):
             continue
 
-        try:
-            repo.git.rev_parse('--verify', fix + '^{commit}')
-        except Exception:
+        if not _commit_exists(repo, fix):
             broken.append(cve)
     assert not broken, broken
 
@@ -249,9 +261,7 @@ def test_cves_metadata_fixes_all(hound, repo):
         if not re.match(r'[0-9a-fa-f]{7,40}', fixes):
             continue
 
-        try:
-            repo.git.rev_parse('--verify', fixes + '^{commit}')
-        except Exception:
+        if not _commit_exists(repo, fixes):
             broken.append(cve)
     assert not broken, broken
 
