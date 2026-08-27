@@ -1,5 +1,35 @@
 # ChangeLog
 
+## 1.5.0 - Aug 27 2026
+
+ - spatch runs are now bounded by two time budgets instead of none: SPATCH_TIMEOUT (CPU-seconds,
+   via spatch's own --timeout) and SPATCH_WALL_TIMEOUT (a wall-clock watchdog covering the rule
+   parsing and I/O that --timeout can't see). A rule that fires either budget now fails the CVE and
+   is recorded in report['errors'], instead of silently returning partial or no results
+ - validate-rule.sh (the write-cve-rule skill) now fails a rule that would blow the same matching
+   budget cvehound enforces at runtime, and checks grep-prefilter selectivity: a rule with no or
+   overly common literal tokens makes spatch parse the whole tree, which used to go undetected until
+   a whole-tree scan actually paid for it
+ - CVE-2020-12352 collapsed from ten near-identical starred rules into the one invariant they all
+   repeat. Past Coccinelle's max_cnf = 5, CNF conversion gives up and drops the grep query entirely,
+   so the old rule parsed the entire kernel tree (650s CPU) for a function that no longer exists
+   upstream; the collapsed rule scans in 0.2s with unchanged verdicts
+ - Five more rules (CVE-2019-15925, CVE-2022-0492, CVE-2017-7558, CVE-2020-11884, CVE-2023-50431)
+   stopped leaking common tokens into their grep query, cutting whole-tree parse costs by one to two
+   orders of magnitude with no change in verdicts
+ - Fixed content-latest publishing: the push trigger watched master, which this repo stopped using,
+   so every rule push since had been a no-op — the rolling content set still served pre-conversion
+   (script:python) rules that the bundled python-less spatch refuses to run. Now watches main
+ - docs/WRITING_RULES.md gained Rule 8 (keep the grep query selective), documenting how to measure
+   and avoid this class of cost, and documents exactly what the two spatch time budgets cover and
+   don't
+ - --runslow is substantially faster and more reliable: whole-tree verdicts are now memoized,
+   worktree scans spread across every worker instead of one branch per group, metadata lookups batch
+   through one long-lived git process instead of forking one per entry, and spatch's GC is tuned for
+   its actual allocation pattern. CI can dispatch a slow run against a named subset of rules, and the
+   missing_backports allowlist now fails once a listed backport actually lands instead of silently
+   XPASSing forever
+
 ## 1.4.0 - Aug 25 2026
 
  - Added an optional bundled coccinelle: `pip install 'cvehound[spatch]'`

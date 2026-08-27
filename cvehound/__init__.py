@@ -26,7 +26,7 @@ from cvehound.util import (
     parse_spatch_timeout,
 )
 
-__VERSION__ = '1.4.0'
+__VERSION__ = '1.5.0'
 
 RuleMetadata = dict[str, Any]
 
