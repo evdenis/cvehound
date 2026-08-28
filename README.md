@@ -150,6 +150,12 @@ Other args:
  - `--files` - will limit the scope of checked cves to the kernel files of interest
  - `--exploit` - check only for CVEs that are known to be exploitable (according to
    the CISA Known Exploited Vulnerabilities catalog)
+ - `--sandbox` - `auto` (default), `off`, or `strict`. Confines the scan with Landlock and
+   seccomp so a detection rule cannot reach past the tree it is scanning: the kernel tree
+   is read-only, your home directory and the network are unreachable, and only a temp
+   directory is writable. `auto` falls back to an unconfined scan when the kernel cannot
+   do it (Landlock needs 5.13+, enabled at boot) and says so under `--verbose`; `strict`
+   refuses to scan instead. `$CVEHOUND_SANDBOX` sets the default.
 
 ## Contributing
 

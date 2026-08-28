@@ -115,18 +115,73 @@ def evaluate_file_condition(
     return (text, affected if config is not None else None)
 
 
-def _spatch_env() -> dict[str, str]:
-    """The environment for a spatch child: ours, plus our GC defaults.
+def _spatch_env(kernel: str | None = None) -> dict[str, str]:
+    """The environment for a spatch child: ours, plus our GC and git defaults.
 
     A caller who has already said something about the OCaml runtime keeps it
     untouched -- the tuning is a default, not a policy. CAMLRUNPARAM counts as
     saying something: the runtime reads OCAMLRUNPARAM first and only falls back
     to it, so setting ours unconditionally would silently void theirs.
+
+    The git half is about reproducibility. Handed a directory, spatch prefilters
+    it by shelling out to `git grep` once per rule token, and that git reads the
+    user's ~/.gitconfig and /etc/gitconfig -- so a grep.* or pathspec setting
+    there can change what a scan finds, on one machine and not another. Dropping
+    both makes the prefilter a function of the tree alone.
+
+    Dropping them alone would strand a tree owned by someone else, though -- a
+    root-checked-out CI image, a shared mirror -- because git refuses to work in
+    one unless safe.directory names it, and honours safe.directory only from
+    protected configuration. So we supply it rather than defer: GIT_CONFIG_* is
+    the "command" scope, which is protected (git >= 2.38), and naming one exact
+    realpath is not the blanket bypass safe.directory=* would be. Appending past
+    a caller's own GIT_CONFIG_COUNT leaves their entries intact.
+
+    Getting this wrong is expensive and quiet: a git that cannot open the tree
+    makes spatch print "0 files match" and exit 0, so every CVE reads as absent.
     """
     env = dict(os.environ)
     if 'OCAMLRUNPARAM' not in env and 'CAMLRUNPARAM' not in env:
         env['OCAMLRUNPARAM'] = SPATCH_OCAMLRUNPARAM
+    env.setdefault('GIT_CONFIG_GLOBAL', os.devnull)
+    env.setdefault('GIT_CONFIG_NOSYSTEM', '1')
+    if kernel:
+        try:
+            count = int(env.get('GIT_CONFIG_COUNT') or 0)
+        except ValueError:
+            count = 0
+        env[f'GIT_CONFIG_KEY_{count}'] = 'safe.directory'
+        env[f'GIT_CONFIG_VALUE_{count}'] = os.path.realpath(kernel)
+        env['GIT_CONFIG_COUNT'] = str(count + 1)
     return env
+
+
+def check_git_prefilter(kernel: str) -> list[str]:
+    """Whether git can still open the tree, when spatch is going to ask it to.
+
+    Handed a git directory spatch prefilters with `git grep`, and a git that
+    cannot open the repository exits non-zero -- which spatch reports as "0 files
+    match" and exit 0. Repo discovery is the part that fails (an unreadable
+    config, an ownership check), so `rev-parse` proves it without walking the
+    tree. It lives here, next to the environment it has to run under, because
+    that environment is the thing most likely to break it.
+    """
+    if not os.path.isdir(os.path.join(kernel, '.git')):
+        return []
+    try:
+        run = subprocess.run(
+            ['git', 'rev-parse', '--show-toplevel'],
+            cwd=kernel,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=_spatch_env(kernel),
+        )
+    except OSError as err:
+        return [f'cannot run git in {kernel}: {err}']
+    if run.returncode != 0:
+        return [f'git cannot open {kernel}: {run.stderr.strip() or run.returncode}']
+    return []
 
 
 def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str:
@@ -147,7 +202,7 @@ def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
-        env=_spatch_env(),
+        env=_spatch_env(kernel),
     ) as proc:
         try:
             # 0 disables the watchdog, matching what spatch reads --timeout 0 as.

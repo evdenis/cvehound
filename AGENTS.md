@@ -192,5 +192,12 @@ downloads it into the cache dir when the checkout has none. Precedence at runtim
 `--metadata` → `$CVEHOUND_METADATA` → overlay → packaged. CLI defaults can also come
 from `/etc/cvehound.ini` or `~/.config/cvehound.ini` (`--config`).
 
+`cvehound/sandbox.py` confines a scan with Landlock and seccomp (pure `ctypes`, no new
+dependency). Its install point in `__main__.py`, immediately before the pool, is
+load-bearing rather than incidental: both mechanisms are inherited across fork *and*
+execve, so one call there covers the workers, every spatch, and everything spatch shells
+out to — but only while no thread or child exists yet. The module's own docstring covers
+the rest, including why a too-tight policy fails silently.
+
 When a rule is a judgement call, prefer a false positive: a missed CVE is worse than a
 noisy one.

@@ -1,5 +1,23 @@
 # ChangeLog
 
+## Unreleased
+
+ - Scans are now sandboxed by default. Landlock confines the run to the kernel tree (read-only),
+   the rules and a temp directory with no network, and a seccomp filter closes what Landlock
+   structurally cannot express -- UDP and netlink sockets, io_uring, ptrace, namespace syscalls.
+   Both are installed once just before the worker pool, so they cover the workers, every spatch,
+   and the /bin/sh, git, find, rm and diff that spatch shells out to. --sandbox=off skips it,
+   --sandbox=strict refuses to scan when the kernel cannot provide it, and the default falls back
+   to an unconfined scan on a kernel without Landlock. A self-test runs after the lock: an
+   over-tight policy would otherwise show up as "0 files match" rather than as an error
+ - spatch now runs with GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1. Handed a directory
+   it prefilters by shelling out to `git grep`, and that git was reading the user's ~/.gitconfig,
+   so a setting there could change what a scan found on one machine but not another. cvehound
+   supplies safe.directory for the scanned tree over GIT_CONFIG_* (the "command" scope, which git
+   treats as protected), so a checkout owned by another user still scans -- previously that needed
+   the user's own git config, and without it git refused the repository and spatch reported
+   "0 files match" with exit 0
+
 ## 1.5.0 - Aug 27 2026
 
  - spatch runs are now bounded by two time budgets instead of none: SPATCH_TIMEOUT (CPU-seconds,
