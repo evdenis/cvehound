@@ -303,6 +303,7 @@ def build_policy(
     rules_dir: str,
     spatch: str,
     metadata: str | None = None,
+    astcache: str | None = None,
 ) -> SandboxPolicy:
     """The least a scan can run with, derived from resolved paths only.
 
@@ -356,6 +357,11 @@ def build_policy(
         '/dev/urandom',
         '/dev/random',
     ]
+    # The experimental AST cache is read and written by every spatch; left out
+    # of the grant it would not fail the scan, just quietly never populate.
+    # Resolved (and created) by util.astcache_dir(), like every path above.
+    if astcache:
+        write.append(astcache)
 
     return SandboxPolicy(
         read=_clean(read),
@@ -611,6 +617,7 @@ def install(
     rules_dir: str,
     spatch: str,
     metadata: str | None = None,
+    astcache: str | None = None,
     strict: bool = False,
 ) -> SandboxStatus:
     """Build, apply and verify. The only entry point the CLI needs.
@@ -618,7 +625,7 @@ def install(
     strict turns every degradation into a refusal to scan, for callers who would
     rather not run at all than run unconfined.
     """
-    policy = build_policy(kernel, rules_dir, spatch, metadata)
+    policy = build_policy(kernel, rules_dir, spatch, metadata, astcache)
     status = apply(policy)
     if status.degraded and strict:
         raise SandboxError(list(status.degraded))

@@ -178,14 +178,26 @@ def _reset_worktree(repo):
     repo.git.checkout('origin/master')
 
 
-def _spatch_identity(spatch):
+def _spatch_identity(hound):
     # The version line alone does not identify the binary: the bundled build
     # and a distro one report the same "spatch version 1.3.2 compiled with
     # OCaml ...", yet differ in patches and configure flags (--disable-python),
     # which changes verdicts. Keep the path and the whole banner, whose second
     # line lists those flags, so switching binaries starts a fresh namespace.
-    out = run([spatch, '--version'], capture_output=True, check=True, text=True)
-    return '\x00'.join((spatch, out.stdout.strip()))
+    out = run([hound.spatch, '--version'], capture_output=True, check=True, text=True)
+    # The transport is part of the identity, taken from what the instance
+    # actually resolved rather than from the environment: these are settings
+    # now, so with the zygote defaulting to on there is no env var left to
+    # scan, and a verdict computed under one transport must not be replayed
+    # under another.
+    return '\x00'.join(
+        (
+            hound.spatch,
+            out.stdout.strip(),
+            f'zygote={hound.zygote}',
+            f'astcache={bool(hound.astcache)}',
+        )
+    )
 
 
 def _fetch_remotes(repo):
@@ -305,13 +317,20 @@ def pytest_configure(config):
         linux_repo = repo
         _shared_root = tempfile.mkdtemp(prefix='cvehound-tests-')
 
+    # The suite must never write into the user's real AST cache. Its mini-trees
+    # live under a fresh mkdtemp per session, so cache entries -- whose names
+    # embed the absolute source path -- could never be reused anyway: the hit
+    # rate is structurally zero while the writes are real, which is a few
+    # hundred MB of garbage per run. Opt out unless a run asks for it.
+    os.environ.setdefault('CVEHOUND_SPATCH_ASTCACHE', 'none')
+
     _cvehound = CVEhound(linux_repo.working_tree_dir)
     _kernel_checkout = KernelCheckout(linux_repo)
     _materializer = BlobMaterializer(linux_repo, os.path.join(_shared_root, 'store'))
     if not config.getoption('--no-result-cache'):
         _result_cache = ResultCache(
             os.path.join(os.path.dirname(os.path.realpath(__file__)), '.result_cache'),
-            _spatch_identity(_cvehound.spatch),
+            _spatch_identity(_cvehound),
             worker=os.environ.get('PYTEST_XDIST_WORKER', 'main'),
         )
 

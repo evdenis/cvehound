@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import contextlib
 import functools
 import logging
 import os
@@ -12,18 +11,22 @@ from typing import Any
 
 from sympy.logic import simplify_logic
 
+from cvehound import spatch_zygote
 from cvehound.config import Config
 from cvehound.exception import SpatchError, SpatchNotFound, SpatchTimeout, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
 from cvehound.util import (
+    astcache_dir,
     find_spatch,
     fix_date_str,
     get_cves_metadata,
     get_rule_cves,
     get_spatch_version,
     get_srcarch,
+    killpg,
     parse_coccinelle_output,
     parse_spatch_timeout,
+    resolve_zygote,
 )
 
 __VERSION__ = '1.5.0'
@@ -184,12 +187,75 @@ def check_git_prefilter(kernel: str) -> list[str]:
     return []
 
 
-def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str:
+def _run_spatch(
+    cve: str,
+    kernel: str,
+    cmd: list[str],
+    wall_timeout: int,
+    workdir: str,
+    zygote: bool = False,
+    demanded: bool = False,
+) -> str:
     """Run spatch under both budgets and hand back its stdout, or raise.
 
     Both halves of "did this run finish" live here so they cannot be used apart:
     a caller that got the wall watchdog but skipped the engine verdict would
     read a rule that gave up as a rule that found nothing.
+
+    With zygote=True the request goes through a per-process `spatch --zygote`
+    server instead of an exec; workdir is where the request child leaves its
+    stdout/stderr. Both transports come back as (returncode, stdout, stderr) or
+    raise TimeoutError carrying the partial stderr as its message, so all
+    classification below -- the wall half and the engine half alike -- is
+    shared and the two cannot drift apart.
+
+    demanded says the transport was asked for rather than inferred, which is
+    the difference between "fall back quietly" and "fail so the user finds
+    out": a mode that silently does something else cannot be tested.
+    """
+    env = _spatch_env(kernel)
+    try:
+        if zygote:
+            returncode, stdout, stderr = spatch_zygote.run(
+                cmd, env, workdir, wall_timeout, degrade=not demanded
+            )
+        else:
+            returncode, stdout, stderr = _exec_spatch(cmd, env, wall_timeout)
+    except spatch_zygote.ZygoteUnsupported as err:
+        # This spatch cannot serve; it said so on its first request and will
+        # not be asked again. Finish this CVE on the stock transport so the
+        # scan degrades in speed rather than losing a verdict.
+        logging.warning('%s: falling back to one spatch per rule (%s)', cve, err)
+        returncode, stdout, stderr = _exec_spatch(cmd, env, wall_timeout)
+    except spatch_zygote.ZygoteDied as err:
+        raise SpatchError(cve, kernel, -1, str(err)) from err
+    except TimeoutError as err:
+        # Whatever spatch said before the kill is the only clue to where it
+        # wedged; both transports hand it over as the exception message.
+        raise SpatchTimeout(
+            cve, kernel, -signal.SIGKILL, str(err), wall_timeout, wall=True
+        ) from err
+
+    # The engine half is a question the classifier answers from stderr plus the
+    # exit code: handed a directory spatch drops the file it gave up on and
+    # still exits 0, so neither alone would do.
+    timed_out = parse_spatch_timeout(stderr, returncode)
+    if timed_out is not None:
+        raise SpatchTimeout(
+            cve,
+            kernel,
+            returncode,
+            stderr,
+            SPATCH_TIMEOUT,
+            [os.path.relpath(f, kernel) for f in timed_out],
+        )
+    if returncode != 0:
+        raise SpatchError(cve, kernel, returncode, stderr)
+    return stdout
+
+
+def _exec_spatch(cmd: list[str], env: dict[str, str], wall_timeout: int) -> tuple[int, str, str]:
+    """The stock transport: one spatch exec per request, killed as one group.
 
     The wall half needs its own process group. subprocess.run(timeout=) kills
     only spatch, leaving the parmap workers it forks under -j>1 orphaned and
@@ -202,44 +268,21 @@ def _run_spatch(cve: str, kernel: str, cmd: list[str], wall_timeout: int) -> str
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
-        env=_spatch_env(kernel),
+        env=env,
     ) as proc:
         try:
             # 0 disables the watchdog, matching what spatch reads --timeout 0 as.
             stdout, stderr = proc.communicate(timeout=wall_timeout or None)
         except subprocess.TimeoutExpired as err:
-            _killpg(proc)
-            # Whatever spatch said before the kill is the only clue to where it
-            # wedged, and communicate() leaves it out of the exception.
-            raise SpatchTimeout(
-                cve, kernel, -signal.SIGKILL, proc.communicate()[1], wall_timeout, wall=True
-            ) from err
+            killpg(proc.pid)
+            # communicate() leaves the partial stderr out of its exception, so
+            # carry it out as the TimeoutError message instead.
+            raise TimeoutError(proc.communicate()[1]) from err
         except BaseException:
-            _killpg(proc)
+            killpg(proc.pid)
             proc.communicate()
             raise
-
-    # The engine half is a question about stderr, not the exit code: handed a
-    # directory spatch drops the file it gave up on and still exits 0, so the
-    # exit code alone would report a runaway rule as "not vulnerable".
-    timed_out = parse_spatch_timeout(stderr)
-    if timed_out is not None:
-        raise SpatchTimeout(
-            cve,
-            kernel,
-            proc.returncode,
-            stderr,
-            SPATCH_TIMEOUT,
-            [os.path.relpath(f, kernel) for f in timed_out],
-        )
-    if proc.returncode != 0:
-        raise SpatchError(cve, kernel, proc.returncode, stderr)
-    return stdout
-
-
-def _killpg(proc: subprocess.Popen[str]) -> None:
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(proc.pid, signal.SIGKILL)
+    return proc.returncode, stdout, stderr
 
 
 class CVEhound:
@@ -251,6 +294,8 @@ class CVEhound:
         check_strict: bool = False,
         arch: str = 'x86',
         spatch: str | None = None,
+        zygote: str | None = None,
+        ast_cache: str | None = None,
     ) -> None:
         kernel = os.path.abspath(kernel)
         self.kernel = kernel
@@ -263,6 +308,16 @@ class CVEhound:
         if shutil.which('diff') is None:
             raise SpatchNotFound('diff not found: spatch needs diffutils to report what it matched')
         self.check_strict = check_strict
+        # Both transport knobs are resolved here rather than at the point of
+        # use, so that a library caller and the test suite -- neither of which
+        # goes through __main__ -- get the same decision the CLI does, and so
+        # the sandbox grant and the --cache-prefix argument cannot disagree
+        # about the cache directory.
+        self.zygote_mode = zygote = zygote or 'auto'
+        self.zygote = resolve_zygote(zygote, self.spatch)
+        if ast_cache is None:
+            ast_cache = os.environ.get('CVEHOUND_SPATCH_ASTCACHE')
+        self.astcache = astcache_dir(ast_cache, self.spatch)
         self.arch = arch
         self.srcarch = get_srcarch(arch)
         self.rules_metadata: dict[str, RuleMetadata] = {}
@@ -393,8 +448,11 @@ class CVEhound:
             with tempfile.TemporaryDirectory(
                 prefix='cvehound-spatch-', ignore_cleanup_errors=True
             ) as tmpdir:
+                # Experimental: share parsed-C ASTs between rules that target
+                # the same file (they are rule-independent under our flag set).
                 cocci_cmd = [
                     self.spatch,
+                    *(['--cache-prefix', self.astcache] if self.astcache else []),
                     '--no-includes',
                     '--include-headers',
                     '-D',
@@ -416,7 +474,15 @@ class CVEhound:
 
                 logging.debug(' '.join(cocci_cmd))
 
-                output = _run_spatch(cve, self.kernel, cocci_cmd, SPATCH_WALL_TIMEOUT).strip()
+                output = _run_spatch(
+                    cve,
+                    self.kernel,
+                    cocci_cmd,
+                    SPATCH_WALL_TIMEOUT,
+                    workdir=tmpdir,
+                    zygote=self.zygote,
+                    demanded=self.zygote_mode == 'on',
+                ).strip()
             # Rules report by starring lines: a match is a unified diff of the
             # starred lines on stdout, silence means not vulnerable. The parsed
             # hits are the verdict, so "detected" and the reported locations can

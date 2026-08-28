@@ -149,10 +149,15 @@ def slow_hound(hound, slow_tree):
     return at
 
 
+# The hinted-files shape depends on the build: stock spatch dies with the
+# uncaught exception (exit 2); builds carrying the exit-124 patch (the zygote
+# branch) report the coreutils-style timeout code instead.
 @pytest.mark.parametrize(
-    ('all_files', 'returncode'), [(False, 2), (True, 0)], ids=['hinted-files', 'all-files']
+    ('all_files', 'returncodes'),
+    [(False, {2, 124}), (True, {0})],
+    ids=['hinted-files', 'all-files'],
 )
-def test_check_cve_raises_spatch_timeout(slow_hound, monkeypatch, all_files, returncode):
+def test_check_cve_raises_spatch_timeout(slow_hound, monkeypatch, all_files, returncodes):
     """Both invocation shapes, through the code the CLI runs.
 
     This is also what pins the marker to whatever spatch is installed: err.files
@@ -165,7 +170,7 @@ def test_check_cve_raises_spatch_timeout(slow_hound, monkeypatch, all_files, ret
         slow_hound.check_cve(CVE, all_files)
     err = excinfo.value
     assert err.files == ['burn.c']
-    assert err.returncode == returncode
+    assert err.returncode in returncodes
     assert err.timeout == 1
     assert not err.wall
 

@@ -1,8 +1,11 @@
+import contextlib
 import gzip
+import hashlib
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 from configparser import ConfigParser
 from datetime import UTC, datetime
@@ -28,6 +31,152 @@ SRCARCH = {
 
 def get_srcarch(arch: str) -> str:
     return SRCARCH.get(arch, arch)
+
+
+def killpg(pid: int) -> None:
+    """SIGKILL a whole process group, tolerating one that is already gone."""
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGKILL)
+
+
+def get_cache_dir() -> str:
+    """Where cvehound keeps regenerable state: $CVEHOUND_CACHE, else XDG."""
+    cache = os.environ.get('CVEHOUND_CACHE')
+    if not cache:
+        xdg = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
+        cache = os.path.join(xdg, 'cvehound')
+    return cache
+
+
+def bundled_spatch() -> str | None:
+    """The realpath of the bundled cvehound-spatch binary, or None.
+
+    FileNotFoundError is not hypothetical: spatch_path() raises it when the
+    package is imported from a source checkout, where the Python API exists but
+    no binary was ever packed.
+    """
+    try:
+        import cvehound_spatch  # ty: ignore[unresolved-import]  # optional sidecar package
+
+        return os.path.realpath(cvehound_spatch.spatch_path())
+    except (ImportError, FileNotFoundError, OSError):
+        return None
+
+
+def spatch_features(spatch: str) -> frozenset[str]:
+    """What this spatch can do beyond the stock command line.
+
+    Only the bundled build can answer: its wheel records what make_wheel.py
+    probed the binary for. Nothing else can be asked, because --zygote is
+    dispatched before spatch parses argv (so it is in no --help output) and the
+    version banner is identical with and without it. A wheel packed before
+    FEATURES existed declares nothing, which is the correct answer for it.
+    """
+    bundled = bundled_spatch()
+    if bundled is None or os.path.realpath(spatch) != bundled:
+        return frozenset()
+    import cvehound_spatch  # ty: ignore[unresolved-import]  # optional sidecar package
+
+    return frozenset(getattr(cvehound_spatch, 'FEATURES', frozenset()))
+
+
+def resolve_zygote(mode: str, spatch: str) -> bool:
+    """Whether to run spatch as a fork-per-request server.
+
+    'auto' means "wherever it works": the bundled build that advertises it.
+    'on' is a demand, not a hint -- it stays true even for a spatch that cannot
+    do it, so the run fails loudly instead of quietly performing differently
+    from what was asked.
+    """
+    if mode == 'off':
+        return False
+    if mode == 'on':
+        return True
+    return 'zygote' in spatch_features(spatch)
+
+
+def astcache_dir(setting: str | None, spatch: str | None = None) -> str | None:
+    """The parsed-C AST cache directory, or None when caching is off.
+
+    Single source of truth for the setting: the sandbox grant and the
+    --cache-prefix argument must be the same path, and the failure mode of
+    disagreeing is silent -- spatch cannot write the cache and the scan just
+    never speeds up. Created here so every reader sees a usable directory.
+
+    The default path is namespaced by the spatch it was built with, and that is
+    load-bearing rather than tidy: entries are marshalled OCaml values carrying
+    no type tag, so handing one build's entry to another build is undefined
+    behaviour -- a wrong verdict or a crash, not an exception -- and nothing in
+    coccinelle's own cache key would catch it.
+    """
+    if not setting or setting in ('none', 'off'):
+        return None
+    if setting == 'auto':
+        if spatch is None:
+            raise ValueError('the default AST cache path needs the spatch it belongs to')
+        ident = hashlib.sha256(spatch_identity(spatch).encode()).hexdigest()[:16]
+        setting = os.path.join(get_cache_dir(), 'ast', ident)
+    astcache = os.path.abspath(setting)
+    os.makedirs(astcache, exist_ok=True)
+    return astcache
+
+
+def astcache_prune(astcache: str, limit: int) -> int:
+    """Evict least-recently-used entries until the cache fits. Returns bytes freed.
+
+    cvehound has to own this because coccinelle will not: it never prunes, and
+    its own --cache-limit is a flush-all that additionally walks the whole cache
+    on every miss. An entry is the (.ast_raw, .depend_raw) pair, dropped
+    together -- a dependency file outliving its value would be read as a valid
+    entry pointing at nothing.
+    """
+    entries = []
+    for root, _dirs, files in os.walk(astcache):
+        for name in files:
+            if not name.endswith('.ast_raw'):
+                continue
+            value = os.path.join(root, name)
+            depend = value[: -len('.ast_raw')] + '.depend_raw'
+            try:
+                stat = os.stat(value)
+            except OSError:
+                continue
+            size = stat.st_size + (os.path.getsize(depend) if os.path.exists(depend) else 0)
+            entries.append((stat.st_atime, size, value, depend))
+    total = sum(size for _, size, _, _ in entries)
+    if total <= limit:
+        return 0
+    freed = 0
+    for _atime, size, value, depend in sorted(entries):
+        if total - freed <= limit:
+            break
+        for path in (value, depend):
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+        freed += size
+    return freed
+
+
+def astcache_clear(astcache: str) -> int:
+    """Drop every entry, leaving the directory. Returns bytes freed."""
+    return astcache_prune(astcache, 0)
+
+
+def spatch_identity(spatch: str) -> str:
+    """A string that changes whenever the binary's marshalled types might.
+
+    The first --version line is not enough on its own: a distro build and the
+    bundled one report the same "spatch version 1.3.2 compiled with OCaml ...",
+    while differing in patches and configure flags. The rest of the banner
+    carries those flags.
+    """
+    try:
+        banner = subprocess.check_output(
+            [spatch, '--version'], stderr=subprocess.DEVNULL, universal_newlines=True
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        banner = ''
+    return '\x00'.join((os.path.realpath(spatch), banner))
 
 
 def get_config_data(path: str) -> dict[str, str]:
@@ -217,8 +366,8 @@ def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
     return result
 
 
-# spatch reports a fired --timeout in three shapes, and which one you get depends
-# on how the run was invoked, not on what went wrong:
+# spatch reports a fired --timeout in four shapes, and which one you get depends
+# on how the run was invoked and which build ran, not on what went wrong:
 #
 #   file list, -j 1   exit 2    "timeout (we abort): <files>" then
 #                               "Fatal error: exception <mod>Common.Timeout"
@@ -226,9 +375,12 @@ def parse_coccinelle_output(output: str) -> list[dict[str, str | int]]:
 #                               then "An error occurred when attempting to ..."
 #   file list, -j > 1 exit 255  "[Parmap]: error at index ... got exception
 #                               <mod>Common.Timeout on core N"
+#   patched build     exit 124  same abort line, then
+#   (zygote branch)             "spatch: engine timeout (Common.Timeout)"
 #
-# The exit code alone settles nothing -- OCaml gives any uncaught exception exit 2,
-# and the directory shape does not fail at all -- so the stderr text is the verdict.
+# The exit code alone settles nothing on stock spatch -- OCaml gives any uncaught
+# exception exit 2, and the directory shape does not fail at all -- so the stderr
+# text is the verdict there; 124 is the one code that means timeout by contract.
 # The module prefix is build-dependent (Coccinelle_modules.Common.Timeout on the
 # OCaml 5 builds, bare Common.Timeout on older ones), hence the optional group.
 _TIMEOUT_EXN = re.compile(r'\bCommon\.Timeout\b')
@@ -236,14 +388,14 @@ _TIMEOUT_EXN_FILE = re.compile(r'^EXN: (?:\S+\.)?Common\.Timeout in (.+)$', re.M
 _TIMEOUT_ABORT = re.compile(r'^timeout \(we abort\): (.*)$', re.MULTILINE)
 
 
-def parse_spatch_timeout(stderr: str) -> list[str] | None:
-    """Classify spatch stderr: None when no --timeout fired, else the files blamed.
+def parse_spatch_timeout(stderr: str, returncode: int = 0) -> list[str] | None:
+    """Classify a spatch run: None when no --timeout fired, else the files blamed.
 
     The list is empty when spatch named no file -- the parmap and fatal-error
     lines carry only the exception. Callers must treat "empty" as "timed out,
     files unknown", never as "did not time out".
     """
-    if not _TIMEOUT_EXN.search(stderr):
+    if not _TIMEOUT_EXN.search(stderr) and returncode != 124:
         return None
     files = _TIMEOUT_EXN_FILE.findall(stderr)
     if not files:
@@ -271,7 +423,7 @@ def parse_config(file: str) -> dict[str, Any]:
         except ValueError:
             raise Exception('"verbose" should be an integer') from None
 
-    for key in ['check_strict', 'all_files', 'exploit']:
+    for key in ['check_strict', 'all_files', 'exploit', 'cache_clear']:
         if key not in config:
             continue
         if config[key].lower() in ['y', 't', '1', 'yes', 'true']:

@@ -24,6 +24,9 @@ from cvehound.exception import (
 )
 from cvehound.sandbox import install as install_sandbox
 from cvehound.util import (
+    astcache_clear,
+    astcache_dir,
+    astcache_prune,
     find_spatch,
     fix_date_str,
     get_config_data,
@@ -41,6 +44,12 @@ from cvehound.worker import _worker_check_cve, _worker_init, setup_logging
 # Metadata older than this gets a warning; --exploit is stricter because the
 # CISA KEV catalog it filters on changes much faster than the fix data.
 SANDBOX_MODES = ('auto', 'off', 'strict')
+ZYGOTE_MODES = ('auto', 'off', 'on')
+
+# What the AST cache is allowed to grow to before a scan evicts its
+# least-recently-used entries. A targeted scan of one kernel tree measures
+# ~310MB, so this holds a few trees; coccinelle never prunes anything itself.
+ASTCACHE_LIMIT = 4 * 1024 * 1024 * 1024
 
 METADATA_STALE_DAYS = 90
 METADATA_STALE_DAYS_EXPLOIT = 30
@@ -207,6 +216,9 @@ def check_config(config: dict[str, Any]) -> None:
         'arch',
         'spatch',
         'sandbox',
+        'zygote',
+        'cache',
+        'cache_clear',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -305,6 +317,30 @@ def main(args: list[str] | None = None) -> None:
         ' (default: $CVEHOUND_SANDBOX, else auto)',
     )
     parser.add_argument(
+        '--zygote',
+        choices=ZYGOTE_MODES,
+        default='auto',
+        help='run spatch as one warm server per worker instead of one process'
+        ' per rule: auto uses it when the installed cvehound-spatch supports it'
+        ' (default: auto)',
+    )
+    parser.add_argument(
+        '--cache',
+        nargs='?',
+        const='auto',
+        default=os.environ.get('CVEHOUND_SPATCH_ASTCACHE'),
+        metavar='DIR',
+        help='reuse parsed C between rules that target the same file, in DIR'
+        ' (default: off; bare --cache uses a directory under the cvehound cache)'
+        ' -- worth it when rescanning a tree or running thousands of rules,'
+        ' and it costs ~310MB per tree scanned',
+    )
+    parser.add_argument(
+        '--cache-clear',
+        action='store_true',
+        help='empty the AST cache and exit',
+    )
+    parser.add_argument(
         '--version',
         action=_VersionAction,
         default=argparse.SUPPRESS,
@@ -344,13 +380,26 @@ def main(args: list[str] | None = None) -> None:
     # $CVEHOUND_SANDBOX supplies the default and cvehound.ini overrides it, so
     # neither is validated. Untreated, 'Off' or 'no' would read as "not off" and
     # confine a scan the user asked to leave alone.
-    if args_cfg['sandbox'] not in SANDBOX_MODES:
-        print(
-            'Wrong --sandbox value:',
-            args_cfg['sandbox'] + ' (expected ' + ', '.join(SANDBOX_MODES) + ')',
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for name, modes in (('sandbox', SANDBOX_MODES), ('zygote', ZYGOTE_MODES)):
+        if args_cfg[name] not in modes:
+            print(
+                f'Wrong --{name} value:',
+                args_cfg[name] + ' (expected ' + ', '.join(modes) + ')',
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    if args_cfg['cache_clear']:
+        # Before the --kernel check: emptying the cache is maintenance, and
+        # asking for a kernel tree to do it would be nonsense.
+        setting = args_cfg['cache'] or 'auto'
+        astcache = astcache_dir(setting, find_spatch(args_cfg['spatch']))
+        if astcache is None:
+            print('AST cache is disabled, nothing to clear', file=sys.stderr)
+            sys.exit(1)
+        freed = astcache_clear(astcache)
+        print(f'Cleared {freed / 1e6:.1f} MB from {astcache}')
+        sys.exit(0)
 
     if not args_cfg['kernel']:
         parser.print_usage()
@@ -422,7 +471,16 @@ def main(args: list[str] | None = None) -> None:
         args_cfg['check_strict'],
         args_cfg['arch'],
         spatch=spatch,
+        zygote=args_cfg['zygote'],
+        ast_cache=args_cfg['cache'],
     )
+    if hound.astcache:
+        # Coccinelle never prunes, so a cache left to itself grows without
+        # bound. Evicting before the scan means the limit is what the user
+        # keeps, not what they had before this run added to it.
+        freed = astcache_prune(hound.astcache, ASTCACHE_LIMIT)
+        if freed:
+            logging.info('AST cache: evicted %.1f MB', freed / 1e6)
     ensure_rules(hound.cve_all_rules)
     check_metadata_freshness(hound.metadata, args_cfg['exploit'])
 
@@ -549,6 +607,11 @@ def main(args: list[str] | None = None) -> None:
     # comparable to another one without them.
     report['tools']['spatch_timeout'] = SPATCH_TIMEOUT
     report['tools']['spatch_wall_timeout'] = SPATCH_WALL_TIMEOUT
+    # Which transport ran is part of how the numbers were produced, like the
+    # budgets above: two reports from different transports are not comparable
+    # runs of the same thing.
+    report['tools']['spatch_zygote'] = hound.zygote
+    report['tools']['spatch_ast_cache'] = bool(hound.astcache)
     # Rules and metadata update out-of-band, so the tool version alone does not
     # identify what produced the findings; pin the content identity too.
     content = resolve_content()
@@ -591,6 +654,7 @@ def main(args: list[str] | None = None) -> None:
                     content.rules_dir,
                     hound.spatch,
                     metadata_path,
+                    astcache=hound.astcache,
                     strict=args_cfg['sandbox'] == 'strict',
                 )
             except SandboxError as err:
