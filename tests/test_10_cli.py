@@ -45,3 +45,59 @@ def test_cli_module_invocation(hound, tmp_path):
     # is present either way, which is what lets a consumer tell an empty
     # 'results' apart from a scan that could not finish.
     assert written['errors'] == {}
+
+
+def test_mode_values_from_config_are_validated(hound, tmp_path):
+    """argparse only checks `choices` for a value it parsed off the command line.
+
+    cvehound.ini overrides the default without reaching that check, so 'maybe'
+    would read as "not off" and silently pick a transport nobody asked for.
+    """
+    config = tmp_path / 'cvehound.ini'
+    config.write_text('zygote = maybe\n')
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            'cvehound',
+            '--kernel',
+            hound.kernel,
+            '--cve',
+            'CVE-2013-2930',
+            '--config',
+            str(config),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 1, result.stdout
+    assert 'Wrong --zygote value' in result.stderr
+
+
+def test_report_records_the_transport(hound, tmp_path):
+    """A report from a warm server and one from a process per rule are the same
+    verdicts produced differently; which it was belongs next to the budgets."""
+    report = tmp_path / 'report.json'
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            'cvehound',
+            '--kernel',
+            hound.kernel,
+            '--cve',
+            'CVE-2013-2930',
+            '--zygote',
+            'off',
+            '--report',
+            str(report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    tools = json.loads(report.read_text())['tools']
+    assert tools['spatch_zygote'] is False
+    assert tools['spatch_ast_cache'] is False

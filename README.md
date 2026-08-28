@@ -156,6 +156,19 @@ Other args:
    directory is writable. `auto` falls back to an unconfined scan when the kernel cannot
    do it (Landlock needs 5.13+, enabled at boot) and says so under `--verbose`; `strict`
    refuses to scan instead. `$CVEHOUND_SANDBOX` sets the default.
+ - `--zygote` - `auto` (default), `off`, or `on`. Runs spatch as one warm server per worker,
+   forking a fresh process per rule, instead of starting spatch once per rule. `auto` uses it
+   when the installed `cvehound-spatch` says it can (the wheel records what it was built with);
+   any other spatch keeps one process per rule. Every rule still runs in its own process, so
+   this changes what a scan costs, never what it finds.
+ - `--cache[=DIR]` - reuse parsed C between rules that target the same file, kept in `DIR`
+   (bare `--cache` puts it under the cvehound cache directory, keyed by the spatch that wrote
+   it). **Off by default, and worth understanding before turning on:** it costs roughly 310 MB
+   per kernel tree scanned, and a first scan of today's rule set is marginally *slower* with it,
+   because only about a fifth of the parses repeat. It pays off when you scan the same tree
+   more than once (a rescan is ~25% faster) or when running thousands of rules, where the
+   repeats dominate. Nothing shrinks the cache on its own, so cvehound evicts least-recently-used
+   entries past a few GB, and `--cache-clear` empties it.
 
 ## Contributing
 
