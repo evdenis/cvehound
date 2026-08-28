@@ -97,3 +97,24 @@ class SpatchTimeout(SpatchError):
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         return (self.__class__, super().__reduce__()[1] + (self.timeout, self.files, self.wall))
+
+
+class SandboxError(Exception):
+    """The sandbox could not be installed, or could not be trusted once it was.
+
+    Raised for two situations that both have to stop the scan. Under --sandbox
+    strict, any degradation at all. And always, a self-test that failed after
+    landlock_restrict_self: the policy is one path too tight, Landlock cannot be
+    undone, and continuing would report a clean kernel rather than an error --
+    spatch answers "0 files match" whether a tree is clean or unreadable.
+    """
+
+    def __init__(self, reasons: list[str]) -> None:
+        self.reasons = reasons
+        super().__init__(self._summary())
+
+    def _summary(self) -> str:
+        return 'sandbox failed:\n  ' + '\n  '.join(self.reasons)
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return (self.__class__, (self.reasons,))

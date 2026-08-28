@@ -2,6 +2,7 @@
 
 import argparse
 import concurrent.futures
+import contextlib
 import json
 import logging
 import multiprocessing
@@ -14,7 +15,14 @@ from typing import Any
 
 from cvehound import SPATCH_TIMEOUT, SPATCH_WALL_TIMEOUT, CVEhound
 from cvehound.content import resolve_content
-from cvehound.exception import SpatchError, SpatchNotFound, SpatchTimeout, UnsupportedVersion
+from cvehound.exception import (
+    SandboxError,
+    SpatchError,
+    SpatchNotFound,
+    SpatchTimeout,
+    UnsupportedVersion,
+)
+from cvehound.sandbox import install as install_sandbox
 from cvehound.util import (
     find_spatch,
     fix_date_str,
@@ -32,6 +40,8 @@ from cvehound.worker import _worker_check_cve, _worker_init, setup_logging
 
 # Metadata older than this gets a warning; --exploit is stricter because the
 # CISA KEV catalog it filters on changes much faster than the fix data.
+SANDBOX_MODES = ('auto', 'off', 'strict')
+
 METADATA_STALE_DAYS = 90
 METADATA_STALE_DAYS_EXPLOIT = 30
 
@@ -196,6 +206,7 @@ def check_config(config: dict[str, Any]) -> None:
         'metadata',
         'arch',
         'spatch',
+        'sandbox',
     }
     diff = set(config.keys()) - valid_config_options
     if diff:
@@ -286,6 +297,14 @@ def main(args: list[str] | None = None) -> None:
         ' cvehound-spatch package, then PATH)',
     )
     parser.add_argument(
+        '--sandbox',
+        choices=SANDBOX_MODES,
+        default=os.environ.get('CVEHOUND_SANDBOX', 'auto'),
+        help='confine the scan with landlock and seccomp: auto falls back to an'
+        ' unconfined scan when the kernel cannot do it, strict refuses to scan'
+        ' (default: $CVEHOUND_SANDBOX, else auto)',
+    )
+    parser.add_argument(
         '--version',
         action=_VersionAction,
         default=argparse.SUPPRESS,
@@ -320,6 +339,18 @@ def main(args: list[str] | None = None) -> None:
         if cmdargs_dict[arg] != parser.get_default(arg) or arg not in merged_args:
             merged_args[arg] = cmdargs_dict[arg]
     args_cfg = merged_args
+
+    # argparse checks `choices` only for a value it parsed off the command line:
+    # $CVEHOUND_SANDBOX supplies the default and cvehound.ini overrides it, so
+    # neither is validated. Untreated, 'Off' or 'no' would read as "not off" and
+    # confine a scan the user asked to leave alone.
+    if args_cfg['sandbox'] not in SANDBOX_MODES:
+        print(
+            'Wrong --sandbox value:',
+            args_cfg['sandbox'] + ' (expected ' + ', '.join(SANDBOX_MODES) + ')',
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if not args_cfg['kernel']:
         parser.print_usage()
@@ -534,10 +565,71 @@ def main(args: list[str] | None = None) -> None:
         'latest_fix_date': fix_date_str(latest_fix) if latest_fix else None,
     }
 
-    # Under forkserver (the Linux default since Python 3.14) workers would
-    # otherwise each re-import cvehound (and sympy) when the CLI runs as
-    # `python -m cvehound`; preloading amortizes that once. No-op for fork/spawn.
-    multiprocessing.set_forkserver_preload(['cvehound.worker'])
+    # Opened before the sandbox closes over the filesystem, and written through
+    # this fd at the end: Landlock leaves an already-open fd alone, whereas
+    # granting the report's directory would mean write access to the CWD, which is
+    # routinely $HOME. No O_TRUNC either -- a run that dies partway should leave
+    # the previous report in place rather than an empty file.
+    report_fd = None
+    created_report = False
+    if args_cfg['report']:
+        created_report = not os.path.exists(args_cfg['report'])
+        try:
+            report_fd = os.open(args_cfg['report'], os.O_WRONLY | os.O_CREAT | os.O_CLOEXEC, 0o666)
+        except OSError as err:
+            print("Can't open report file:", err, file=sys.stderr)
+            sys.exit(1)
+
+    try:
+        # Last thing before the pool, and that is the whole trick: no thread and
+        # no child exists yet, so the one call covers the workers, the spatch each
+        # of them runs, and the /bin/sh, git, find, rm and diff spatch runs in turn.
+        if args_cfg['sandbox'] != 'off':
+            try:
+                install_sandbox(
+                    args_cfg['kernel'],
+                    content.rules_dir,
+                    hound.spatch,
+                    metadata_path,
+                    strict=args_cfg['sandbox'] == 'strict',
+                )
+            except SandboxError as err:
+                print(err, file=sys.stderr)
+                sys.exit(1)
+
+        # Under forkserver (the Linux default since Python 3.14) workers would
+        # otherwise each re-import cvehound (and sympy) when the CLI runs as
+        # `python -m cvehound`; preloading amortizes that once. No-op for fork/spawn.
+        multiprocessing.set_forkserver_preload(['cvehound.worker'])
+        run_scan(hound, args_cfg, loglevel, cves_sorted, report)
+
+        if report_fd is not None:
+            with os.fdopen(report_fd, 'w', encoding='utf-8') as fh:
+                fh.truncate(0)
+                json.dump(report, fh, indent=4, sort_keys=True)
+    except BaseException:
+        # The pre-open created this file before anything was scanned, so every way
+        # out of the block above -- a refused sandbox, Ctrl-C, a dead pool, a
+        # half-written report -- has to take it back with it. An empty report.json
+        # parses worse than no report.json.
+        if report_fd is not None and created_report:
+            with contextlib.suppress(OSError):
+                os.close(report_fd)
+            with contextlib.suppress(OSError):
+                os.unlink(args_cfg['report'])
+        raise
+    if report_fd is not None:
+        print('Report saved to:', args_cfg['report'])
+
+
+def run_scan(
+    hound: CVEhound,
+    args_cfg: dict[str, Any],
+    loglevel: int,
+    cves_sorted: list[str],
+    report: dict[str, Any],
+) -> None:
+    """Fan the CVEs out over the pool and fold the results into the report."""
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=os.cpu_count(), initializer=_worker_init, initargs=(hound, loglevel)
     ) as executor:
@@ -575,11 +667,6 @@ def main(args: list[str] | None = None) -> None:
                     'error': 'unsupported_version',
                     'requires': err.rule_version,
                 }
-
-    if args_cfg['report']:
-        with open(args_cfg['report'], 'w', encoding='utf-8') as fh:
-            json.dump(report, fh, indent=4, sort_keys=True)
-        print('Report saved to:', args_cfg['report'])
 
 
 if __name__ == '__main__':
