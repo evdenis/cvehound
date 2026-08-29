@@ -16,10 +16,10 @@ import pickle
 import subprocess
 
 import pytest
-from kerneltree import hound_at
 
 import cvehound
 from cvehound.exception import SpatchError, SpatchTimeout
+from cvehound.oracle import hound_at
 from cvehound.util import parse_spatch_timeout
 
 # Captured verbatim from spatch 1.3.2 under --very-quiet. One shape per way

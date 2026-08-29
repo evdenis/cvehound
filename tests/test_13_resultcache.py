@@ -3,7 +3,7 @@
 import json
 import os
 
-from resultcache import ResultCache
+from cvehound.oracle import ResultCache
 
 SPATCH = 'spatch version 1.3.2 compiled with OCaml version 4.14.2'
 SIG = (('include/linux/kconfig.h', 'a' * 40), ('net/core/dev.c', 'b' * 40))

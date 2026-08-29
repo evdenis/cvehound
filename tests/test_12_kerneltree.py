@@ -3,7 +3,9 @@
 import os
 
 import pytest
-from kerneltree import KCONFIG_H, hound_at
+
+from cvehound import KCONFIG_H
+from cvehound.oracle import hound_at
 
 CVE = 'CVE-2014-0100'
 FILE = 'net/ipv4/inet_fragment.c'

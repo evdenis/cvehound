@@ -3,7 +3,8 @@
 import re
 
 import pytest
-from kerneltree import object_header
+
+from cvehound.oracle import object_header
 
 # CVEs that neither kernel.org vulns.git nor CIP kernel-sec covers. They are all
 # still PUBLISHED at cve.org - mostly 2013-2018 entries and Android/Qualcomm

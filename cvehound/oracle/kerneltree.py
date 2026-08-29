@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Materialized kernel mini-trees: run rules against any commit without a checkout.
 
 check_cve() reads only the rule's Files: paths (plus include/linux/kconfig.h when
@@ -13,8 +12,14 @@ import hashlib
 import os
 import shutil
 import threading
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING
 
-from cvehound import KCONFIG_H
+from cvehound import KCONFIG_H, CVEhound
+from cvehound.oracle.resultcache import ResultCache, Sig
+
+if TYPE_CHECKING:
+    from git import Repo
 
 # The relpath half of a whole-tree signature. It is not a path any tree holds,
 # which is the point: it can never collide with a materialized mini-tree's
@@ -22,7 +27,7 @@ from cvehound import KCONFIG_H
 ALL_FILES_PATH = '<all-files>'
 
 
-def object_header(repo, name):
+def object_header(repo: 'Repo', name: str) -> tuple[str, str] | None:
     """Resolve one object name to (oid, type), or None when it does not exist.
 
     Over GitPython's persistent `cat-file --batch-check` process, so a caller
@@ -34,11 +39,15 @@ def object_header(repo, name):
         oid, otype, _ = repo.git.get_object_header(name)
     except ValueError:
         return None
-    return (oid.decode(), otype.decode())
+    # GitPython hands the header fields back as bytes; its stubs say str.
+    return (
+        oid.decode() if isinstance(oid, bytes) else oid,
+        otype.decode() if isinstance(otype, bytes) else otype,
+    )
 
 
 class BlobMaterializer:
-    def __init__(self, repo, root):
+    def __init__(self, repo: 'Repo', root: str) -> None:
         self.repo = repo
         self.blob_dir = os.path.join(root, 'blobs')
         self.tree_dir = os.path.join(root, 'trees')
@@ -48,12 +57,12 @@ class BlobMaterializer:
         # serialize request/response cycles for threaded callers.
         self._lock = threading.Lock()
 
-    def _check_object(self, name):
+    def _check_object(self, name: str) -> tuple[str, str] | None:
         """object_header() under the lock this instance's stream needs."""
         with self._lock:
             return object_header(self.repo, name)
 
-    def _expand_tree(self, commit, path):
+    def _expand_tree(self, commit: str, path: str) -> list[tuple[str, str]]:
         """List every (relpath, blob oid) under a directory at a commit."""
         entries = []
         for record in self.repo.git.ls_tree('-r', '-z', commit, '--', path).split('\0'):
@@ -65,7 +74,7 @@ class BlobMaterializer:
                 entries.append((relpath, oid))
         return entries
 
-    def sig(self, commit, paths):
+    def sig(self, commit: str, paths: Iterable[str]) -> Sig:
         """Blob signature of the given paths at a commit: ((relpath, oid), ...).
 
         Paths missing at the commit are omitted, which reproduces check_cve()'s
@@ -80,7 +89,7 @@ class BlobMaterializer:
         """
         if self._check_object(f'{commit}:') is None:
             raise ValueError(f'unresolvable ref: {commit}')
-        entries = {}
+        entries: dict[str, str] = {}
         for path in [*paths, KCONFIG_H]:
             obj = self._check_object(f'{commit}:{path}')
             if obj is None:
@@ -92,7 +101,7 @@ class BlobMaterializer:
                 entries.update(self._expand_tree(commit, path))
         return tuple(sorted(entries.items()))
 
-    def whole_tree_sig(self, commit):
+    def whole_tree_sig(self, commit: str) -> Sig:
         """Signature of every file at a commit: its root tree oid names them all.
 
         An --all-files scan reads the tree rather than a materialized handful,
@@ -109,7 +118,7 @@ class BlobMaterializer:
             raise ValueError(f'unresolvable ref: {commit}')
         return ((ALL_FILES_PATH, obj[0]),)
 
-    def _fetch_blob(self, oid):
+    def _fetch_blob(self, oid: str) -> str:
         dest = os.path.join(self.blob_dir, oid)
         if os.path.exists(dest):
             return dest
@@ -132,7 +141,7 @@ class BlobMaterializer:
         os.unlink(tmp)
         return dest
 
-    def materialize(self, sig):
+    def materialize(self, sig: Sig) -> str:
         """Return a directory holding the signature's blobs at their relpaths."""
         name = hashlib.sha256(repr(sig).encode()).hexdigest()[:16]
         tree = os.path.join(self.tree_dir, name)
@@ -161,7 +170,7 @@ class BlobMaterializer:
         return tree
 
 
-def sig_has_rule_files(sig):
+def sig_has_rule_files(sig: Sig) -> bool:
     """True when the signature holds any rule file (not just the kconfig probe).
 
     Without one, check_cve() takes its "no hinted files exist" branch and the
@@ -170,7 +179,9 @@ def sig_has_rule_files(sig):
     return any(path != KCONFIG_H for path, _ in sig)
 
 
-def _memoized(cache, rule_path, sig, run):
+def _memoized(
+    cache: ResultCache | None, rule_path: str, sig: Sig, run: Callable[[], object]
+) -> bool:
     """run()'s bool verdict, memoized under (rule bytes, signature).
 
     `run` is a thunk so that everything a hit exists to skip -- materializing a
@@ -189,7 +200,13 @@ def _memoized(cache, rule_path, sig, run):
     return hit
 
 
-def cached_check(hound, materializer, cache, sig, cve):
+def cached_check(
+    hound: CVEhound,
+    materializer: BlobMaterializer,
+    cache: ResultCache | None,
+    sig: Sig,
+    cve: str,
+) -> bool:
     """Bool verdict of check_cve() on a materialized signature, memoized.
 
     The verdict is a pure function of (rule bytes, signature) within one
@@ -204,7 +221,14 @@ def cached_check(hound, materializer, cache, sig, cve):
     )
 
 
-def cached_all_files_check(hound, at_tree, cache, sig, cve, jobs):
+def cached_all_files_check(
+    hound: CVEhound,
+    at_tree: Callable[[], CVEhound],
+    cache: ResultCache | None,
+    sig: Sig,
+    cve: str,
+    jobs: int,
+) -> bool:
     """Bool verdict of an all_files check over a whole tree, memoized.
 
     A whole-tree verdict is as pure as a mini-tree one -- a function of (rule
@@ -228,7 +252,7 @@ def cached_all_files_check(hound, at_tree, cache, sig, cve, jobs):
     )
 
 
-def hound_at(base, tree):
+def hound_at(base: CVEhound, tree: str) -> CVEhound:
     """A shallow CVEhound copy pointed at a materialized tree.
 
     check_cve() derives include paths from self.kernel per call, so retargeting

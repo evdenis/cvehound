@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 import pytest
-from kerneltree import sig_has_rule_files
 
 from cvehound.exception import UnsupportedVersion
+from cvehound.oracle import sig_has_rule_files
 
 
 @pytest.mark.slow

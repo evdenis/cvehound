@@ -103,9 +103,10 @@ e.g. `pytest --cve=X tests/test_12_kerneltree.py`.
 
 The suite runs parallel by default (`-n auto --dist loadgroup` in `pytest.ini`); pass `-n0`
 for a sequential run when debugging. Tests 01-05 never touch the working tree: they check
-rules against per-commit mini-trees materialized from git blobs (`tests/kerneltree.py`),
-and verdicts are memoized in `tests/.result_cache/` keyed by rule bytes + blob signature +
-spatch/python version (`tests/resultcache.py` — bump `HARNESS_EPOCH` when check semantics
+rules against per-commit mini-trees materialized from git blobs
+(`cvehound/oracle/kerneltree.py`), and verdicts are memoized in `tests/.result_cache/`
+keyed by rule bytes + blob signature + spatch/python version
+(`cvehound/oracle/resultcache.py` — bump `HARNESS_EPOCH` when check semantics
 change; `--no-result-cache` bypasses). Only `test_06` needs full trees: one detached
 worktree per branch under `/tmp` (`CVEHOUND_TEST_WORKTREES=0` falls back to checkouts of
 the shared tree, serialized via one xdist group). `CVEHOUND_TEST_OFFLINE=1` skips the

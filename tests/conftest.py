@@ -15,18 +15,18 @@ import pytest
 from filelock import FileLock
 from git import Repo
 from git.exc import GitCommandError
-from kerneltree import (
+
+from cvehound import CVEhound, get_rule_cves
+from cvehound.content import DEFAULT_BASE, METADATA_NAME
+from cvehound.kbuild import KbuildParser
+from cvehound.oracle import (
     BlobMaterializer,
+    ResultCache,
     cached_all_files_check,
     cached_check,
     hound_at,
     object_header,
 )
-from resultcache import ResultCache
-
-from cvehound import CVEhound, get_rule_cves
-from cvehound.content import DEFAULT_BASE, METADATA_NAME
-from cvehound.kbuild import KbuildParser
 from cvehound.scripts.update_metadata import get_cache_dir
 from cvehound.util import resolve_metadata_path
 

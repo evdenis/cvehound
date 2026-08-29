@@ -37,7 +37,7 @@ RuleMetadata = dict[str, Any]
 COMPILED_SUFFIXES = ('.c', '.S', '.s', '.rs')
 
 # Force-included into every spatch run when the tree has it; the test harness
-# mirrors this probe when it materializes mini-trees (tests/kerneltree.py).
+# mirrors this probe when it materializes mini-trees (cvehound/oracle/kerneltree.py).
 KCONFIG_H = 'include/linux/kconfig.h'
 
 # CPU-seconds inside the matching engine, per work unit -- and each of those
@@ -420,7 +420,7 @@ class CVEhound:
                 return False
 
         # Built from self.kernel per call so a shallow copy pointed at another
-        # tree (tests/kerneltree.py hound_at) needs no include rewriting.
+        # tree (cvehound.oracle.kerneltree hound_at) needs no include rewriting.
         includes: list[str] = []
         for ipath in self.ipaths:
             includes.append('-I')
@@ -624,6 +624,25 @@ class CVEhound:
 
     def get_rule(self, cve: str) -> str:
         return self.cve_all_rules[cve]
+
+    def add_rule(self, cve: str, path: str) -> None:
+        """Register (or replace) a rule file outside the resolved content set.
+
+        For scoring candidate rules that are not part of the shipped content —
+        e.g. a generation harness checking a rule it just wrote. The cached
+        header metadata for the CVE is dropped, so re-registering the same CVE
+        with a different file is safe. Prefer a fresh path per candidate over
+        rewriting one in place: cvehound.oracle.ResultCache memoizes rule bytes
+        by path behind a (mtime_ns, size) guard, so an in-place rewrite is
+        detected, but only as precisely as the filesystem stat is. The
+        assigned/disputed group views are content-set bookkeeping and
+        deliberately stay untouched.
+
+        hound_at() copies share these dicts, so a rule added on the base hound
+        is visible to every copy — one registration covers all trees.
+        """
+        self.cve_all_rules[cve] = os.path.abspath(path)
+        self.rules_metadata.pop(cve, None)
 
     def get_rule_fix(self, cve: str) -> str | None:
         fix: str | None = self.get_rule_metadata(cve)['fix']
