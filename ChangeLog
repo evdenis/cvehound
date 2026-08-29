@@ -1,6 +1,6 @@
 # ChangeLog
 
-## Unreleased
+## 1.6.0 - Aug 29 2026
 
  - spatch now runs as a warm server by default when the bundled cvehound-spatch supports it
    (`cvehound[spatch]` >= 1.3.2.post2): one server per worker, forking a fresh process per rule,
