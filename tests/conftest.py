@@ -255,10 +255,14 @@ def _raise_priority():
     with contextlib.suppress(Exception):
         proc.nice(-20)
     # Real-time I/O needs CAP_SYS_ADMIN; best-effort 0 needs nothing. First one
-    # that takes, wins.
-    for ioclass in (psutil.IOPRIO_CLASS_RT, psutil.IOPRIO_CLASS_BE):
+    # that takes, wins. The classes are looked up by name *inside* the suppress
+    # because psutil defines them only where it implements ionice: naming them
+    # in the loop header evaluates them before any handler is installed, so on
+    # a platform without ionice the lookup -- not the ask -- is what fails, and
+    # it fails all the way out through pytest_configure.
+    for ioclass in ('IOPRIO_CLASS_RT', 'IOPRIO_CLASS_BE'):
         with contextlib.suppress(Exception):
-            proc.ionice(ioclass, value=0)
+            proc.ionice(getattr(psutil, ioclass), value=0)
             break
 
 
