@@ -181,7 +181,13 @@ def test_build_policy_covers_what_a_scan_reaches_for():
     # coccinelle hardcodes /tmp/cocci_small_output-*; multiprocessing.SemLock is a
     # POSIX named semaphore under /dev/shm.
     assert '/tmp' in policy.write
-    assert '/dev/shm' in policy.write
+    if sys.platform == 'linux':
+        # _clean() keeps only paths that exist, and /dev/shm is a Linux tmpfs, so
+        # the grant is Linux-only by construction. Asserting it everywhere tests
+        # the host rather than build_policy -- and the sandbox this policy feeds
+        # is itself Landlock, so there is nothing off Linux for it to be wrong
+        # about.
+        assert '/dev/shm' in policy.write
     assert '/dev/null' in policy.write
 
 
