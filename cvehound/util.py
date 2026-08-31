@@ -1,4 +1,5 @@
 import contextlib
+import functools
 import gzip
 import hashlib
 import json
@@ -13,7 +14,7 @@ from importlib.metadata import distribution, version
 from typing import Any
 
 from cvehound.content import RULE_SUFFIXES, resolve_content
-from cvehound.exception import SpatchNotFound
+from cvehound.exception import PcreGrepNotFound, SpatchNotFound
 
 # The top-level Makefile's ARCH -> SRCARCH mapping: which arch/<dir>
 # the sources for a given ARCH= value actually live in.
@@ -222,6 +223,35 @@ def get_cvehound_version() -> str:
         pass
 
     return pkg_version
+
+
+@functools.cache
+def pcre_grep() -> str:
+    """The grep to run .grep rules with: the first one on PATH that has -P.
+
+    Rules are written as PCRE, so -P is not an optimisation, it is the dialect.
+    Probed rather than assumed, because having GNU grep is not enough -- -P is
+    a build option (--with-pcre) and a grep built without it rejects the flag
+    exactly like BSD grep does. Empty stdin makes the probe pure: 1 is
+    "supported, no match", 2 is "no such option".
+
+    Cached: the answer cannot change within a process, and check_cve() would
+    otherwise re-probe once per pattern per rule, in every pool worker.
+    """
+    for name in ('grep', 'ggrep'):
+        path = shutil.which(name)
+        if path is None:
+            continue
+        run = subprocess.run(
+            [path, '-qP', 'x'], input='', capture_output=True, text=True, check=False
+        )
+        if run.returncode < 2:
+            return path
+    raise PcreGrepNotFound(
+        'no grep with -P (PCRE) support found on PATH; .grep rules cannot be '
+        'checked. On macOS the system grep is BSD grep, which has no -P: '
+        'install GNU grep with `brew install grep` (it lands as ggrep).'
+    )
 
 
 def find_spatch(explicit: str | None = None) -> str:

@@ -21,6 +21,20 @@ class SpatchNotFound(Exception):
     """
 
 
+class PcreGrepNotFound(Exception):
+    """No grep understands -P, so a .grep rule cannot be evaluated at all.
+
+    Raised instead of letting the exit status answer. grep says "no match" with
+    1 and "I failed" with 2, and a grep without -P exits 2 -- BSD grep, which
+    is /usr/bin/grep on macOS, prints "invalid option -- P". The caller treated
+    every non-zero the same, so the rule reported the kernel clean without ever
+    having looked at it: the one wrong answer a CVE check can give.
+
+    GNU grep has -P (built --with-pcre); Homebrew installs it as ggrep rather
+    than shadowing the system binary, which is why both names are tried.
+    """
+
+
 class SpatchError(Exception):
     """spatch exited non-zero: report what it said, not just how it was called.
 

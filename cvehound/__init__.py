@@ -26,6 +26,7 @@ from cvehound.util import (
     killpg,
     parse_coccinelle_output,
     parse_spatch_timeout,
+    pcre_grep,
     resolve_zygote,
 )
 
@@ -491,8 +492,12 @@ class CVEhound:
             if not hits:
                 return False
         else:
+            # Resolved once, before the loop: a grep without -P cannot answer
+            # any of these patterns, and finding that out per pattern would
+            # report it as a property of the first one.
+            grep = pcre_grep()
             for pattern in self.get_grep_pattern(rule):
-                args = ['grep', '-rPzle', pattern, *files]
+                args = [grep, '-rPzle', pattern, *files]
                 run = subprocess.run(args, capture_output=True, check=False, text=True)
                 if run.returncode != 0:
                     # A grep rule needs every pattern to match somewhere.

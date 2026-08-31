@@ -16,6 +16,7 @@ from typing import Any
 from cvehound import SPATCH_TIMEOUT, SPATCH_WALL_TIMEOUT, CVEhound
 from cvehound.content import resolve_content
 from cvehound.exception import (
+    PcreGrepNotFound,
     SandboxError,
     SpatchError,
     SpatchNotFound,
@@ -731,6 +732,13 @@ def run_scan(
                     'error': 'unsupported_version',
                     'requires': err.rule_version,
                 }
+            except PcreGrepNotFound as err:
+                # Reported per rule rather than aborting: only the handful of
+                # .grep rules need PCRE, and the cocci ones -- the overwhelming
+                # majority -- are unaffected. Recorded as an error, never a
+                # clean verdict, so a report cannot claim these were checked.
+                logging.error('Skipping: ' + cve + ': ' + str(err))
+                report['errors'][cve] = {'error': 'no_pcre_grep'}
 
 
 if __name__ == '__main__':

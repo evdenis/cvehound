@@ -8,14 +8,17 @@ network involved.
 import gzip
 import json
 import os
+import shutil
+import subprocess
 
 import pytest
 
 from cvehound import content
+from cvehound.exception import PcreGrepNotFound
 from cvehound.scripts.make_manifest import build_content
 from cvehound.scripts.update import main as update_main
 from cvehound.scripts.update_metadata import write_metadata
-from cvehound.util import get_rule_cves, resolve_metadata_path
+from cvehound.util import get_rule_cves, pcre_grep, resolve_metadata_path
 
 RULES = {
     'CVE-2020-1000.cocci': '/// Files: foo.c\nvirtual detect\n',
@@ -193,3 +196,33 @@ def test_write_metadata_guards(tmp_path):
     assert not os.path.exists(target + '.tmp')
     with gzip.open(target, 'rt', encoding='utf-8') as fh:
         assert len(json.load(fh)) == 95
+
+
+def test_pcre_grep_speaks_the_dialect_the_rules_are_written_in():
+    """Whatever pcre_grep() hands back must actually do -P.
+
+    The regression this pins: BSD grep (macOS's /usr/bin/grep) exits 2 on -P,
+    the same non-zero check_cve() read as "pattern not present", so a .grep
+    rule silently reported the kernel clean. Picking the first grep on PATH is
+    what used to be wrong, so asserting the returned one is the whole point.
+    """
+    try:
+        grep = pcre_grep()
+    except PcreGrepNotFound as err:
+        pytest.skip(str(err))
+    # \d is PCRE-only syntax, fed on stdin so nothing depends on a file.
+    run = subprocess.run(
+        [grep, '-qP', r'\d+'], input='42', capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 0, run.stderr
+
+
+def test_pcre_grep_raises_rather_than_returning_a_grep_without_p(monkeypatch):
+    """No usable grep must be an error, never a silently unusable rule."""
+    monkeypatch.setattr(shutil, 'which', lambda name: None)
+    pcre_grep.cache_clear()
+    try:
+        with pytest.raises(PcreGrepNotFound):
+            pcre_grep()
+    finally:
+        pcre_grep.cache_clear()
