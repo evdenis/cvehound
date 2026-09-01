@@ -1,5 +1,15 @@
 # ChangeLog
 
+## 1.6.1 - Sep 01 2026
+
+ - Fixed `.grep` rules silently reporting a clean kernel on macOS: the rules are PCRE, but
+   check_cve() called plain `grep`, and BSD grep's missing `-P` support (exit 2) was read the
+   same as "no match" (exit 1) -- five CVEs cleared without a byte examined. cvehound now probes
+   for `-P` support before running .grep rules, trying `grep` then `ggrep`
+ - `cvehound[spatch]` now resolves on Apple Silicon: cvehound-spatch publishes a
+   macosx_11_0_arm64 wheel as of 1.3.2.post3, so the extra's marker no longer excludes
+   darwin/arm64 (Intel Macs still have no wheel and stay excluded)
+
 ## 1.6.0 - Aug 29 2026
 
  - spatch now runs as a warm server by default when the bundled cvehound-spatch supports it
