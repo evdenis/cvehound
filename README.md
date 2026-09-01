@@ -57,9 +57,9 @@ automatically unless you name another `spatch` explicitly.
 Prerequisites: Python 3.11+, `grep` with PCRE support (`-P`), and `diffutils`
 (spatch renders what it matched by running `diff`).
 
-The wheel covers Linux on x86_64 and aarch64. Anywhere else, drop the
-`[spatch]` part and provide coccinelle (>= 1.1.0) yourself — `apt install
-coccinelle`, `dnf install coccinelle`, `brew install coccinelle`. A development
+The wheel covers Linux on x86_64 and aarch64, and macOS on arm64. Anywhere
+else, drop the `[spatch]` part and provide coccinelle (>= 1.1.0) yourself —
+`apt install coccinelle`, `dnf install coccinelle`, `brew install coccinelle`. A development
 install from a clone takes the extra too: `pip install -e '.[spatch]'`.
 
 ### Updating rules and metadata
