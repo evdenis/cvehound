@@ -67,7 +67,7 @@ virtual detect
 // For several INDEPENDENT vulnerable sites, write one starred rule per site.
 // Separate starred rules are an OR: either one reports on its own.
 //
-// @err_site1 exists@
+// @err_site1@
 // @@
 //
 // func1(...)
@@ -75,7 +75,7 @@ virtual detect
 // *	vulnerable_code(...);
 // }
 //
-// @err_site2 exists@
+// @err_site2@
 // @@
 //
 // func2(...)
@@ -115,7 +115,7 @@ virtual detect
 // To restrict a pattern to particular functions, anchor it in the function
 // definition rather than filtering afterwards:
 //
-// @err exists@
+// @err@
 // @@
 //
 // \(callers_fn1\|callers_fn2\)(...)

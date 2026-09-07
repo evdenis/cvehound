@@ -56,6 +56,10 @@ patch into match mode, which flips the default quantification of un-annotated `.
 `forall` to `exists` — so adding or removing it can change what matches. It cannot be
 mixed with `-`/`+`.
 
+Because every rule in this corpus stars a line, that flip is unconditional: **`exists` in
+a rule header is always a no-op here — never write it.** If you need one ellipsis to hold
+on *all* paths, annotate that ellipsis with `when forall`; the rule header cannot do it.
+
 Two disciplines that decide whether a rule is correct:
 
 - **Star only the rule that reports.** A starred rule prints whenever *it* matches, no
@@ -85,11 +89,18 @@ Two disciplines that decide whether a rule is correct:
 ... when != if (!ptr) return -EINVAL;         // ... nor this complete statement
 ... when != if (!ptr) S                        // S = a declared "statement S;"
 ... when any                                   // drop the shortest-path restriction
+... when forall                                // this guard must hold on EVERY path
 ```
 
 The constraint must be a **complete statement**. `when != if (cond) ...` — with a bare
 trailing `...` — is a parse error, as is `when ==`. To require that something *is*
 present, write a separate rule and gate on it with `depends on`.
+
+`when !=` is weaker than it looks. Since `*` puts every rule in `exists` mode, the guard
+only has to hold on the *one* path the engine picks as a witness — in a branchy function
+that is nearly always satisfiable. If a rule is only correct when the guard holds on all
+paths, spell that out with `when forall` on that ellipsis. That is the only place a path
+quantifier belongs; the rule header cannot express it.
 
 ## Rule Dependencies
 
@@ -109,10 +120,6 @@ pattern3
 @rule4 depends on rule1 && rule2@ // Both must match
 @@
 pattern4
-
-@rule5 exists@                    // Relaxed matching
-@@
-pattern5
 ```
 
 `depends on` is how a rule expresses "all of these must hold": chain the rules so the last
@@ -143,7 +150,7 @@ func(...)
 ### Missing NULL Check
 Real rules: `CVE-2019-15924`
 ```cocci
-@err exists@
+@err@
 identifier ptr;
 statement S;
 @@
@@ -159,7 +166,7 @@ target_func(...)
 ### Missing Bounds Check
 Real rules: `CVE-2014-0049`, `CVE-2020-29371`
 ```cocci
-@err exists@
+@err@
 identifier arr, idx;
 statement S;
 @@
@@ -242,7 +249,7 @@ func(...)
 ### Integer Overflow
 Real rules: `CVE-2015-8746`
 ```cocci
-@err exists@
+@err@
 expression E1, E2;
 identifier var, use;
 statement S;
@@ -383,7 +390,7 @@ func(...)
 
 ### Only inside particular functions
 ```cocci
-@err exists@
+@err@
 @@
 
 \(caller1\|caller2\)(...)
@@ -518,7 +525,7 @@ specific_func(...)
 
 ### Example 1: Removed Function
 ```cocci
-@err exists@
+@err@
 @@
 
 * removed_vulnerable_func(...)

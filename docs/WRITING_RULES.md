@@ -194,9 +194,9 @@ no-op. A match rule may still be gated with `depends on detect`, though no rule 
 ## Coccinelle Basics
 
 The syntax reference — metavariable types, ellipsis, the `*` context marker,
-alternatives and disjunction, `when` constraints, rule dependencies and `exists` — lives
-in [COCCINELLE_CHEATSHEET.md](COCCINELLE_CHEATSHEET.md). Read it first; this guide
-assumes it.
+alternatives and disjunction, `when` constraints and their path quantifiers, and rule
+dependencies — lives in [COCCINELLE_CHEATSHEET.md](COCCINELLE_CHEATSHEET.md). Read it
+first; this guide assumes it.
 
 The rest of this document covers what the cheatsheet deliberately leaves out: how to go
 from a fix commit to a working rule, and worked examples from real CVEs.
@@ -265,6 +265,11 @@ of the starred lines; a rule with no `*` matches and reports nothing. Marking al
 the whole patch into match mode, which flips the default quantification of un-annotated
 `...` from `forall` to `exists`, so adding or removing a `*` can change what matches. It
 cannot be combined with `-`/`+`.
+
+Every rule here stars a line, so that flip always applies: **`exists` in a rule header is
+a no-op in this corpus — do not write it.** It is not a cost knob either; the grep query
+is computed without it. When a rule needs a guard to hold on *all* paths, put `when forall`
+on that one ellipsis (see "Rule 6").
 
 ### Rule 2: Star discipline
 
@@ -432,6 +437,25 @@ func(...)
 }
 ```
 
+A `when !=` guard is weaker than it reads. Because `*` puts the rule in `exists` mode, the
+guard only has to hold on the single path the engine picks as a witness; every other path
+through the function may contain the thing you excluded. In a function with a few branches
+that is nearly always satisfiable, so the guard quietly stops narrowing anything.
+
+That errs toward a false positive, which is the side this project prefers. But when a rule
+is only *correct* if the guard holds everywhere -- "this lock is never dropped in here",
+"this pointer is never reassigned before the deref" -- say so on the ellipsis:
+
+```cocci
+	... when != mutex_unlock(&lock)
+	    when forall
+```
+
+`when forall` is the only way to ask for that. A rule header cannot: `exists` there is a
+no-op, and `forall` there would apply to every ellipsis in the rule, including the ones
+that need to stay permissive. The corpus has exactly one instance
+(`cvehound/cve/disputed/CVE-2021-3178.cocci`) -- read it before reaching for this.
+
 ### Rule 7: Match the invariant, not the era
 
 A rule does not run against one kernel. It runs against every commit in `Fixes..Fix`,
@@ -458,7 +482,7 @@ branches, one per historical spelling of the `if`, still missing any era nobody
 thought to transcribe. The invariant version is two short rules per protocol family:
 
 ```cocci
-@fixed4 exists@
+@fixed4@
 expression E;
 @@
 
@@ -469,7 +493,7 @@ expression E;
 	... when any
 }
 
-@err4 depends on !fixed4 exists@
+@err4 depends on !fixed4@
 @@
 
 \(__ip_append_data\|ip_append_data\)(...)
@@ -842,7 +866,7 @@ If you get false positives:
 
 If you miss the vulnerability:
 - Simplify the pattern
-- Use the `exists` constraint
+- Drop literal tokens the fix commit does not carry
 - Consider alternatives `\( ... \| ... \)`
 
 ### Step 9: Document and Submit
@@ -1093,7 +1117,7 @@ This is the distinction that most often decides whether a rule is right.
 reports on its own:
 
 ```cocci
-@err_a exists@
+@err_a@
 @@
 
 func_a(...)
@@ -1101,7 +1125,7 @@ func_a(...)
 *	vulnerable_call1(...);
 }
 
-@err_b exists@
+@err_b@
 @@
 
 func_b(...)
@@ -1117,17 +1141,17 @@ the shape ten times, once per affected function.
 one depends on all the others, and star **only** that last rule:
 
 ```cocci
-@cond_a exists@
+@cond_a@
 @@
 
 pattern_a
 
-@cond_b depends on cond_a exists@
+@cond_b depends on cond_a@
 @@
 
 pattern_b
 
-@err depends on cond_a && cond_b exists@
+@err depends on cond_a && cond_b@
 @@
 
 reporting_function(...)
@@ -1150,7 +1174,7 @@ The mirror image is just as important: a `@fix@` rule that recognises the fix, g
 definition, not by filtering matches afterwards:
 
 ```cocci
-@err exists@
+@err@
 identifier pebs_status, cpuc;
 @@
 
@@ -1275,7 +1299,7 @@ grep -l "when != if" *.cocci      # missing checks
 grep -l 'depends on' *.cocci               # inter-rule dependencies
 grep -l 'depends on .*&&' *.cocci          # conjunctions (several conditions)
 grep -l '\\(' *.cocci                      # function alternatives
-grep -lw 'exists' *.cocci                  # the exists constraint
+grep -w 'when forall' *.cocci              # ellipses pinned to all-paths
 
 # The most involved rules, worth reading once
 wc -l *.cocci | sort -n | tail -5
@@ -1305,7 +1329,7 @@ cut short, as noted there.
 
 virtual detect
 
-@err exists@
+@err@
 @@
 
 * ozwpan_init(...)
@@ -1316,7 +1340,6 @@ virtual detect
 
 **Explanation**:
 - Matches the entire `ozwpan_init` function
-- Uses `exists` to relax matching constraints
 - If this function exists, the vulnerable driver is present
 - The `*` sits on the function's signature line — one line, and it is the whole report
 - Simple and effective for removed/deprecated code
@@ -1367,7 +1390,7 @@ amd_energy_is_visible(...)
 
 virtual detect
 
-@err exists@
+@err@
 identifier v;
 type T;
 @@
@@ -1408,7 +1431,7 @@ See [Rule 8](#rule-8-keep-the-grep-query-selective).
 
 virtual detect
 
-@madvise exists@
+@madvise@
 @@
 
 madvise_need_mmap_write(...)
@@ -1416,7 +1439,7 @@ madvise_need_mmap_write(...)
 	...
 }
 
-@err_follow_page_pte depends on madvise exists@
+@err_follow_page_pte depends on madvise@
 identifier flags;
 statement S;
 @@
@@ -1428,7 +1451,7 @@ statement S;
 	... when any
 }
 
-@err_faultin_page depends on madvise exists@
+@err_faultin_page depends on madvise@
 identifier flags;
 @@
 
@@ -1462,7 +1485,7 @@ identifier flags;
 
 virtual detect
 
-@err_stack_maxrandom_size exists@
+@err_stack_maxrandom_size@
 @@
 
 * unsigned int stack_maxrandom_size(void)
@@ -1470,7 +1493,7 @@ virtual detect
 	...
 }
 
-@err_randomize_stack_top exists@
+@err_randomize_stack_top@
 identifier random_variable;
 @@
 
@@ -1496,7 +1519,6 @@ identifier random_variable;
 ### Problem: Pattern doesn't match
 
 **Solutions**:
-- Add `exists` constraint to relax matching: `@rule exists@`
 - Simplify pattern - remove unnecessary details
 - Check for whitespace/formatting differences
 - Test with `--debug` flag: `spatch --debug file.c`
