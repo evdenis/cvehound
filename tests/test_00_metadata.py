@@ -121,6 +121,11 @@ def test_metadata(hound, cve):
     # The '*' lines are the whole report: a rule with none matches silently,
     # which is a false negative no other test can see. And the shipped spatch
     # is built without Python, so a script rule cannot run at all.
+    #
+    # This assertion carries a second meaning. A column-0 '*' puts the file in
+    # match mode, and match mode is what makes un-annotated '...' quantify over
+    # some path rather than all paths -- so it is also what makes an 'exists'
+    # rule header redundant corpus-wide. Keep it, or that stops being true.
     assert any(line.startswith('*') for line in text.splitlines()), 'nothing starred in the rule'
     assert 'script:python' not in text, 'rules must run under a spatch built without Python'
 
