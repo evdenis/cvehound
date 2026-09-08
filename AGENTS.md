@@ -163,17 +163,38 @@ changes and `contrib:` for templates.
 
 ## Architecture notes
 
-`check_cve(cve, all_files=False, jobs=1) -> dict | bool` (`cvehound/__init__.py:170`) is the only
+`check_cve(cve, all_files=False, jobs=1) -> dict | bool` (`cvehound/__init__.py`) is the only
 detection entry point; it returns a result dict on a hit and `False` otherwise. There is
 no `check_kernel()` and no `get_report()` — iteration over CVEs and JSON report assembly
-live in `cvehound/__main__.py:359-399`.
+live in the CLI.
 
-Parallelism is already two-level: `__main__.py` fans out with
+The CLI is subcommands under `cvehound/cli/`: `__init__.py` dispatches (`scan` is the
+default, so bare `cvehound --kernel DIR` is unchanged), `common.py` holds the stages every
+subcommand shares (settings merge, hound, CVE selection, report file, pool), and
+`scan.py`/`diff.py`/`bisect.py` are one `main(args, prog) -> int` each. `cvehound/__main__.py`
+is a two-line shim; `cvehound/scripts/update.py` is dispatched the same way it always was.
+
+Parallelism is already two-level: `common.run_pool()` fans out with
 `ProcessPoolExecutor(max_workers=os.cpu_count())` and each `spatch` is invoked with `-j`.
-Don't add another layer. The pool callables live in `cvehound/worker.py`, not
-`__main__.py` — under spawn/forkserver (the Linux default since Python 3.14) they are
-pickled by qualified name, and `python -m cvehound` makes `cvehound.__main__` unresolvable
-in workers. Keep them, and anything they call at import time, importable.
+Don't add another layer. The pool callables live in `cvehound/worker.py`, not in the CLI
+modules — under spawn/forkserver (the Linux default since Python 3.14) they are pickled by
+qualified name, and `python -m cvehound` makes `cvehound.__main__` unresolvable in workers.
+Keep them, and anything they call at import time, importable. A task is
+`(cve, all_files, tree | None)`; the git modes pass one materialized directory per revision.
+
+Git access goes through `cvehound/gitrepo.py` (`GitRepo`, plain subprocess, persistent
+`cat-file --batch` pipes) and nowhere else; it implements the `ObjectReader` protocol that
+`cvehound.oracle.BlobMaterializer` consumes, which is how the CLI and the test suite share
+the mini-tree machinery without the CLI depending on GitPython. `cvehound/gitrev.py` turns a
+revision into a directory (`tree_paths()` is the union of every rule's `Files:` plus the
+arch Makefiles, plus the Kbuild files under `--kernel-config`) and holds the pure
+classification helpers; `cvehound/gitevidence.py` is the zero-spatch layer (fix in history?
+range cites known fixes?). Two ordering rules there are load-bearing: every tree is
+materialized and every `GitRepo` pipe closed *before* `confine()`, and the evidence pass
+that runs *after* the pool needs the repository's git dir granted read-only
+(`extra_read` in `sandbox.build_policy`), because under `--rev` the scanned directory is
+a temp tree and the repository is not beneath it. Evidence annotates findings; the only
+thing that ever drops a rule on git's say-so is the opt-in `--prune-unintroduced`.
 
 Detection content (rules + metadata) resolves through `resolve_content()`
 (`cvehound/content.py`): a verified content overlay under
@@ -194,7 +215,7 @@ downloads it into the cache dir when the checkout has none. Precedence at runtim
 from `/etc/cvehound.ini` or `~/.config/cvehound.ini` (`--config`).
 
 `cvehound/sandbox.py` confines a scan with Landlock and seccomp (pure `ctypes`, no new
-dependency). Its install point in `__main__.py`, immediately before the pool, is
+dependency). Its install point, `confine()` in `cvehound/cli/common.py` immediately before the pool, is
 load-bearing rather than incidental: both mechanisms are inherited across fork *and*
 execve, so one call there covers the workers, every spatch, and everything spatch shells
 out to — but only while no thread or child exists yet. The module's own docstring covers

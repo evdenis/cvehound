@@ -170,6 +170,81 @@ Other args:
    repeats dominate. Nothing shrinks the cache on its own, so cvehound evicts least-recently-used
    entries past a few GB, and `--cache-clear` empties it.
 
+## Git trees
+
+When `--kernel` is a git repository, cvehound can answer questions about its
+history without checking anything out: the files each rule reads are taken
+straight from the object database into a temporary directory, so the working
+tree can be dirty, mid-rebase or on another branch entirely. The command line
+has subcommands for this; bare `cvehound --kernel DIR` is still `cvehound scan`.
+
+``` shell
+$ cvehound scan --kernel ~/linux --rev v6.6.30              # one tag, commit or branch
+$ cvehound scan --kernel ~/linux --rev linux-6.1.y linux-5.15.y linux-5.10.y   # side by side
+```
+
+A scan of any git tree, `--rev` or not, ends with what history says about each
+finding's fix. A fix that is already in the history -- as the upstream commit
+or as a stable backport citing it -- and a rule that still fires is the kind of
+finding this project exists for: a backport that did not take, or a regression.
+
+```
+Found: CVE-2021-4149
+git evidence (linux-4.19.y):
+  CVE-2021-4149: fix-present (backported as 8d1e2f3a4b5c) -- rule still fires, check the backport
+  CVE-2022-0998: fix-absent
+  CVE-2020-27825: unknown (fix 3f2a1b9c0d4e not in this repository)
+```
+
+Evidence annotates, it never filters: on a rebased or squashed vendor tree no
+upstream commit is an ancestor of anything, and `unknown` is the honest answer.
+The one opt-in filter is `scan --prune-unintroduced`, which skips rules whose
+introducing commit is provably not in the scanned history -- provably, so a
+commit the repository does not have keeps the rule.
+
+`cvehound diff` says what a change does to the verdicts. Each rule whose files
+the change touches runs at both ends; commit messages are read as well, for the
+fix and introducing commits the CVE metadata knows about (which covers CVEs no
+rule exists for).
+
+``` shell
+$ cvehound diff --kernel ~/linux v6.6.29..v6.6.30
+CVE-2024-26595: fixed (detected at v6.6.29, not at v6.6.30)
+git history: 14 CVE fixes, 3 candidate fixes
+7 rules matched 412 changed files: 1 fixed, 0 introduced, 0 still vulnerable
+
+$ cvehound diff --kernel ~/linux-5.10.y --patch 0001-backport.patch --base linux-5.10.y
+$ cvehound diff --kernel ~/linux v6.6.29..v6.6.30 --per-commit      # name the commit that flipped it
+$ cvehound diff --kernel ~/linux origin/master..HEAD --fail-on introduced   # exit 3 when a CVE comes back
+```
+
+`--patch` applies the patch (or series) in a private index and leaves nothing
+behind but dangling objects; `--fail-on introduced` is the pre-receive hook in
+two lines:
+
+``` shell
+#!/bin/sh
+while read old new ref; do cvehound diff --kernel . "$old..$new" --fail-on introduced || exit 1; done
+```
+
+`cvehound bisect` finds the commit at which one rule's verdict flipped, in
+either direction -- where a fix landed on a branch, or which commit re-opened a
+CVE the history says is fixed. It walks only the commits touching the rule's
+files, collapses those that leave them unchanged, and bisects the rest:
+
+``` shell
+$ cvehound bisect --kernel ~/linux --cve CVE-2014-0100 v3.13..v3.15
+CVE-2014-0100: bisecting 243 commits touching net/ipv4/inet_fragment.c (3 distinct contents)
+CVE-2014-0100: detected at v3.13, clean at v3.15
+CVE-2014-0100: verdict flips at 24b9bf43e93e net: fix for a race condition in the inet frag code (detected -> clean)
+spatch runs: 3
+```
+
+What these modes do not do: `--all-files` at a revision (a whole-tree scan
+needs a whole tree; use `git worktree add`), and rewriting the repository in
+any way -- the sandbox keeps it read-only, and the git modes read it through
+the same grant.
+
 ## Contributing
 
 ### Development Setup
