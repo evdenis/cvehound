@@ -525,6 +525,13 @@ Three rules, then why:
   `identifier sec_attest_info` and then used that name as the function header, so the
   one rare token in the rule was not required at all. See
   [Rule 3](#rule-3-use-appropriate-metavariables) for which metavariable to reach for.
+- **Collapse alternatives with `\(A\|B\)`, not an identifier list.** `identifier x = {A,
+  B};` looks like the tidier spelling of the same choice, but the constraint never reaches
+  `get_constants2.ml`: the rule ends up requiring only `x`, so `A` and `B` drop out of the
+  query exactly as if `x` were unconstrained. Collapsing CVE-2021-38209's three subscripts
+  keeps `NF_SYSCTL_CT_MAX || NF_SYSCTL_CT_EXPECT_MAX || NF_SYSCTL_CT_BUCKETS` as a
+  disjunction and loses all three as an identifier list. Nothing in the corpus uses an
+  identifier list; this is why.
 - **Give every rule one rare token.** `kmalloc`, `GFP_KERNEL`, `ENOMEM`, `memcpy`,
   `current`, `task_struct`, `u32`, `s32`, `EINVAL` are in half the tree. A pattern built
   only from those needs anchoring in a named function.

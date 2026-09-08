@@ -403,6 +403,16 @@ Use `... when any`, not `<+... ...+>`, to wrap a *statement* pattern: both mean 
 the body, nested blocks included", but the `<+...+>` spelling is orders of magnitude slower
 on stock spatch. `<+... e ...+>` is for expression contexts (`if (<+... e ...+>)`).
 
+A collapsed rule usually needs `when any` for a second reason. Under a bare `...`, a
+disjunction or a free metavariable on the starred line reports only the first witness, so
+merging N rules into one silently loses hits. Folding CVE-2021-38209's three rules into
+`table[\(A\|B\|C\)]` inside its existing `if (...) { ... X ... }` wrapper reported nothing
+at all (3 hits to 0), and CVE-2022-1651's four into `ARRAY_SIZE(E)` reported two of five —
+both still holding a perfectly good grep query (CVE-2021-38209's was byte-identical to the
+original). Changing the enclosing ellipses to `... when any` restored both exactly. The
+suite cannot see this, because `check_cve` returns a boolean: always check a collapse with
+`compare-rule.sh`.
+
 ## Position Markers
 
 Not used for reporting: `position` metavariables and `@p` bindings existed to feed
