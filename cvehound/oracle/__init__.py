@@ -12,9 +12,11 @@ drift from what `pytest --runslow` would say.
 from cvehound.oracle.kerneltree import (
     ALL_FILES_PATH,
     BlobMaterializer,
+    ObjectReader,
     cached_all_files_check,
     cached_check,
     hound_at,
+    ls_tree_entries,
     object_header,
     sig_has_rule_files,
 )
@@ -24,12 +26,14 @@ __all__ = [
     'ALL_FILES_PATH',
     'HARNESS_EPOCH',
     'BlobMaterializer',
+    'ObjectReader',
     'ResultCache',
     'Sig',
     'cached_all_files_check',
     'cached_check',
     'context_id',
     'hound_at',
+    'ls_tree_entries',
     'object_header',
     'sig_has_rule_files',
 ]

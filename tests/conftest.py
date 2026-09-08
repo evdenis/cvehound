@@ -330,7 +330,7 @@ def pytest_configure(config):
 
     _cvehound = CVEhound(linux_repo.working_tree_dir)
     _kernel_checkout = KernelCheckout(linux_repo)
-    _materializer = BlobMaterializer(linux_repo, os.path.join(_shared_root, 'store'))
+    _materializer = BlobMaterializer(linux_repo.git, os.path.join(_shared_root, 'store'))
     if not config.getoption('--no-result-cache'):
         _result_cache = ResultCache(
             os.path.join(os.path.dirname(os.path.realpath(__file__)), '.result_cache'),
@@ -448,7 +448,7 @@ def _branch_commit_oid(branch_name):
     ~6k packed refs per call (~8.5ms against ~9us), and this runs inside the
     worktree lock where every worker queues behind it.
     """
-    obj = object_header(linux_repo, f'{branch_name}^{{commit}}')
+    obj = object_header(linux_repo.git, f'{branch_name}^{{commit}}')
     if obj is None:
         raise ValueError(f'unresolvable branch: {branch_name}')
     return obj[0]

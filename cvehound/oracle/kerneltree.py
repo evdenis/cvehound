@@ -3,8 +3,9 @@
 check_cve() reads only the rule's Files: paths (plus include/linux/kconfig.h when
 present) from disk, so a directory holding just those blobs is a complete substrate
 for every non-all_files check. Blobs come straight from the object database through
-GitPython's persistent `git cat-file` processes and are shared across trees via a
-content-addressed store and hardlinks.
+persistent `git cat-file` processes -- cvehound.gitrepo.GitRepo in the CLI, GitPython's
+`Repo.git` in the test suite, either one an ObjectReader -- and are shared across trees
+via a content-addressed store and hardlinks.
 """
 
 import copy
@@ -13,13 +14,26 @@ import os
 import shutil
 import threading
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING
+from typing import Any, Protocol
 
 from cvehound import KCONFIG_H, CVEhound
 from cvehound.oracle.resultcache import ResultCache, Sig
 
-if TYPE_CHECKING:
-    from git import Repo
+
+class ObjectReader(Protocol):
+    """The three questions the materializer asks of an object database.
+
+    Shaped after GitPython's `Repo.git`, whose persistent cat-file streams are
+    where the methods and their tuple layouts come from; cvehound.gitrepo.GitRepo
+    implements the same three over plain subprocess pipes.
+    """
+
+    def get_object_header(self, name: str) -> tuple[Any, ...]: ...
+
+    def get_object_data(self, name: str) -> tuple[Any, ...]: ...
+
+    def ls_tree(self, *args: str) -> str: ...
+
 
 # The relpath half of a whole-tree signature. It is not a path any tree holds,
 # which is the point: it can never collide with a materialized mini-tree's
@@ -27,16 +41,16 @@ if TYPE_CHECKING:
 ALL_FILES_PATH = '<all-files>'
 
 
-def object_header(repo: 'Repo', name: str) -> tuple[str, str] | None:
+def object_header(git: ObjectReader, name: str) -> tuple[str, str] | None:
     """Resolve one object name to (oid, type), or None when it does not exist.
 
-    Over GitPython's persistent `cat-file --batch-check` process, so a caller
-    that asks thousands of times pays ~9us each instead of a fork. The quirk
-    worth having in one place: a name that resolves to nothing raises
-    ValueError here, where the one-shot `git rev-parse` raised GitCommandError.
+    Over a persistent `cat-file --batch-check` process, so a caller that asks
+    thousands of times pays ~9us each instead of a fork. The quirk worth having
+    in one place: a name that resolves to nothing raises ValueError here, where
+    the one-shot `git rev-parse` raised GitCommandError.
     """
     try:
-        oid, otype, _ = repo.git.get_object_header(name)
+        oid, otype, _ = git.get_object_header(name)
     except ValueError:
         return None
     # GitPython hands the header fields back as bytes; its stubs say str.
@@ -46,33 +60,41 @@ def object_header(repo: 'Repo', name: str) -> tuple[str, str] | None:
     )
 
 
+def ls_tree_entries(git: ObjectReader, *args: str) -> list[tuple[str, str, str, str]]:
+    """(mode, type, oid, relpath) for each record of `git ls-tree ARGS`."""
+    entries = []
+    for record in git.ls_tree('-z', *args).split('\0'):
+        if not record:
+            continue
+        meta, relpath = record.split('\t', 1)
+        mode, otype, oid = meta.split(' ')
+        entries.append((mode, otype, oid, relpath))
+    return entries
+
+
 class BlobMaterializer:
-    def __init__(self, repo: 'Repo', root: str) -> None:
-        self.repo = repo
+    def __init__(self, git: ObjectReader, root: str) -> None:
+        self.git = git
         self.blob_dir = os.path.join(root, 'blobs')
         self.tree_dir = os.path.join(root, 'trees')
         os.makedirs(self.blob_dir, exist_ok=True)
         os.makedirs(self.tree_dir, exist_ok=True)
-        # GitPython's persistent cat-file streams are not thread-safe:
+        # Persistent cat-file streams are not thread-safe:
         # serialize request/response cycles for threaded callers.
         self._lock = threading.Lock()
 
     def _check_object(self, name: str) -> tuple[str, str] | None:
         """object_header() under the lock this instance's stream needs."""
         with self._lock:
-            return object_header(self.repo, name)
+            return object_header(self.git, name)
 
     def _expand_tree(self, commit: str, path: str) -> list[tuple[str, str]]:
         """List every (relpath, blob oid) under a directory at a commit."""
-        entries = []
-        for record in self.repo.git.ls_tree('-r', '-z', commit, '--', path).split('\0'):
-            if not record:
-                continue
-            meta, relpath = record.split('\t', 1)
-            _, otype, oid = meta.split(' ')
-            if otype == 'blob':
-                entries.append((relpath, oid))
-        return entries
+        return [
+            (relpath, oid)
+            for _, otype, oid, relpath in ls_tree_entries(self.git, '-r', commit, '--', path)
+            if otype == 'blob'
+        ]
 
     def sig(self, commit: str, paths: Iterable[str]) -> Sig:
         """Blob signature of the given paths at a commit: ((relpath, oid), ...).
@@ -123,7 +145,7 @@ class BlobMaterializer:
         if os.path.exists(dest):
             return dest
         with self._lock:
-            data = self.repo.git.get_object_data(oid)[3]
+            data = self.git.get_object_data(oid)[3]
         tmp = dest + f'.tmp{os.getpid()}-{threading.get_ident()}'
         with open(tmp, 'wb') as fh:
             fh.write(data)
