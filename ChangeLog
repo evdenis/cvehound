@@ -1,5 +1,31 @@
 # ChangeLog
 
+## 1.7.0 - unreleased
+
+ - Native git support, as subcommands: `cvehound scan --rev REV...` scans tags, commits or
+   branches without a checkout (the files each rule reads come straight from the object
+   database into a temp directory; several revisions report side by side), `cvehound diff
+   A..B` and `cvehound diff --patch FILE` classify what a change does to each touched rule's
+   verdict (fixed / introduced / still-vulnerable, `--per-commit` names the commit, `--fail-on
+   introduced` exits 3 for CI), and `cvehound bisect --cve X A..B` finds the commit at which a
+   verdict flipped, walking only the commits that touch the rule's files. Bare
+   `cvehound --kernel DIR` is unchanged and still means `scan`
+ - A scan of a git tree now ends with what history says about each finding's fix: present
+   (as the upstream commit or a stable backport citing it -- the rule still firing then
+   points at a bad backport or a regression), reverted, absent, or unknown. Evidence
+   annotates and never filters; the opt-in `--prune-unintroduced` skips rules whose
+   introducing commit is provably not in the scanned history. Reports of git checkouts also
+   record `kernel.commit`, `kernel.describe` and `kernel.dirty`
+ - `cvehound diff` also reads the range's commit messages against the CVE metadata, so a
+   release's known fixes, introducing commits, backports and `Fixes:`-trailer candidates are
+   listed even for CVEs no rule exists for
+ - The git modes use plain `git` over persistent `cat-file --batch` pipes; no new dependency.
+   For `cvehound.oracle` consumers: `BlobMaterializer` and `object_header` now take an
+   `ObjectReader` -- GitPython's `Repo.git` rather than the `Repo` (a one-token change at the
+   call site), or `cvehound.gitrepo.GitRepo`
+ - The sandbox grants the repository's git dir (and any alternates) read-only for the
+   post-scan evidence pass; nothing else changed in what a scan may touch
+
 ## 1.6.1 - Sep 01 2026
 
  - Fixed `.grep` rules silently reporting a clean kernel on macOS: the rules are PCRE, but
