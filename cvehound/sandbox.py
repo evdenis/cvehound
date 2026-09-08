@@ -304,6 +304,7 @@ def build_policy(
     spatch: str,
     metadata: str | None = None,
     astcache: str | None = None,
+    extra_read: tuple[str, ...] = (),
 ) -> SandboxPolicy:
     """The least a scan can run with, derived from resolved paths only.
 
@@ -312,6 +313,11 @@ def build_policy(
     payload from the realpath of the binary (standard.h and standard.iso are its
     siblings), and the rules from resolve_content(). The report file is deliberately
     absent -- see install(), which pre-opens it instead of granting its directory.
+
+    extra_read is for the git modes: the repository's git dir (and any object
+    store it borrows through alternates), which git has to read after the lock
+    to answer where a fix is in the history -- and which, under `scan --rev`,
+    is not beneath `kernel`, because `kernel` is then a materialized temp tree.
     """
     read = [
         kernel,
@@ -319,6 +325,7 @@ def build_policy(
         '/etc',  # ld.so.cache, gitconfig, cvehound.ini
         '/proc/self',  # spatch readlinks /proc/self/exe to find its payload
         '/sys/devices/system/cpu',  # spatch reads cpu/online to size its pool
+        *extra_read,
     ]
     if metadata:
         read.append(metadata)
@@ -619,13 +626,14 @@ def install(
     metadata: str | None = None,
     astcache: str | None = None,
     strict: bool = False,
+    extra_read: tuple[str, ...] = (),
 ) -> SandboxStatus:
     """Build, apply and verify. The only entry point the CLI needs.
 
     strict turns every degradation into a refusal to scan, for callers who would
     rather not run at all than run unconfined.
     """
-    policy = build_policy(kernel, rules_dir, spatch, metadata, astcache)
+    policy = build_policy(kernel, rules_dir, spatch, metadata, astcache, extra_read)
     status = apply(policy)
     if status.degraded and strict:
         raise SandboxError(list(status.degraded))

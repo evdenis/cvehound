@@ -28,7 +28,7 @@ import tempfile
 import textwrap
 
 import pytest
-from conftest import write_tree
+from conftest import MiniRepo, write_tree
 
 import cvehound.sandbox as sandbox
 from cvehound.exception import SandboxError
@@ -191,6 +191,18 @@ def test_build_policy_covers_what_a_scan_reaches_for():
     assert '/dev/null' in policy.write
 
 
+def test_build_policy_grants_extra_read_that_exists(tmp_path):
+    """The git modes hand over the repository's git dir (and alternates): read,
+    not write, and only what exists -- like every other grant."""
+    gitdir = tmp_path / 'gitdir'
+    gitdir.mkdir()
+    absent = tmp_path / 'absent'
+    policy = build_policy('/etc', '/etc', sys.executable, extra_read=(str(gitdir), str(absent)))
+    assert str(gitdir) in policy.read
+    assert str(gitdir) not in policy.write
+    assert str(absent) not in policy.read
+
+
 def test_self_test_reports_a_path_it_cannot_reach(tmp_path):
     """The guard against the silent half: an unreadable tree must raise, not scan."""
     missing = str(tmp_path / 'nope')
@@ -301,6 +313,47 @@ def test_the_sandbox_denies_what_it_advertises():
     # The other half: the pool needs AF_UNIX, and spatch needs to write /tmp.
     assert not errno['unix_socket'], 'AF_UNIX was denied; the worker pool needs it'
     assert not errno['tmp_write'], '/tmp was denied; coccinelle hardcodes paths there'
+
+
+GIT_UNDER_LOCK = """
+    import json, subprocess, sys
+    from cvehound import _spatch_env
+    from cvehound.content import resolve_content
+    from cvehound.sandbox import install
+
+    kernel, spatch, repo, grant = sys.argv[1:5]
+    extra = (repo,) if grant == 'yes' else ()
+    status = install(kernel, resolve_content().rules_dir, spatch, extra_read=extra)
+    run = subprocess.run(
+        ['git', '-C', repo, 'rev-parse', 'HEAD'],
+        capture_output=True, text=True, env=_spatch_env(repo), check=False,
+    )
+    print(json.dumps({'abi': status.landlock_abi, 'rc': run.returncode, 'out': run.stdout.strip()}))
+"""
+
+
+@landlock
+def test_git_reads_a_repository_only_through_the_extra_read_grant(hound, tmp_path):
+    """After a `scan --rev` the evidence pass asks git about a repository that is
+    not the (temporary) tree the policy was built for. The grant is what makes
+    that possible, and it must be the grant, not an accident of where the
+    repository lives -- so the probe repository sits under $HOME, which the
+    sandbox otherwise closes."""
+    cache = os.path.join(os.path.expanduser('~'), '.cache')
+    if not os.access(cache, os.W_OK):
+        pytest.skip('no writable ~/.cache to plant a repository in')
+    (tmp_path / 'Makefile').write_text('VERSION = 6\n')
+    outside = tempfile.mkdtemp(prefix='cvehound-sandbox-git-', dir=cache)
+    try:
+        repo = MiniRepo(outside)
+        head = repo.commit({'Makefile': ''}, 'only')
+        granted = _child(GIT_UNDER_LOCK, str(tmp_path), hound.spatch, outside, 'yes')
+        denied = _child(GIT_UNDER_LOCK, str(tmp_path), hound.spatch, outside, 'no')
+    finally:
+        shutil.rmtree(outside, ignore_errors=True)
+    assert granted['abi'] >= 1
+    assert granted['rc'] == 0 and granted['out'] == head
+    assert denied['rc'] != 0, 'git read a repository the policy never granted'
 
 
 @landlock
