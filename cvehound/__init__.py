@@ -456,8 +456,6 @@ class CVEhound:
                     *(['--cache-prefix', self.astcache] if self.astcache else []),
                     '--no-includes',
                     '--include-headers',
-                    '-D',
-                    'detect',
                     '--chunksize',
                     '1',
                     '-j',

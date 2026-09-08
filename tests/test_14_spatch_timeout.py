@@ -91,9 +91,8 @@ def test_wall_and_engine_budgets_read_differently():
 CVE = 'CVE-0000-0000'
 RULE = """\
 /// Files: burn.c
-virtual detect
 
-@err depends on detect exists@
+@err@
 identifier f, t;
 @@
 

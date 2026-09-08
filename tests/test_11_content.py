@@ -21,9 +21,9 @@ from cvehound.scripts.update_metadata import write_metadata
 from cvehound.util import get_rule_cves, pcre_grep, resolve_metadata_path
 
 RULES = {
-    'CVE-2020-1000.cocci': '/// Files: foo.c\nvirtual detect\n',
+    'CVE-2020-1000.cocci': '/// Files: foo.c\n\n@err@\n',
     'CVE-2020-1001.grep': 'pattern\n',
-    'disputed/CVE-2020-1002.cocci': '/// Files: baz.c\nvirtual detect\n',
+    'disputed/CVE-2020-1002.cocci': '/// Files: baz.c\n\n@err@\n',
 }
 
 
@@ -128,6 +128,17 @@ def test_unknown_format_version_rejected(content_dir, overlay):
     manifest['format_version'] = 99
     manifest_path.write_text(json.dumps(manifest))
     with pytest.raises(content.ContentError):
+        content.install_content(str(content_dir))
+
+
+def test_older_format_version_rejected(content_dir, overlay):
+    # The other direction: a fresh cvehound meeting content built before a format
+    # bump. Same refusal, but it must not tell the user to upgrade cvehound.
+    manifest_path = content_dir / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    manifest['format_version'] = content.FORMAT_VERSION - 1
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(content.ContentError, match='predates this cvehound'):
         content.install_content(str(content_dir))
 
 

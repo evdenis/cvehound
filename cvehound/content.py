@@ -37,7 +37,14 @@ import urllib.request
 from importlib.resources import files
 from typing import Any
 
-FORMAT_VERSION = 1
+# The one compatibility lever between a released package and the rolling content
+# it downloads.  validate_manifest() demands exact equality and fetch_manifest()
+# applies it *before* the tarball is pulled, so an older cvehound offered content
+# it cannot run declines it with an actionable message instead of installing it
+# and then failing on every rule.  Bump it for anything a released cvehound could
+# not execute -- not only a layout change.  2: rules no longer declare
+# "virtual detect", which a client still passing -D detect rejects with exit 255.
+FORMAT_VERSION = 2
 DEFAULT_BASE = 'https://github.com/evdenis/cvehound/releases/download/content-latest'
 MANIFEST_NAME = 'manifest.json'
 METADATA_NAME = 'data/kernel_cves.json.gz'
@@ -108,6 +115,15 @@ def validate_manifest(manifest: Any) -> dict[str, Any]:
         raise ContentError('manifest is not a JSON object')
     fmt = manifest.get('format_version')
     if fmt != FORMAT_VERSION:
+        # Which side is behind decides what the user can do about it, and both
+        # directions are reachable: an old cvehound meeting content built after a
+        # bump, and a fresh cvehound meeting the rolling release before it catches
+        # up. One message for both would send half of them to the wrong fix.
+        if isinstance(fmt, int) and fmt < FORMAT_VERSION:
+            raise ContentError(
+                f'content format {fmt} predates this cvehound (expects {FORMAT_VERSION}); '
+                'the published content has not caught up yet'
+            )
         raise ContentError(f'unknown content format {fmt!r}: a newer cvehound is required')
     if not isinstance(manifest.get('content_id'), str) or not manifest['content_id']:
         raise ContentError('manifest has no content_id')
