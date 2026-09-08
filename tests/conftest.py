@@ -16,7 +16,7 @@ from filelock import FileLock
 from git import Repo
 from git.exc import GitCommandError
 
-from cvehound import CVEhound, get_rule_cves
+from cvehound import CVEhound, _spatch_env, get_rule_cves
 from cvehound.content import DEFAULT_BASE, METADATA_NAME
 from cvehound.kbuild import KbuildParser
 from cvehound.oracle import (
@@ -679,3 +679,138 @@ def pytest_collection_modifyitems(config, items):
                     item.add_marker(pytest.mark.xfail(reason=rec[1]))
 
     _reorder_kernel_tests(items)
+
+
+# --- synthetic repositories for the git modes ---------------------------------
+#
+# A kernel-shaped history small enough to build per test: the git modes are
+# exercised against it without the real checkout, and a throwaway rule
+# (registered with CVEhound.add_rule) gives spatch something to fire on.
+
+VULNERABLE_C = """\
+#include <linux/kconfig.h>
+
+int foo(int *p)
+{
+\tvulnerable_call(p);
+\treturn *p;
+}
+"""
+
+FIXED_C = """\
+#include <linux/kconfig.h>
+
+int foo(int *p)
+{
+\tif (!p)
+\t\treturn -1;
+\treturn *p;
+}
+"""
+
+MAKEFILE = 'VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 0\nEXTRAVERSION =\nNAME = Test\n'
+
+# Stands in for the mainline fix a stable backport cites in its message.
+UPSTREAM_FIX = '0123456789abcdef0123456789abcdef01234567'
+
+TOY_RULE = """\
+/// Files: drivers/foo/foo.c drivers/foo/bar.c
+/// Fix: {fix}
+/// Fixes: {fixes}
+
+@@
+expression E;
+@@
+
+* vulnerable_call(E);
+"""
+
+
+class MiniRepo:
+    """A git repository built commit by commit from dicts of files."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        os.makedirs(self.path, exist_ok=True)
+        self.env = dict(
+            _spatch_env(),
+            HOME=self.path,
+            GIT_AUTHOR_NAME='Test',
+            GIT_AUTHOR_EMAIL='test@example.com',
+            GIT_COMMITTER_NAME='Test',
+            GIT_COMMITTER_EMAIL='test@example.com',
+            GIT_AUTHOR_DATE='2024-01-01T00:00:00Z',
+            GIT_COMMITTER_DATE='2024-01-01T00:00:00Z',
+        )
+        self.git('init', '-q', '-b', 'main')
+        self.git('config', 'commit.gpgsign', 'false')
+        self.commits = []
+
+    def git(self, *args, input=None):
+        proc = run(
+            ['git', *args],
+            cwd=self.path,
+            env=self.env,
+            input=input,
+            capture_output=True,
+            check=True,
+        )
+        return proc.stdout.decode()
+
+    def commit(self, files, message):
+        """Write (or, for a None value, remove) each file and commit; returns the sha."""
+        for relpath, content in files.items():
+            path = os.path.join(self.path, relpath)
+            if content is None:
+                os.unlink(path)
+                continue
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as fh:
+                fh.write(content)
+        # Distinct timestamps keep --since bounds and describe ordering meaningful.
+        stamp = f'2024-01-{len(self.commits) + 1:02d}T00:00:00Z'
+        self.env['GIT_AUTHOR_DATE'] = self.env['GIT_COMMITTER_DATE'] = stamp
+        self.git('add', '-A')
+        self.git('commit', '-q', '-m', message)
+        sha = self.git('rev-parse', 'HEAD').strip()
+        self.commits.append(sha)
+        return sha
+
+    def tag(self, name):
+        self.git('tag', name)
+
+
+@pytest.fixture
+def mini_repo(tmp_path):
+    """Three commits: vulnerable (v6.1), fixed by a backport (v6.1.1), renamed."""
+    repo = MiniRepo(tmp_path / 'repo')
+    vuln = repo.commit(
+        {
+            'Makefile': MAKEFILE,
+            'Kbuild': '',
+            'include/linux/kconfig.h': '/* kconfig */\n',
+            'arch/x86/Makefile': '',
+            'drivers/foo/Makefile': 'obj-$(CONFIG_FOO) += foo.o\n',
+            'drivers/foo/foo.c': VULNERABLE_C,
+        },
+        'Initial kernel',
+    )
+    repo.tag('v6.1')
+    repo.commit(
+        {'drivers/foo/foo.c': FIXED_C},
+        f'foo: check the pointer\n\ncommit {UPSTREAM_FIX} upstream\n\nFixes: {vuln[:12]} ("Initial kernel")\n',
+    )
+    repo.tag('v6.1.1')
+    repo.commit(
+        {'drivers/foo/foo.c': None, 'drivers/foo/bar.c': FIXED_C},
+        'foo: rename foo.c to bar.c',
+    )
+    return repo
+
+
+@pytest.fixture
+def toy_rule(tmp_path, mini_repo):
+    """A rule file that fires on VULNERABLE_C and not on FIXED_C."""
+    path = tmp_path / 'CVE-2099-0001.cocci'
+    path.write_text(TOY_RULE.format(fix=mini_repo.commits[1], fixes=mini_repo.commits[0]))
+    return str(path)
