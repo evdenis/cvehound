@@ -286,6 +286,20 @@ def _exec_spatch(cmd: list[str], env: dict[str, str], wall_timeout: int) -> tupl
     return proc.returncode, stdout, stderr
 
 
+def relative_to(root: str, path: str) -> str:
+    """A path under root, named the way the tree names it.
+
+    Findings are reported per tree, and under --rev or diff that tree is a
+    temporary directory that stops existing when the run ends -- an absolute
+    path there points nowhere and leaks the blob store's layout. Anything not
+    under root is left alone.
+    """
+    if path == root:
+        return '.'
+    prefix = root.rstrip(os.sep) + os.sep
+    return path[len(prefix) :] if path.startswith(prefix) else path
+
+
 def parse_rule_header(path: str) -> RuleMetadata:
     """The leading `///` block of a rule: Files:, Fix:, Fixes:/Detect-To:, Version:.
 
@@ -565,7 +579,7 @@ class CVEhound:
                 verdicts: list[bool] = []
                 config_result['files'] = {}
                 for kfile, kconfig in kernel_files.items():
-                    rel_file = kfile[len(self.kernel) + 1 :]
+                    rel_file = relative_to(self.kernel, kfile)
                     logic, affected = evaluate_file_condition(
                         kconfig, rel_file, self.srcarch, self.config
                     )
@@ -598,11 +612,16 @@ class CVEhound:
         if cve in self.metadata:
             result = self.metadata[cve]
         result['config'] = config_result
-        result['spatch_output'] = output
+        # Relative from here on: the config block above needs the absolute
+        # paths its config_map is keyed by, and everything reported after it
+        # names files the way the scanned tree does.
+        result['spatch_output'] = output.replace(self.kernel + os.sep, '')
         if not is_grep:
-            result['files'] = hits
+            result['files'] = [
+                dict(hit, file=relative_to(self.kernel, str(hit['file']))) for hit in hits
+            ]
         else:
-            result['files'] = [{'file': x} for x in files]
+            result['files'] = [{'file': relative_to(self.kernel, f)} for f in files]
         self._print_found_cve(cve)
         self._print_affected_files(config_result)
         logging.debug(output)

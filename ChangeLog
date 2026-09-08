@@ -25,6 +25,11 @@
    call site), or `cvehound.gitrepo.GitRepo`
  - The sandbox grants the repository's git dir (and any alternates) read-only for the
    post-scan evidence pass; nothing else changed in what a scan may touch
+ - A finding now names its files the way the scanned tree does: `results[CVE].files[].file`
+   and the `--- ` header of `spatch_output` are relative to the kernel directory in every
+   mode, matching the `config` block of the same record. They used to be absolute, which
+   under `--rev` and `diff` meant a path into a temporary directory that is gone by the
+   time the report is read
 
 ## 1.6.1 - Sep 01 2026
 

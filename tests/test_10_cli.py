@@ -288,6 +288,18 @@ def test_scan_rev_annotates_findings_with_git_evidence(hound, tmp_path):
     assert f'git evidence ({fix}~):' in result.stderr
     assert f'  {CVE_REV}: fix-absent' in result.stderr
     written = json.loads(report.read_text())
+    # The tree scanned is a temp directory that will not outlive the run, so the
+    # finding names its files as the kernel tree does -- in the hits and in the
+    # diff spatch printed.
+    rule_files = set(hound.get_rule_files(CVE_REV))
+    hit_files = {f['file'] for f in written['results'][CVE_REV]['files']}
+    assert hit_files and hit_files <= rule_files
+    headers = [
+        line[4:]
+        for line in written['results'][CVE_REV]['spatch_output'].splitlines()
+        if line.startswith('--- ')
+    ]
+    assert headers and set(headers) <= rule_files
     assert written['results'][CVE_REV]['git'] == {
         'fix': fix,
         'fix_in_history': False,
