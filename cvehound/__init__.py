@@ -286,6 +286,47 @@ def _exec_spatch(cmd: list[str], env: dict[str, str], wall_timeout: int) -> tupl
     return proc.returncode, stdout, stderr
 
 
+def parse_rule_header(path: str) -> RuleMetadata:
+    """The leading `///` block of a rule: Files:, Fix:, Fixes:/Detect-To:, Version:.
+
+    Module-level rather than a method because the CLI needs every rule's Files:
+    before it has a CVEhound to ask -- under `scan --rev` the tree those files
+    are read from does not exist until they are known.
+    """
+    files: list[str] = []
+    fix: str | None = None
+    fixes: str | None = None
+    version: int | str = 0
+
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith('///'):
+                break
+            if 'Files:' in line:
+                files = line.partition('Files:')[2].split()
+            elif 'Fix:' in line:
+                fix = line.partition('Fix:')[2].strip()
+            elif 'Fixes:' in line:
+                fixes = line.partition('Fixes:')[2].strip()
+            elif 'Detect-To:' in line:
+                fixes = line.partition('Detect-To:')[2].strip()
+            elif 'Version:' in line:
+                version = line.partition('Version:')[2].strip()
+                try:
+                    version = int(version.replace('.', ''))
+                except ValueError:
+                    # An unparsable requirement must degrade to "run the
+                    # rule" (prefer a false positive), not abort the scan.
+                    logging.warning(
+                        '%s: cannot parse Version: %r; ignoring the spatch requirement',
+                        os.path.basename(path),
+                        version,
+                    )
+                    version = 0
+
+    return {'files': files, 'fix': fix, 'fixes': fixes, 'version': version}
+
+
 class CVEhound:
     def __init__(
         self,
@@ -570,43 +611,9 @@ class CVEhound:
         return result
 
     def get_rule_metadata(self, cve: str) -> RuleMetadata:
-        files: list[str] = []
-        fix: str | None = None
-        fixes: str | None = None
-        version: int | str = 0
-
-        if cve in self.rules_metadata:
-            return self.rules_metadata[cve]
-
-        with open(self.cve_all_rules[cve]) as fh:
-            for line in fh:
-                if not line.startswith('///'):
-                    break
-                if 'Files:' in line:
-                    files = line.partition('Files:')[2].split()
-                elif 'Fix:' in line:
-                    fix = line.partition('Fix:')[2].strip()
-                elif 'Fixes:' in line:
-                    fixes = line.partition('Fixes:')[2].strip()
-                elif 'Detect-To:' in line:
-                    fixes = line.partition('Detect-To:')[2].strip()
-                elif 'Version:' in line:
-                    version = line.partition('Version:')[2].strip()
-                    try:
-                        version = int(version.replace('.', ''))
-                    except ValueError:
-                        # An unparsable requirement must degrade to "run the
-                        # rule" (prefer a false positive), not abort the scan.
-                        logging.warning(
-                            '%s: cannot parse Version: %r; ignoring the spatch requirement',
-                            cve,
-                            version,
-                        )
-                        version = 0
-
-        meta = {'files': files, 'fix': fix, 'fixes': fixes, 'version': version}
-        self.rules_metadata[cve] = meta
-        return meta
+        if cve not in self.rules_metadata:
+            self.rules_metadata[cve] = parse_rule_header(self.cve_all_rules[cve])
+        return self.rules_metadata[cve]
 
     def get_cve_metadata(self, cve: str) -> dict[str, Any]:
         result: dict[str, Any] = self.metadata.get(cve, {})
