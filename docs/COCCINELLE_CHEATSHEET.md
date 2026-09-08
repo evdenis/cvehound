@@ -9,8 +9,6 @@ Quick reference for writing CVE detection rules in CVEhound.
 /// Fix: commit_hash
 /// Fixes: commit_hash
 
-virtual detect
-
 @rule_name@
 @@
 
@@ -421,10 +419,9 @@ spatch --parse-cocci CVE.cocci
 ```
 
 ### Run the rule
-Pass `-D detect` (the rule declares `virtual detect`; spatch aborts on an undeclared
-virtual) and do **not** pass `--no-show-diff` — the diff is the report.
+Do **not** pass `--no-show-diff` — the diff is the report.
 ```bash
-spatch --no-includes --include-headers -D detect \
+spatch --no-includes --include-headers \
     --very-quiet \
     --cocci-file CVE.cocci file.c
 ```
@@ -443,7 +440,6 @@ uv run pytest --runslow --cve=CVE-YYYY-NNNNN   # the real validation
 |--------|-------------|
 | `--sp-file` | Specify Coccinelle rule file |
 | `--cocci-file` | Same as --sp-file |
-| `-D detect` | Enable detect virtual mode |
 | `--no-includes` | Don't process includes |
 | `--include-headers` | Process headers |
 | `--very-quiet` | Minimal output (keeps the diff, drops the banners) |

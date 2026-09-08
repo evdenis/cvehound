@@ -3,11 +3,6 @@
 /// Fixes: <git_commit_hash_that_introduced_bug> OR Detect-To: <last_vulnerable_commit>
 /// Version: <minimum_spatch_version> (optional, e.g., 1.0.8)
 
-// Virtual mode declaration - always include this.
-// CVEhound runs spatch with -D detect; without this line spatch aborts with
-// "virtual rule detect not supported".
-virtual detect
-
 // Main detection rule
 // Rule naming: use descriptive names like @err@, @missing_check@, @vuln_pattern@
 @err@

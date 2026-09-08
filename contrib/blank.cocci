@@ -2,8 +2,6 @@
 /// Fix:
 /// Fixes:
 
-virtual detect
-
 @err@
 @@
 

@@ -129,6 +129,14 @@ def test_metadata(hound, cve):
     assert any(line.startswith('*') for line in text.splitlines()), 'nothing starred in the rule'
     assert 'script:python' not in text, 'rules must run under a spatch built without Python'
 
+    # check_cve passes no -D, so a declared virtual can only ever subtract: any
+    # rule gated on it is dropped before translation and reports nothing, with
+    # no error anywhere. A rule here hid half its detection behind an undefined
+    # virtual for four years before anyone noticed.
+    assert not re.search(r'^virtual\s', text, re.M), (
+        'rules declare no virtual: cvehound defines none, so anything gated on one never runs'
+    )
+
 
 @pytest.mark.nometadata(
     ('cve',), no_metadata, reason='not covered by kernel.org vulns.git or CIP kernel-sec'

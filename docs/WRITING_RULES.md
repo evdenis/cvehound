@@ -88,8 +88,6 @@ Every Coccinelle rule file in CVEhound follows a consistent structure:
 /// Fixes: <commit_hash> OR Detect-To: <commit_hash>
 /// Version: <minimum_spatch_version> (optional)
 
-virtual detect
-
 @<rule_name>@
 <metavariable declarations>
 @@
@@ -178,18 +176,6 @@ values still parse but never gate anything).
 ```cocci
 /// Version: 1.1.2
 ```
-
-### Virtual Mode Declaration
-
-```cocci
-virtual detect
-```
-
-This line declares a virtual mode that CVEhound uses to activate detection patterns.
-Always include this line after the metadata: CVEhound runs spatch with `-D detect`, and an
-undeclared virtual is a hard error (`virtual rule detect not supported`), not a silent
-no-op. A match rule may still be gated with `depends on detect`, though no rule in
-`cvehound/cve/` needs that today.
 
 ## Coccinelle Basics
 
@@ -549,14 +535,14 @@ Measure it — this is what `validate-rule.sh` reports, and it is the authority 
 rules above disagree with each other:
 
 ```bash
-spatch --no-includes --include-headers -D detect --chunksize 1 -j 1 \
+spatch --no-includes --include-headers --chunksize 1 -j 1 \
        --cocci-file cvehound/cve/CVE-YYYY-NNNNN.cocci tests/linux/lib 2>&1 >/dev/null |
   sed -n '/no inferred keywords/{p;q}; /files match/{p;q}'
 ```
 
 `no inferred keywords` means there is no query at all. Otherwise spatch reports how many
 of the 745 files it will parse; a healthy rule reports **0**, or only its own `Files:` if
-those live under `lib/`. `spatch -D detect --parse-cocci <rule> | grep -A1 'Grep query'`
+those live under `lib/`. `spatch --parse-cocci <rule> | grep -A1 'Grep query'`
 prints the tokens themselves when you need to see which one is too common.
 
 **Why.** Before parsing anything spatch extracts the literal tokens the rule cannot match
@@ -807,8 +793,6 @@ from `contrib/blank.cocci` or the template:
 /// Fix: <commit_hash>
 /// Fixes: <introduced_commit_hash>
 
-virtual detect
-
 @err@
 @@
 
@@ -944,26 +928,7 @@ A `*` on a `@fix@`-style rule reports on fixed trees. See
 Several starred lines separated by `...` report the prefix spatch matched, so a partial
 match fires. See [Rule 2](#rule-2-star-discipline).
 
-### Mistake 5: Forgetting `virtual detect`
-
-```cocci
-// WRONG: CVEhound runs spatch with -D detect, and spatch refuses the file:
-// "virtual rule detect not supported"
-/// Files: foo.c
-/// Fix: abc123
-
-@err@
-
-// CORRECT
-/// Files: foo.c
-/// Fix: abc123
-
-virtual detect
-
-@err@
-```
-
-### Mistake 6: Independent sites chained with `depends on`
+### Mistake 5: Independent sites chained with `depends on`
 
 Separate starred rules are an **OR** — each reports on its own. `depends on` is an **AND**.
 Chaining two independent detection sites means neither reports unless both matched:
@@ -992,7 +957,7 @@ Conversely, if the CVE is only present when *several* conditions hold, the depen
 required — see
 [Several Detection Sites: OR and AND](#several-detection-sites-or-and-and).
 
-### Mistake 7: `Files:` names no path that exists
+### Mistake 6: `Files:` names no path that exists
 
 If none of the paths exist in the tree, `check_cve` skips the rule instead of erroring
 unless the caller explicitly requests `all_files=True`. This can hide a vulnerable kernel,
@@ -1007,9 +972,8 @@ the older name too, or the rule resolves nowhere at `Fixes:` and on pre-rename b
 # Check the rule parses before anything else
 spatch --parse-cocci CVE-2020-12345.cocci
 
-# Run it. Pass -D detect (the rule declares "virtual detect", and spatch refuses a
-# file whose virtual is not defined). Do NOT pass --no-show-diff: the diff is the report.
-spatch --no-includes --include-headers -D detect \
+# Run it. Do NOT pass --no-show-diff: the diff is the report.
+spatch --no-includes --include-headers \
     --very-quiet \
     --cocci-file CVE-2020-12345.cocci \
     file.c
@@ -1093,7 +1057,6 @@ Before submitting:
 
 - [ ] File named `CVE-YYYY-NNNNN.cocci` exactly — uppercase `CVE`, no prefix or suffix
 - [ ] Placed in `cvehound/cve/` (or `cvehound/cve/disputed/` for disputed CVEs)
-- [ ] `virtual detect` present
 - [ ] `Files:`, `Fix:`, and one of `Fixes:`/`Detect-To:` present and correct
 - [ ] Every path in `Files:` exists in the tree at the `Fix` commit
 - [ ] Some path in `Files:` exists at `Fixes:`/`Detect-To:` too -- add pre-rename names
@@ -1260,7 +1223,6 @@ change what your rule sees or prints:
 spatch \
     --no-includes \             # do not resolve #include directives at all
     --include-headers \         # process .h files as inputs in their own right
-    -D detect \                 # define the "detect" virtual mode the rule declares
     --chunksize 1 -j 1 \        # one job here; CVEhound parallelizes across CVEs
     --very-quiet \
     -I <kernel>/arch/<arch>/include ... -I <kernel>/include/uapi ... \
@@ -1327,8 +1289,6 @@ cut short, as noted there.
 /// Fix: a73e99cb67e7438e5ab0c524ae63a8a27616c839
 /// Detect-To: 62450bca861f206b09b44492b829b419222c4968
 
-virtual detect
-
 @err@
 @@
 
@@ -1356,8 +1316,6 @@ virtual detect
 /// Files: drivers/hwmon/amd_energy.c
 /// Fix: 60268b0e8258fdea9a3c9f4b51e161c123571db3
 /// Detect-To: 8abee9566b7e8eecf566c4daf6be062a27369890
-
-virtual detect
 
 @err@
 @@
@@ -1387,8 +1345,6 @@ amd_energy_is_visible(...)
 /// Files: net/bluetooth/a2mp.c
 /// Fix: eddb7732119d53400f48a02536a84c509692faa8
 /// Detect-To: 6b44d9b8d96b37f72ccd7335b32f386a67b7f1f4
-
-virtual detect
 
 @err@
 identifier v;
@@ -1428,8 +1384,6 @@ See [Rule 8](#rule-8-keep-the-grep-query-selective).
 /// Files: mm/gup.c mm/memory.c mm/madvise.c
 /// Fix: 19be0eaffa3ac7d8eb6784ad9bdbc7d67ed8e619
 /// Detect-To: 0a27a14a62921b438bb6f33772690d345a089be6
-
-virtual detect
 
 @madvise@
 @@
@@ -1483,8 +1437,6 @@ identifier flags;
 /// Fix: 4e7c22d447bb6d7e37bfe39ff658486ae78e8d77
 /// Fixes: v2.6.12-rc2
 
-virtual detect
-
 @err_stack_maxrandom_size@
 @@
 
@@ -1534,8 +1486,6 @@ identifier random_variable;
 - Check that the `*` is in the rule that actually matched, not only in a rule whose
   `depends on` was not satisfied
 - Make sure you did not pass `--no-show-diff`; it suppresses the diff, which is the report
-- Add `virtual detect` and pass `-D detect` (spatch refuses a file whose declared virtual
-  is undefined, and vice versa)
 
 ### Problem: Too many false positives
 
