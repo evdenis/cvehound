@@ -237,7 +237,7 @@ def _commit_exists(repo, rev):
     ^{commit} carries the type check: anything that is not a commit fails to
     peel and comes back as None.
     """
-    return object_header(repo, rev + '^{commit}') is not None
+    return object_header(repo.git, rev + '^{commit}') is not None
 
 
 @pytest.mark.metadata
