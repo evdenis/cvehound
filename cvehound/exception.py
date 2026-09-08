@@ -132,3 +132,13 @@ class SandboxError(Exception):
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         return (self.__class__, (self.reasons,))
+
+
+class GitError(Exception):
+    """git could not answer: not a repository, an unknown revision, a failed command.
+
+    One exception for every git failure the CLI can hit, carrying git's own
+    stderr as the message. The distinction the callers care about is "this
+    tree has no usable history" versus "this revision is not here", and both
+    are decided from the message the user reads, not from the type.
+    """
