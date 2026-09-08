@@ -1,6 +1,6 @@
 # ChangeLog
 
-## 1.7.0 - unreleased
+## 1.7.0 - Sep 09 2026
 
  - Native git support, as subcommands: `cvehound scan --rev REV...` scans tags, commits or
    branches without a checkout (the files each rule reads come straight from the object
@@ -30,6 +30,36 @@
    mode, matching the `config` block of the same record. They used to be absolute, which
    under `--rev` and `diff` meant a path into a temporary directory that is gone by the
    time the report is read
+ - Nineteen rules collapsed into the invariant they were repeating once per call site,
+   protocol variant or struct field; twenty-one more stopped requiring a parameter type or
+   struct field name that appears nowhere in their fix commit (rules derivable from their fix
+   diff alone: 50.6% -> 53.7%); three dropped a disjunction branch that cannot match any file
+   the rule reads; and the `exists` keyword left 360 rule headers, where a starred line had
+   already put every one of them in exists mode. Each change was verified report-identical at
+   the fix, at the commit before it and at the introducing commit
+ - CVE-2022-0812 now detects the reply-header site too. Its second rule starred nothing and
+   nothing depended on it, so it could neither report nor add its function name to the grep
+   query, and that half of the CVE went unchecked
+ - Dropped the CVE-2022-33981 rule. Half of it depended on a virtual cvehound never defines,
+   which spatch drops before translating, and the half that did run covers only the pre-fix
+   spelling, while a tree carrying the fix with CONFIG_BLK_DEV_FD_RAWCMD enabled is still
+   affected. A clean scan implied a check that was not happening; the remaining case needs
+   the kernel-config machinery rather than a semantic patch
+ - Rules no longer declare `virtual detect` and cvehound no longer passes `-D detect`: the
+   flag and the declaration existed only to license each other. The content format is bumped
+   to 2 for it, so 1.4.0-1.6.1, which still pass the flag, decline the rolling content set
+   with a message to upgrade instead of installing rules that would fail on all of them
+ - Fixed `--kernel-config` aborting with a recursion error on riscv for kernels from v7.2:
+   arch/riscv/kernel/vdso_cfi/Makefile includes a Makefile from a sibling directory named
+   through `src :=`, which the include resolver substituted with the including directory, so
+   the include resolved back to that Makefile itself until the recursion limit. Includes now
+   carry a cycle guard and a Makefile-local `src` wins over the default; the config map is
+   unchanged on every other arch
+ - The rule-authoring tools cover the whole corpus now: validate-rule.sh handles a fix that
+   deletes the file, `Files:` paths that exist at only one end of the commit range, and the
+   .grep rules, which had no detection check at all; the new compare-rule.sh gates a rule
+   rewrite on the grep query, the files that survive it and the starred-line report all being
+   no worse than before
 
 ## 1.6.1 - Sep 01 2026
 

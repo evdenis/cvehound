@@ -30,7 +30,7 @@ from cvehound.util import (
     resolve_zygote,
 )
 
-__VERSION__ = '1.6.1'
+__VERSION__ = '1.7.0'
 
 RuleMetadata = dict[str, Any]
 
