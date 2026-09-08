@@ -119,7 +119,11 @@ class KbuildParser:
         content = content.replace(r'$(SRCARCH)', self.srcarch)
         content = content.replace(r'$(ARCH)', self.arch)
         used_vars = re.findall(r'\$\((' + self.variable_name_regex + r')\)', content)
-        content = re.sub(r'\$\(src\)', srcpath, content)
+        # $(src) defaults to the directory of the top-most including Makefile,
+        # but a Makefile may point it somewhere else (arch/riscv/kernel/vdso_cfi
+        # builds the vdso sources from a sibling directory that way), and then
+        # the assignment wins for the rest of the file.
+        content = content.replace(r'$(src)', defs.get('src', srcpath))
         for var in used_vars:
             if var not in defs:
                 continue
@@ -157,7 +161,10 @@ class KbuildParser:
             if match:
                 lhs, rhs = match.groups()
                 resolved = self.resolve(rhs, defs)
-                if re.match(self.variable_name_regex, lhs):
+                # 'src' is the one lowercase name worth keeping: it redirects
+                # every later $(src) in the file, includes among them. Widening
+                # variable_name_regex instead would capture every ccflags-y.
+                if lhs == 'src' or re.match(self.variable_name_regex, lhs):
                     defs[lhs] = resolved
                 line = f'{lhs} := {resolved}'
         return line
@@ -168,6 +175,10 @@ class KbuildParser:
         resolve_includes())."""
         defs = {}
         output = []
+        # Seed the include chain with this file: a Makefile that includes itself
+        # is a cycle just as much as a mutual pair, and it is the shape that
+        # occurs in practice.
+        chain = frozenset({os.path.realpath(path)})
         with open(path) as infile:
             dirname = os.path.dirname(path)
             while True:
@@ -177,17 +188,22 @@ class KbuildParser:
 
                 line = self.note_definition(line, defs)
 
-                inputs = self.resolve_includes(line, dirname, defs)
+                inputs = self.resolve_includes(line, dirname, defs, chain)
                 output.extend(inputs)
 
         self.file_content_cache[path] = output
 
-    def resolve_includes(self, line, srcpath, defs):
+    def resolve_includes(self, line, srcpath, defs, chain=frozenset()):
         """If @line starts with "include", read all the lines in the included
         file. This is done recursively to treat recursive includes. The @srcpath
         parameter is needed to correctly resolve the $(src) variable in the
         included files (it needs to contain the path to the folder of the
-        top-most including Makefile)."""
+        top-most including Makefile).
+
+        @chain holds the files already open further up this include chain, so a
+        cycle is dropped instead of recursed into. It is a chain and not a
+        visited set on purpose: a fragment included by two sibling Kbuilds has
+        to be read for both of them, or their objects vanish from the map."""
 
         if not line.startswith('include '):
             return [DataStructures.LineObject(line)]
@@ -203,12 +219,18 @@ class KbuildParser:
                 if not os.path.isfile(target):
                     continue
 
+            real = os.path.realpath(target)
+            if real in chain:
+                logging.debug('kbuild: dropping cyclic include of %s', target)
+                continue
+            nested = chain | {real}
+
             with open(target) as infile:
                 while True:
                     (good, line) = Helper.get_multiline_from_file(infile)
                     if not good:
                         break
                     line = self.note_definition(line, defs)
-                    lines.extend(self.resolve_includes(line, srcpath, defs))
+                    lines.extend(self.resolve_includes(line, srcpath, defs, nested))
 
         return lines

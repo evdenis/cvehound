@@ -152,6 +152,99 @@ def test_unconditional_path_wins_merge(tmp_path):
     assert config['shared/x.c'] == ''
 
 
+def test_self_including_makefile(tmp_path):
+    """A Makefile whose $(src) include resolves back to itself is not a trap.
+
+    arch/riscv/kernel/vdso_cfi/Makefile has this shape since v7.2; before the
+    include chain was tracked it recursed until RecursionError.
+    """
+    write_tree(
+        tmp_path,
+        {
+            'Kbuild': 'obj-y += a/\n',
+            'a/Makefile': """\
+                include $(src)/Makefile
+                obj-y += x.o
+            """,
+            'a/x.c': '',
+        },
+    )
+    config = build_map(tmp_path)
+    # The cycle is dropped, not the rest of the file.
+    assert config['a/x.c'] == ''
+
+
+def test_mutual_include_cycle(tmp_path):
+    """Two Makefiles including each other still contribute their own objects."""
+    write_tree(
+        tmp_path,
+        {
+            'Kbuild': 'obj-y += a/\n',
+            'a/Makefile': """\
+                include $(srctree)/a/Kbuild.inc
+                obj-y += x.o
+            """,
+            'a/Kbuild.inc': """\
+                include $(srctree)/a/Makefile
+                obj-y += y.o
+            """,
+            'a/x.c': '',
+            'a/y.c': '',
+        },
+    )
+    config = build_map(tmp_path)
+    assert config['a/x.c'] == ''
+    assert config['a/y.c'] == ''
+
+
+def test_shared_fragment_included_twice(tmp_path):
+    """A fragment included by two siblings is read for both of them.
+
+    The guard tracks the current include chain rather than every file already
+    seen, so a shared fragment is not swallowed the second time around.
+    """
+    write_tree(
+        tmp_path,
+        {
+            'Kbuild': 'obj-y += a/ b/\n',
+            'a/Makefile': """\
+                include $(srctree)/common.inc
+                obj-$(CONFIG_A) += $(COMMON)
+            """,
+            'b/Makefile': """\
+                include $(srctree)/common.inc
+                obj-$(CONFIG_B) += $(COMMON)
+            """,
+            'common.inc': 'COMMON := shared.o\n',
+            'a/shared.c': '',
+            'b/shared.c': '',
+        },
+    )
+    config = build_map(tmp_path)
+    assert config['a/shared.c'] == 'CONFIG_A'
+    assert config['b/shared.c'] == 'CONFIG_B'
+
+
+def test_src_override_redirects_include(tmp_path):
+    """An in-file "src :=" points $(src) at another directory, as make does."""
+    write_tree(
+        tmp_path,
+        {
+            'Kbuild': 'obj-y += a/\n',
+            'a/Makefile': """\
+                src := $(srctree)/other
+                include $(src)/Kbuild
+            """,
+            'other/Kbuild': 'obj-$(CONFIG_X) += x.o\n',
+            # Included lines are evaluated against the including directory,
+            # which is the point of the construct: a/ builds its own copies.
+            'a/x.c': '',
+        },
+    )
+    config = build_map(tmp_path)
+    assert config['a/x.c'] == 'CONFIG_X'
+
+
 def test_config_parsing(tmp_path):
     dot_config = tmp_path / '.config'
     dot_config.write_text(
