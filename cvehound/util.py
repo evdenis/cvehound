@@ -129,7 +129,9 @@ def astcache_prune(astcache: str, limit: int) -> int:
     its own --cache-limit is a flush-all that additionally walks the whole cache
     on every miss. An entry is the (.ast_raw, .depend_raw) pair, dropped
     together -- a dependency file outliving its value would be read as a valid
-    entry pointing at nothing.
+    entry pointing at nothing. The dependency therefore goes first, so a reader
+    racing the prune sees a miss and re-parses: the cache is pruned while scans
+    are running, not only between them.
     """
     entries = []
     for root, _dirs, files in os.walk(astcache):
@@ -151,7 +153,7 @@ def astcache_prune(astcache: str, limit: int) -> int:
     for _atime, size, value, depend in sorted(entries):
         if total - freed <= limit:
             break
-        for path in (value, depend):
+        for path in (depend, value):
             with contextlib.suppress(OSError):
                 os.unlink(path)
         freed += size
