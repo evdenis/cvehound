@@ -215,6 +215,8 @@ def _run_spatch(
     out": a mode that silently does something else cannot be tested.
     """
     env = _spatch_env(kernel)
+    degraded: str | None = None
+    returncode, stdout, stderr = 0, '', ''
     try:
         if zygote:
             returncode, stdout, stderr = spatch_zygote.run(
@@ -226,16 +228,52 @@ def _run_spatch(
         # This spatch cannot serve; it said so on its first request and will
         # not be asked again. Finish this CVE on the stock transport so the
         # scan degrades in speed rather than losing a verdict.
-        logging.warning('%s: falling back to one spatch per rule (%s)', cve, err)
-        returncode, stdout, stderr = _exec_spatch(cmd, env, wall_timeout)
+        degraded = f'falling back to one spatch per rule ({err})'
     except spatch_zygote.ZygoteDied as err:
-        raise SpatchError(cve, kernel, -1, str(err)) from err
+        # The server died mid-request. Seen on whole-tree scans of thousands of
+        # files, where the child segfaults in OCaml's unmarshaller: the same
+        # scan run as a plain exec answers normally, so the request is sound and
+        # only the transport failed. A transport fault must not become the
+        # rule's verdict -- that is how a valid rule silently loses strong. run()
+        # has already killed and reset the server, so the retry starts clean.
+        # A demanded zygote still fails loudly: asking for a mode and getting
+        # another one quietly is what `demanded` exists to prevent.
+        if demanded:
+            raise SpatchError(cve, kernel, -1, str(err)) from err
+        degraded = f'zygote died, retrying without it ({err})'
     except TimeoutError as err:
         # Whatever spatch said before the kill is the only clue to where it
         # wedged; both transports hand it over as the exception message.
         raise SpatchTimeout(
             cve, kernel, -signal.SIGKILL, str(err), wall_timeout, wall=True
         ) from err
+
+    if zygote and degraded is None and returncode != 0 and not demanded:
+        # A request that failed inside the server's child, with the server itself
+        # healthy: nothing raised ZygoteDied and the status arrived as an
+        # ordinary non-zero return, which the engine half below would read as the
+        # rule's own failure. The child forks off a server that has been serving
+        # all along, so it starts with that accumulated heap and meets the
+        # address-space cap far sooner than a fresh process would -- on
+        # whole-tree scans of thousands of files it dies (SIGSEGV in OCaml's
+        # unmarshaller, or an uncaught Out_of_memory) where one exec of the same
+        # rule over the same tree answers in half a minute. So the verdict is
+        # retried once on the stock transport, with its own clean budget, and
+        # only a second failure is the rule's. A demanded zygote still reports
+        # the failure as it stands.
+        degraded = f'zygote request failed (rc {returncode}), retrying without it'
+
+    if degraded is not None:
+        logging.warning('%s: %s', cve, degraded)
+        try:
+            returncode, stdout, stderr = _exec_spatch(cmd, env, wall_timeout)
+        except TimeoutError as err:
+            # The fallback answers to the same wall budget as the transport it
+            # replaces; classify it identically rather than letting a timeout
+            # escape as itself.
+            raise SpatchTimeout(
+                cve, kernel, -signal.SIGKILL, str(err), wall_timeout, wall=True
+            ) from err
 
     # The engine half is a question the classifier answers from stderr plus the
     # exit code: handed a directory spatch drops the file it gave up on and
