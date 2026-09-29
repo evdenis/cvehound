@@ -306,6 +306,10 @@ def _exec_spatch(cmd: list[str], env: dict[str, str], wall_timeout: int) -> tupl
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        # spatch echoes bytes from the files it scanned, and the kernel holds
+        # sources that are not UTF-8 (CVE-2018-16276's fixes tree: 0xa5 at the
+        # top of a hunk)
+        errors='replace',
         start_new_session=True,
         env=env,
     ) as proc:
