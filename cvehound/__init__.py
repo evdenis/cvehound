@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import functools
 import logging
 import os
 import shutil
@@ -9,9 +8,7 @@ import subprocess
 import tempfile
 from typing import Any
 
-from sympy.logic import simplify_logic
-
-from cvehound import spatch_zygote
+from cvehound import condition, spatch_zygote
 from cvehound.config import Config
 from cvehound.exception import SpatchError, SpatchNotFound, SpatchTimeout, UnsupportedVersion
 from cvehound.kbuild import KbuildParser
@@ -81,13 +78,6 @@ SPATCH_WALL_TIMEOUT = 300
 SPATCH_OCAMLRUNPARAM = 'o=1600'
 
 
-@functools.cache
-def _simplify_condition(logic: str) -> Any:
-    """Cache sympy's (expensive) minimization: the same few hot-file
-    conditions are evaluated for many CVEs in every worker."""
-    return simplify_logic(logic)
-
-
 def evaluate_file_condition(
     logic: str | None, relpath: str, srcarch: str, config: Config | None
 ) -> tuple[str, bool | None]:
@@ -107,14 +97,11 @@ def evaluate_file_condition(
     elif logic == '':
         text, affected = 'True', True
     else:
-        simplified = _simplify_condition(logic)
-        if config is None:
-            return (str(simplified), None)
-        # Kconfig is closed-world: a symbol absent from the .config is
-        # disabled, so substitute every free symbol; Config lookups
-        # default to False.
-        subs = {sym: config[str(sym)] for sym in simplified.free_symbols}
-        return (str(simplified), bool(simplified.subs(subs)))
+        # The verdict comes from the raw condition: simplification is only
+        # for the printed form, so it can never change what a scan reports.
+        expr = condition.parse(logic)
+        text = str(condition.simplify(expr))
+        affected = config is not None and condition.evaluate(expr, config)
 
     return (text, affected if config is not None else None)
 

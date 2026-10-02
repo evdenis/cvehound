@@ -4,12 +4,14 @@ These run on synthetic mini-trees written to tmp_path: no kernel checkout,
 no spatch, no network.
 """
 
+import itertools
 import os
+import re
 
 import pytest
 from conftest import build_map, write_tree
 
-from cvehound import evaluate_file_condition
+from cvehound import condition, evaluate_file_condition
 from cvehound.config import Config
 from cvehound.util import get_srcarch
 
@@ -284,6 +286,18 @@ EVALUATIONS = [
     ('CONFIG_A & CONFIG_OFF', 'foo.c', 'x86', True, ('CONFIG_A & CONFIG_OFF', False)),
     ('CONFIG_A | CONFIG_OFF', 'foo.c', 'x86', True, ('CONFIG_A | CONFIG_OFF', True)),
     ('CONFIG_OFF | CONFIG_ABSENT', 'foo.c', 'x86', True, ('CONFIG_ABSENT | CONFIG_OFF', False)),
+    # The printed condition is simplified; the verdict does not depend on it.
+    ('CONFIG_A & CONFIG_A & CONFIG_M', 'foo.c', 'x86', True, ('CONFIG_A & CONFIG_M', True)),
+    ('(CONFIG_A | CONFIG_OFF) & CONFIG_A', 'foo.c', 'x86', True, ('CONFIG_A', True)),
+    (
+        '(CONFIG_OFF & CONFIG_A) | (CONFIG_OFF & CONFIG_M)',
+        'foo.c',
+        'x86',
+        True,
+        ('CONFIG_OFF & (CONFIG_A | CONFIG_M)', False),
+    ),
+    ('~CONFIG_OFF & CONFIG_A', 'foo.c', 'x86', True, ('CONFIG_A & ~CONFIG_OFF', True)),
+    ('CONFIG_A & ~CONFIG_A', 'foo.c', 'x86', True, ('False', False)),
     # Without a .config there is a condition but no verdict.
     ('CONFIG_A', 'foo.c', 'x86', False, ('CONFIG_A', None)),
 ]
@@ -293,3 +307,46 @@ EVALUATIONS = [
 def test_evaluate_file_condition(tmp_path, logic, relpath, srcarch, with_config, expected):
     config = make_config(tmp_path, DOT_CONFIG) if with_config else None
     assert evaluate_file_condition(logic, relpath, srcarch, config) == expected
+
+
+# Shapes the parser emits for real files (v7.2), reduced: (raw, printed).
+SIMPLIFICATIONS = [
+    # A file reached from several parents that share a directory condition.
+    (
+        '(CONFIG_ARCH_OMAP2PLUS & CONFIG_ARCH_OMAP2 | CONFIG_ARCH_OMAP2PLUS & CONFIG_ARCH_OMAP3)',
+        'CONFIG_ARCH_OMAP2PLUS & (CONFIG_ARCH_OMAP2 | CONFIG_ARCH_OMAP3)',
+    ),
+    # A composite object's alternatives, one of which is the file's own condition.
+    ('(CONFIG_PPP | CONFIG_PPP_ASYNC | CONFIG_PPPOE) & CONFIG_PPP', 'CONFIG_PPP'),
+    (
+        '(CONFIG_FPE_FASTFPE & (CONFIG_UPROBES | ~CONFIG_THUMB2_KERNEL & CONFIG_KPROBES))'
+        ' | ((CONFIG_UPROBES | ~CONFIG_THUMB2_KERNEL & CONFIG_KPROBES))',
+        'CONFIG_UPROBES | (CONFIG_KPROBES & ~CONFIG_THUMB2_KERNEL)',
+    ),
+    (
+        'CONFIG_WLAN & (CONFIG_IWLWIFI | CONFIG_IWLMEI)'
+        ' & (CONFIG_IWLWIFI & CONFIG_IWLMVM | CONFIG_IWLWIFI & CONFIG_IWLMLD)',
+        'CONFIG_IWLWIFI & CONFIG_WLAN & (CONFIG_IWLMLD | CONFIG_IWLMVM)',
+    ),
+    ('(CONFIG_X | CONFIG_A) & (CONFIG_X | CONFIG_B)', 'CONFIG_X | (CONFIG_A & CONFIG_B)'),
+    ('~(CONFIG_A & CONFIG_B) | CONFIG_C', 'CONFIG_C | ~(CONFIG_A & CONFIG_B)'),
+]
+
+
+@pytest.mark.parametrize(('raw', 'printed'), SIMPLIFICATIONS)
+def test_simplify_condition(raw, printed):
+    expr = condition.parse(raw)
+    simplified = condition.simplify(expr)
+    assert str(simplified) == printed
+    names = sorted(set(re.findall(r'CONFIG_\w+', raw)))
+    for values in itertools.product((False, True), repeat=len(names)):
+        config = dict(zip(names, values, strict=True))
+        assert condition.evaluate(simplified, config) == condition.evaluate(expr, config)
+
+
+@pytest.mark.parametrize(
+    'raw', ['', '(CONFIG_A', 'CONFIG_A)', 'CONFIG_A &', 'CONFIG_A CONFIG_B', 'CONFIG_A + CONFIG_B']
+)
+def test_malformed_condition(raw):
+    with pytest.raises(ValueError, match='condition'):
+        condition.parse(raw)

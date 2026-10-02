@@ -305,4 +305,3 @@ I would like to thank the following projects and people behind them:
    [CIP kernel-sec](https://gitlab.com/cip-project/cip-kernel/cip-kernel-sec) for information
    about Linux CVEs
  - [undertaker](https://vamos.informatik.uni-erlangen.de/trac/undertaker) for mapping kernel configs to .c files
- - [sympy](https://www.sympy.org/) for the symbolic logic solver

@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["sympy", "pyyaml"]
+dependencies = ["pyyaml"]
 
 # Ships a tailored spatch so that coccinelle need not be installed separately;
 # find_spatch() picks it up automatically. The marker lists exactly the

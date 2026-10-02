@@ -686,8 +686,8 @@ def run_pool(hound: CVEhound, loglevel: int, tasks: Iterable[Task]) -> dict[Task
     never pools.
     """
     # Under forkserver (the Linux default since Python 3.14) workers would
-    # otherwise each re-import cvehound (and sympy) when the CLI runs as
-    # `python -m cvehound`; preloading amortizes that once. No-op for fork/spawn.
+    # otherwise each re-import cvehound when the CLI runs as `python -m
+    # cvehound`; preloading amortizes that once. No-op for fork/spawn.
     multiprocessing.set_forkserver_preload(['cvehound.worker'])
     outcomes: dict[Task, Outcome] = {}
     with concurrent.futures.ProcessPoolExecutor(

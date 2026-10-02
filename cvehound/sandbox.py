@@ -333,8 +333,8 @@ def build_policy(
     # Interpreter, libraries, and everywhere cvehound itself might be imported
     # from. All of it is needed twice over: once for the console-script shebang,
     # and again under forkserver/spawn (the Linux default from 3.14), where every
-    # worker re-execs python and re-imports cvehound and sympy. A gap here is not a
-    # missed detection but a PermissionError that takes the whole pool down.
+    # worker re-execs python and re-imports cvehound. A gap here is not a missed
+    # detection but a PermissionError that takes the whole pool down.
     read_exec = [
         '/usr',
         '/bin',
