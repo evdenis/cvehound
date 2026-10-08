@@ -176,6 +176,13 @@ jobs:
         git fetch --no-tags origin master '+refs/tags/v*:refs/tags/v*'
         git fetch --no-tags next
         git fetch --no-tags stable
+        # CVE-2019-18680 was introduced and fixed on linux-4.4.y alone, so its
+        # Fix: and Fixes: are on no branch above. The clone bundle used to carry
+        # every stable branch and tag; since kernel.org trimmed it to the live
+        # ones (2026-09), a cold cache has to fetch the branch itself. The
+        # v4.4.* tags are test_05's tags-mode points inside that rule's range.
+        git fetch --no-tags stable '+refs/heads/linux-4.4.y:refs/remotes/stable/linux-4.4.y' \
+          '+refs/tags/v4.4.*:refs/tags/v4.4.*'
         git reset --hard origin/master
         cd -
         # Same git tuning the test suite applies (parallel checkout, index v4,
